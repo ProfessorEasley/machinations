@@ -2,9 +2,9 @@ name: CI Status Checks
 
 on:
   push:
-    branches: [ main, development, staging ]
+    branches: [main, development, staging]
   pull_request:
-    branches: [ main, development, staging ]
+    branches: [main, development, staging]
 
 env:
   NODE_VERSION: '18'
@@ -76,4 +76,4 @@ jobs:
         with:
           name: build-files
           path: dist/
-          retention-days: 30 
+          retention-days: 30
