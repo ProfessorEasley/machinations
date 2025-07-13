@@ -1,7 +1,7 @@
-import { useAppStore } from '../store/useAppStore'
+import { useAppStore } from '../store/useAppStore';
 
 export default function Counter() {
-  const { count, increment, decrement, reset } = useAppStore()
+  const { count, increment, decrement, reset } = useAppStore();
 
   return (
     <div className="flex flex-col gap-2 items-center">
@@ -12,5 +12,5 @@ export default function Counter() {
         <button onClick={reset}>Reset</button>
       </div>
     </div>
-  )
+  );
 }
