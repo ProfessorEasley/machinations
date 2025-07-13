@@ -1,8 +1,8 @@
-import React from 'react'
-import { BrowserRouter } from 'react-router-dom'
-import AppRoutes from './routes/AppRoutes'
-import Header from './components/Header'
-import Counter from './components/Counter'
+import React from 'react';
+import { BrowserRouter } from 'react-router-dom';
+import AppRoutes from './routes/AppRoutes';
+import Header from './components/Header';
+import Counter from './components/Counter';
 
 const App = () => {
   return (
@@ -11,7 +11,7 @@ const App = () => {
       <AppRoutes />
       <Counter />
     </BrowserRouter>
-  )
-}
+  );
+};
 
-export default App
+export default App;
