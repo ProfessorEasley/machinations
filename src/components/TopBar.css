@@ -1,0 +1,23 @@
+.top-bar {
+    background-color: #8b7dd3;
+    padding: 6px 12px;
+    display: flex;
+    align-items: center;
+    border-bottom: 2px solid #3f3f9e;
+    height: 40px;
+  }
+  
+  .run-button {
+    background-color: #6f61c1;
+    color: white;
+    border: 1px solid #4e46a5;
+    font-weight: bold;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  
+  .run-button:hover {
+    background-color: #5b4db0;
+  }
+  
