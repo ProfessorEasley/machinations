@@ -23,12 +23,12 @@ export const SelectBox: React.FC<SelectBoxProps> = ({
   return (
     <select
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={e => onChange(e.target.value)}
       disabled={disabled}
       aria-label={ariaLabel}
       className="select"
     >
-      {options.map((opt) => (
+      {options.map(opt => (
         <option key={opt.value} value={opt.value}>
           {opt.label}
         </option>

@@ -20,7 +20,7 @@ export const Checkbox: React.FC<CheckboxProps> = ({
       <input
         type="checkbox"
         checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
+        onChange={e => onChange(e.target.checked)}
         disabled={disabled}
         aria-label={ariaLabel}
       />

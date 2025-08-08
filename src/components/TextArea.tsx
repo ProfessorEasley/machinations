@@ -20,7 +20,7 @@ export const TextArea: React.FC<TextAreaProps> = ({
   return (
     <textarea
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
       disabled={disabled}
       rows={rows}

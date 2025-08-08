@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import './ToolSideBar.css';
 
 const ToolSideBar: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'Graph' | 'Edit' | 'File' | 'Run'>('Graph');
+  const [activeTab, setActiveTab] = useState<'Graph' | 'Edit' | 'File' | 'Run'>(
+    'Graph'
+  );
 
   const renderToolButtons = () => {
     switch (activeTab) {
@@ -52,8 +54,12 @@ const ToolSideBar: React.FC = () => {
           <>
             <button>Quick Run</button>
             <button>Multiple Runs</button>
-            <label>Runs <input type="number" defaultValue={100} /></label>
-            <label>Visible Runs <input type="number" defaultValue={25} /></label>
+            <label>
+              Runs <input type="number" defaultValue={100} />
+            </label>
+            <label>
+              Visible Runs <input type="number" defaultValue={25} />
+            </label>
           </>
         );
     }
@@ -66,7 +72,8 @@ const ToolSideBar: React.FC = () => {
           <button
             key={tab}
             className={activeTab === tab ? 'active' : ''}
-            onClick={() => setActiveTab(tab)}>
+            onClick={() => setActiveTab(tab)}
+          >
             {tab}
           </button>
         ))}
@@ -76,32 +83,54 @@ const ToolSideBar: React.FC = () => {
       <div className="sidebar-divider"></div>
       <div className="section-divider"></div>
 
-{/* Optional title label */}
-<div className="machinations-label">Machinations I</div>
+      {/* Optional title label */}
+      <div className="machinations-label">Machinations I</div>
 
       <div className="properties-panel">
-        <label>Name <input type="text" /></label>
-        <label>Author <input type="text" /></label>
-        <label>Time Mode
+        <label>
+          Name <input type="text" />
+        </label>
+        <label>
+          Author <input type="text" />
+        </label>
+        <label>
+          Time Mode
           <select>
             <option>asynchronous</option>
             <option>synchronous</option>
           </select>
         </label>
-        <label>Interval <input type="number" defaultValue={1.0} /></label>
-        <label>Distribution
+        <label>
+          Interval <input type="number" defaultValue={1.0} />
+        </label>
+        <label>
+          Distribution
           <select>
             <option>fixed speed</option>
             <option>random</option>
           </select>
         </label>
-        <label>Color Coding <input type="checkbox" /> Color Coded</label>
-        <label>Dice <input type="text" defaultValue="D6" /></label>
-        <label>Skill <input type="text" /></label>
-        <label>Multiplayer <input type="text" /></label>
-        <label>Strategy <input type="text" /></label>
-        <label>Width <input type="number" defaultValue={600} /></label>
-        <label>Height <input type="number" defaultValue={560} /></label>
+        <label>
+          Color Coding <input type="checkbox" /> Color Coded
+        </label>
+        <label>
+          Dice <input type="text" defaultValue="D6" />
+        </label>
+        <label>
+          Skill <input type="text" />
+        </label>
+        <label>
+          Multiplayer <input type="text" />
+        </label>
+        <label>
+          Strategy <input type="text" />
+        </label>
+        <label>
+          Width <input type="number" defaultValue={600} />
+        </label>
+        <label>
+          Height <input type="number" defaultValue={560} />
+        </label>
       </div>
     </div>
   );

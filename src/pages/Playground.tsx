@@ -11,9 +11,7 @@ const Playground: React.FC = () => {
       <div className="playground-body">
         {/* Left canvas section */}
         <div className="canvas-section">
-          <div className="grid-canvas">
-            {/* Canvas grid goes here */}
-          </div>
+          <div className="grid-canvas">{/* Canvas grid goes here */}</div>
         </div>
 
         {/* Right panel with toolbar and form fields */}

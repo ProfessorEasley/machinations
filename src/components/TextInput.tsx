@@ -23,7 +23,7 @@ export const TextInput: React.FC<TextInputProps> = ({
     <input
       type={type}
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
       disabled={disabled}
       aria-label={ariaLabel}
