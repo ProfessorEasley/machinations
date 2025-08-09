@@ -1,0 +1,128 @@
+.playground-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+.playground-body {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  overflow: hidden;
+}
+
+.canvas-section {
+  flex: 1;
+  background-color: #f8f8f8;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.canvas-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.grid-canvas {
+  flex: 1;
+  height: 100%;
+  width: 100%;
+  background-image:
+    linear-gradient(#eee 1px, transparent 1px),
+    linear-gradient(90deg, #eee 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.right-panel {
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  background-color: #f5ebff;
+  border-left: 1px solid #ddd;
+  height: 100vh;
+  overflow-y: auto; /* allows vertical scroll */
+  overflow-x: hidden;
+}
+
+.right-panel-scroll {
+  flex: 1;
+  overflow-y: auto; /* scroll goes here */
+  padding: 8px;
+}
+
+.tab-buttons {
+  display: flex;
+  justify-content: space-around;
+  padding: 6px;
+  background-color: #d3bbff;
+  border-bottom: 1px solid #ccc;
+}
+
+.tab-buttons button {
+  background-color: #9c7be6;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.tab-buttons button:hover {
+  background-color: #7c5fd1;
+}
+
+.tools-section {
+  padding: 8px;
+  background-color: #d8c2f3;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-gap: 6px;
+}
+
+.tools-section button {
+  padding: 6px;
+  font-size: 0.75rem;
+}
+
+.details-panel {
+  padding: 8px;
+  background-color: #ede3ff;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-grow: 1;
+  overflow-y: auto; /* scroll within panel if needed */
+}
+
+.form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.75rem;
+  overflow-y: auto;
+}
+
+.detail-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.detail-group label {
+  font-size: 0.75rem;
+  font-weight: bold;
+  margin-bottom: 2px;
+}
+
+.detail-group input,
+.detail-group select {
+  padding: 4px;
+  font-size: 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+}

@@ -1,0 +1,93 @@
+.tool-sidebar {
+  width: 300px;
+  background-color: #e3d3fa;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  border-left: 2px solid #9c8cc0;
+  height: 100vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.tab-buttons {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.tab-buttons button {
+  flex: 1;
+  padding: 6px 8px;
+  background-color: #b59de6;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.tab-buttons button.active {
+  background-color: #7c5fd1;
+}
+
+.tool-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.tool-buttons button {
+  padding: 6px;
+  font-size: 12px;
+  flex: 1 0 45%;
+  background-color: white;
+  border: 1px solid #999;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.properties-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.properties-panel label {
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.properties-panel input,
+.properties-panel select {
+  padding: 4px;
+  font-size: 12px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+}
+
+.sidebar-divider {
+  height: 2px;
+  background-color: black;
+  margin: 12px 0;
+  border-radius: 1px;
+}
+
+.section-divider {
+  height: 1px;
+  border-top: 1px solid #ccc;
+  background-color: black;
+  margin: 12px 0 8px;
+  border: none;
+}
+
+.machinations-label {
+  font-weight: bold;
+  font-size: 14px;
+  color: #4b368e;
+  margin-bottom: 8px;
+  padding-left: 4px;
+}
