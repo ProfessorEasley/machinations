@@ -1,4 +1,3 @@
-// src/core/GraphConnection.ts
 import type { Vector3 } from './types/Vector3';
 import { GraphElement } from './GraphElement';
 import type { GraphConnectionType } from './GraphConnectionType';
@@ -16,12 +15,15 @@ export class GraphConnection extends GraphElement {
     this.source = source;
     this.target = target;
 
-    // keep I/O lists on nodes up to date
+    // Keep I/O lists on nodes up to date
     this.source.outputs.push(this);
     this.target.inputs.push(this);
 
-    // initialize endpoints
-    this.points = [ { ...this.source.getPosition() }, { ...this.target.getPosition() } ];
+    // Initialize endpoints
+    this.points = [
+      { ...this.source.getPosition() },
+      { ...this.target.getPosition() },
+    ];
   }
 
   dispose(): void {
@@ -37,30 +39,33 @@ export class GraphConnection extends GraphElement {
   getPosition(): Vector3 {
     const a = this.source.getPosition();
     const b = this.target.getPosition();
-    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.z + b.z) / 2 };
+    return {
+      x: (a.x + b.x) / 2,
+      y: (a.y + b.y) / 2,
+      z: (a.z + b.z) / 2,
+    };
   }
 
   // Return the closer endpoint to the given reference (simple & fast)
   getConnection(referencePoint: Vector3): Vector3 {
     const a = this.source.getPosition();
     const b = this.target.getPosition();
-    const da = (a.x - referencePoint.x) ** 2 + (a.y - referencePoint.y) ** 2 + (a.z - referencePoint.z) ** 2;
-    const db = (b.x - referencePoint.x) ** 2 + (b.y - referencePoint.y) ** 2 + (b.z - referencePoint.z) ** 2;
+    const da =
+      (a.x - referencePoint.x) ** 2 +
+      (a.y - referencePoint.y) ** 2 +
+      (a.z - referencePoint.z) ** 2;
+    const db =
+      (b.x - referencePoint.x) ** 2 +
+      (b.y - referencePoint.y) ** 2 +
+      (b.z - referencePoint.z) ** 2;
     return da <= db ? a : b;
   }
 
-  // Connections themselves don’t move independently of their nodes in this model.
-  // We treat move* as no-ops to satisfy the abstract API.
-  moveBy(_dx: number, _dy: number, _dz: number = 0): void {
-    // no-op (edges follow their nodes)
-  }
-
-  moveTo(_x: number, _y: number, _z: number = 0): void {
-    // no-op (edges follow their nodes)
-  }
+  // Connections don’t move independently of their nodes
+  moveBy(): void {}
+  moveTo(): void {}
 
   // --- Geometry helpers for rendering ---
-
   calculateStartPosition(): void {
     this.points[0] = { ...this.source.getPosition() };
   }
@@ -91,13 +96,11 @@ export class GraphConnection extends GraphElement {
   }
 
   // --- Basic (de)serialization placeholders ---
-
   generateXML(): string {
     return `<Connection id="${this.id}" from="${this.source.id}" to="${this.target.id}" />`;
   }
 
-  readXML(xml: any): void {
-    if (xml && xml.$) this.id = xml.$.id;
-    // Linking source/target by id is handled in Graph.fromJSON/XML
+  readXML(xml: { $?: { id?: string } }): void {
+    if (xml.$?.id) this.id = xml.$.id;
   }
 }

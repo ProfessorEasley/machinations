@@ -1,4 +1,3 @@
-// src/core/Graph.ts
 import { GraphElement } from './GraphElement';
 import { GraphNode } from './GraphNode';
 import { GraphConnection } from './GraphConnection';
@@ -10,11 +9,11 @@ const genId = (() => {
 })();
 
 function isNode(e: GraphElement): e is GraphNode {
-  return (e as any).position !== undefined && (e as any).name !== undefined;
+  return 'position' in e && 'name' in e;
 }
 
 function isConnection(e: GraphElement): e is GraphConnection {
-  return (e as any).source !== undefined && (e as any).target !== undefined;
+  return 'source' in e && 'target' in e;
 }
 
 export class Graph {
@@ -44,11 +43,15 @@ export class Graph {
   }
 
   getNode(id: string): GraphNode | undefined {
-    return this.elements.find(e => e.id === id && isNode(e)) as GraphNode | undefined;
+    return this.elements.find(e => e.id === id && isNode(e)) as
+      | GraphNode
+      | undefined;
   }
 
   getConnection(id: string): GraphConnection | undefined {
-    return this.elements.find(e => e.id === id && isConnection(e)) as GraphConnection | undefined;
+    return this.elements.find(e => e.id === id && isConnection(e)) as
+      | GraphConnection
+      | undefined;
   }
 
   nodes(): GraphNode[] {
@@ -74,40 +77,62 @@ export class Graph {
         id: c.id,
         from: c.source.id,
         to: c.target.id,
-        type: (c as any).type ?? 'default',
+        type: typeof c.type === 'string' ? c.type : 'default',
       })),
     };
   }
 
-  fromJSON(json: any) {
+  fromJSON(json: unknown) {
+    if (typeof json !== 'object' || json === null) return;
+
+    const data = json as {
+      nodes?: Array<{
+        id?: string;
+        name?: string;
+        width?: number;
+        height?: number;
+        position?: { x: number; y: number; z: number };
+      }>;
+      connections?: Array<{
+        id?: string;
+        from: string;
+        to: string;
+        type?: string;
+      }>;
+      grammar?: { name?: string };
+    };
+
     this.elements = [];
+    const byId = new Map<string, GraphNode>();
 
     // Recreate nodes
-    const byId = new Map<string, GraphNode>();
-    for (const jn of json?.nodes ?? []) {
-      const n = new GraphNode(jn.name ?? 'Node', jn.width ?? 120, jn.height ?? 60);
+    for (const jn of data.nodes ?? []) {
+      const n = new GraphNode(
+        jn.name ?? 'Node',
+        jn.width ?? 120,
+        jn.height ?? 60
+      );
       n.id = jn.id ?? genId();
       n.position = jn.position ?? { x: 0, y: 0, z: 0 };
       this.addNode(n);
       byId.set(n.id, n);
     }
 
-    // Recreate connections (link by node id)
-    for (const jc of json?.connections ?? []) {
+    // Recreate connections
+    for (const jc of data.connections ?? []) {
       const from = byId.get(jc.from);
       const to = byId.get(jc.to);
       if (!from || !to) continue;
       const c = new GraphConnection(from, to);
       c.id = jc.id ?? genId();
-      (c as any).type = jc.type ?? (c as any).type;
+      c.type = jc.type ?? c.type;
       this.addConnection(c);
     }
 
-    // Grammar
-    if (json?.grammar?.name) this.grammar.name = json.grammar.name;
+    if (data.grammar?.name) this.grammar.name = data.grammar.name;
   }
 
-  // ===== Optional XML (kept simple) =====
+  // ===== Optional XML =====
   generateXML(): string {
     const elementsXML = this.elements.map(e => e.generateXML()).join('\n');
     return `<Graph>
@@ -118,8 +143,7 @@ ${elementsXML}
 </Graph>`;
   }
 
-  readXML(_xml: any): void {
-    // If you need XML, convert to JSON shape and call fromJSON.
-    // Left unimplemented deliberately for now.
+  readXML(xml: unknown): void {
+    void xml; // placeholder
   }
 }

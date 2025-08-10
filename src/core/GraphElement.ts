@@ -22,8 +22,14 @@ export abstract class GraphElement {
     return `<Element id="${this.id}"></Element>`;
   }
 
-  readXML(xml: any): void {
-    if (xml && xml.$ && typeof xml.$.id === 'string') {
+  // readXML(xml: any): void {
+  //   if (xml && xml.$ && typeof xml.$.id === 'string') {
+  //     this.id = xml.$.id;
+  //   }
+  // }
+
+  readXML(xml: { $?: { id?: string } }): void {
+    if (xml.$?.id) {
       this.id = xml.$.id;
     }
   }

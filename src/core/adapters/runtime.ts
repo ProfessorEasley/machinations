@@ -1,4 +1,3 @@
-// src/core/adapters/runtime.ts
 import { Graph } from '../Graph';
 import { GraphNode } from '../GraphNode';
 import { GraphConnection } from '../GraphConnection';
@@ -50,7 +49,7 @@ export class GraphRuntime {
     const to = this.graph.getNode(toId);
     if (!from || !to) return null;
     const e = new GraphConnection(from, to);
-    if (type) (e as any).type = type;
+    if (type) e.type = type;
     this.graph.addConnection(e);
     return this.asEdgeDTO(e);
   }
@@ -67,7 +66,7 @@ export class GraphRuntime {
     return this.graph.toJSON();
   }
 
-  deserialize(json: any) {
+  deserialize(json: unknown) {
     this.graph.fromJSON(json);
   }
 
@@ -84,6 +83,6 @@ export class GraphRuntime {
     id: e.id,
     from: e.source.id,
     to: e.target.id,
-    type: (e as any).type,
+    type: typeof e.type === 'string' ? e.type : undefined,
   });
 }

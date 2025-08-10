@@ -25,13 +25,22 @@ export class GraphNode extends GraphElement {
     return { ...this.position };
   }
 
-  override getConnection(_referencePoint: Vector3): Vector3 {
-    // For now, just return node center
+  // override getConnection(_referencePoint: Vector3): Vector3 {
+  //   // For now, just return node center
+  //   return { ...this.position };
+  // }
+
+  override getConnection(referencePoint: Vector3): Vector3 {
+    void referencePoint; // unused for now
     return { ...this.position };
   }
 
   override moveBy(dx: number, dy: number, dz: number = 0): void {
-    this.moveTo(this.position.x + dx, this.position.y + dy, this.position.z + dz);
+    this.moveTo(
+      this.position.x + dx,
+      this.position.y + dy,
+      this.position.z + dz
+    );
   }
 
   override moveTo(x: number, y: number, z: number = 0): void {
@@ -45,12 +54,23 @@ export class GraphNode extends GraphElement {
     return `<Node id="${this.id}" x="${this.position.x}" y="${this.position.y}" z="${this.position.z}" symbol="${symbolName}" />`;
   }
 
-  override readXML(xml: any): void {
-    if (xml && xml.$) {
-      if (typeof xml.$.id === 'string') this.id = xml.$.id;
-      if (typeof xml.$.x === 'string') this.position.x = parseFloat(xml.$.x);
-      if (typeof xml.$.y === 'string') this.position.y = parseFloat(xml.$.y);
-      if (typeof xml.$.z === 'string') this.position.z = parseFloat(xml.$.z);
+  // override readXML(xml: any): void {
+  //   if (xml && xml.$) {
+  //     if (typeof xml.$.id === 'string') this.id = xml.$.id;
+  //     if (typeof xml.$.x === 'string') this.position.x = parseFloat(xml.$.x);
+  //     if (typeof xml.$.y === 'string') this.position.y = parseFloat(xml.$.y);
+  //     if (typeof xml.$.z === 'string') this.position.z = parseFloat(xml.$.z);
+  //   }
+  // }
+
+  override readXML(xml: {
+    $?: { id?: string; x?: string; y?: string; z?: string };
+  }): void {
+    if (xml.$) {
+      if (xml.$.id) this.id = xml.$.id;
+      if (xml.$.x) this.position.x = parseFloat(xml.$.x);
+      if (xml.$.y) this.position.y = parseFloat(xml.$.y);
+      if (xml.$.z) this.position.z = parseFloat(xml.$.z);
     }
   }
 }
