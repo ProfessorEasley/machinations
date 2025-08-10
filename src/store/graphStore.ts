@@ -20,9 +20,18 @@ export const useGraphStore = create<State & Actions>((set, get) => ({
   tool: 'select',
   camera: { x: 0, y: 0, zoom: 1 },
 
-  addNode: (x, y) => { get().rt.addNode({ x, y }); set({}); },
-  moveNode: (id, x, y) => { get().rt.moveNode(id, x, y); set({}); },
-  addEdge: (f, t) => { get().rt.addEdge(f, t); set({}); },
+  addNode: (x, y) => {
+    get().rt.addNode({ x, y });
+    set({});
+  },
+  moveNode: (id, x, y) => {
+    get().rt.moveNode(id, x, y);
+    set({});
+  },
+  addEdge: (f, t) => {
+    get().rt.addEdge(f, t);
+    set({});
+  },
 
   nodes: () => get().rt.getNodes(),
   edges: () => get().rt.getEdges(),

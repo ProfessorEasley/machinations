@@ -3,8 +3,8 @@ import React, { useMemo } from 'react';
 import { useGraphStore } from '../store/graphStore';
 
 const Canvas: React.FC = () => {
-  const nodes = useGraphStore((s) => s.nodes()); // DTOs: {id,x,y,width,height,label}
-  const edges = useGraphStore((s) => s.edges()); // DTOs: {id,from,to}
+  const nodes = useGraphStore(s => s.nodes()); // DTOs: {id,x,y,width,height,label}
+  const edges = useGraphStore(s => s.edges()); // DTOs: {id,from,to}
 
   // Fast lookup for edge endpoints
   const nodeById = useMemo(() => {
@@ -16,14 +16,14 @@ const Canvas: React.FC = () => {
   return (
     <svg width="100%" height="100%" style={{ display: 'block' }}>
       {/* Edges behind nodes */}
-      {edges.map((e) => {
+      {edges.map(e => {
         const from = nodeById.get(e.from);
         const to = nodeById.get(e.to);
         if (!from || !to) return null;
 
-        const x1 = from.x + from.width;              // right-middle of source
+        const x1 = from.x + from.width; // right-middle of source
         const y1 = from.y + from.height / 2;
-        const x2 = to.x;                              // left-middle of target
+        const x2 = to.x; // left-middle of target
         const y2 = to.y + to.height / 2;
 
         return (
@@ -40,7 +40,7 @@ const Canvas: React.FC = () => {
       })}
 
       {/* Nodes */}
-      {nodes.map((n) => (
+      {nodes.map(n => (
         <g key={n.id}>
           <rect
             x={n.x}

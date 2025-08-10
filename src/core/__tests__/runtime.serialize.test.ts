@@ -7,7 +7,7 @@ describe('GraphRuntime (serialize/deserialize)', () => {
     const rt1 = new GraphRuntime(new Graph());
     const n1 = rt1.addNode({ x: 10, y: 20, label: 'N1' });
     const n2 = rt1.addNode({ x: 200, y: 30, label: 'N2' });
-    const e  = rt1.addEdge(n1.id, n2.id, 'flow');
+    const e = rt1.addEdge(n1.id, n2.id, 'flow');
     expect(e).toBeTruthy();
 
     const json = rt1.serialize();
