@@ -1,3 +1,4 @@
+// src/core/GraphEvent.ts
 import { GraphElement } from './GraphElement';
 
 export class GraphEvent {
@@ -11,10 +12,12 @@ export class GraphEvent {
   static GRAPH_WARNING = 'warning';
   static GRAPH_ERROR = 'error';
 
+  type: string;
   element?: GraphElement;
   message?: string;
 
   constructor(type: string, element?: GraphElement, message?: string) {
+    this.type = type; // ✅ store the value
     this.element = element;
     this.message = message;
   }
