@@ -20,6 +20,26 @@ const graphTools = [
   'Artifical Intelligence',
 ];
 
+const editTools = [
+  'Select All (A)',
+  'Copy (C)',
+  'Paste (V)',
+  'Undo (Z)',
+  'Redo (Y)',
+  'Zoom (M)',
+];
+
+const fileTools = [
+  'New (N)',
+  'Open (O)',
+  'Import (I)',
+  'Save (S)',
+  'Export Selection(E)',
+  'Save as SVG (G)',
+];
+
+const runTools = ['Quick Run', 'Multiple Runs'];
+
 const ToolSideBar: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'Graph' | 'Edit' | 'File' | 'Run'>(
     'Graph'
@@ -45,30 +65,43 @@ const ToolSideBar: React.FC = () => {
       case 'Edit':
         return (
           <>
-            <button>Select All (A)</button>
-            <button>Copy (C)</button>
-            <button>Paste (V)</button>
-            <button>Undo (Z)</button>
-            <button>Redo (Y)</button>
-            <button>Zoom (M)</button>
+            {editTools.map(tool => (
+              <button
+                key={tool}
+                className={selectedTool === tool ? 'selected' : ''}
+                onClick={() => setSelectedTool(tool)}
+              >
+                {tool}
+              </button>
+            ))}
           </>
         );
       case 'File':
         return (
           <>
-            <button>New (N)</button>
-            <button>Open (O)</button>
-            <button>Import (I)</button>
-            <button>Save (S)</button>
-            <button>Export Selection(E)</button>
-            <button>Save as SVG (G)</button>
+            {fileTools.map(tool => (
+              <button
+                key={tool}
+                className={selectedTool === tool ? 'selected' : ''}
+                onClick={() => setSelectedTool(tool)}
+              >
+                {tool}
+              </button>
+            ))}
           </>
         );
       case 'Run':
         return (
           <>
-            <button>Quick Run</button>
-            <button>Multiple Runs</button>
+            {runTools.map(tool => (
+              <button
+                key={tool}
+                className={selectedTool === tool ? 'selected' : ''}
+                onClick={() => setSelectedTool(tool)}
+              >
+                {tool}
+              </button>
+            ))}
             <label>
               Runs <input type="number" defaultValue={100} />
             </label>
@@ -95,10 +128,8 @@ const ToolSideBar: React.FC = () => {
       </div>
 
       <div className="tool-buttons">{renderToolButtons()}</div>
-      <div className="sidebar-divider"></div>
-      <div className="section-divider"></div>
-
-      {/* Optional title label */}
+      {/* <div className="sidebar-divider"></div>
+      <div className="section-divider"></div> */}
       <div className="machinations-label">Machinations</div>
 
       <div className="properties-panel">
