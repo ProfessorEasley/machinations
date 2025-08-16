@@ -28,6 +28,10 @@
   cursor: pointer;
 }
 
+button.selected {
+  color: #664bb6;
+}
+
 .tab-buttons button.active {
   background-color: #7c5fd1;
 }
