@@ -43,7 +43,6 @@
   width: 300px;
   background-color: #f5ebff;
   border-left: 1px solid #ddd;
-  height: 100vh;
   overflow-y: auto; /* allows vertical scroll */
   overflow-x: hidden;
 }
