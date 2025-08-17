@@ -17,7 +17,6 @@ describe('GraphRuntime (basic)', () => {
     expect(n.y).toBe(20);
     expect(n.width).toBe(120);
     expect(n.height).toBe(60);
-
     const nodes = rt.getNodes();
     expect(nodes.length).toBe(1);
     expect(nodes[0].id).toBe(n.id);
@@ -41,7 +40,6 @@ describe('GraphRuntime (basic)', () => {
   it('creates an edge between nodes', () => {
     const a = rt.addNode({ x: 0, y: 0, label: 'A' });
     const b = rt.addNode({ x: 100, y: 0, label: 'B' });
-
     const e = rt.addEdge(a.id, b.id, 'flow');
     expect(e).toBeTruthy();
     expect(e!.from).toBe(a.id);
@@ -53,5 +51,111 @@ describe('GraphRuntime (basic)', () => {
     const e = rt.addEdge('missing', 'also-missing');
     expect(e).toBeNull();
     expect(rt.getEdges().length).toBe(0);
+  });
+
+  it('removes a node and its connections', () => {
+    const a = rt.addNode({ x: 0, y: 0, label: 'A' });
+    const b = rt.addNode({ x: 100, y: 0, label: 'B' });
+    rt.addEdge(a.id, b.id, 'flow');
+    rt.graph.removeElement(rt.graph.getNode(a.id)!);
+    expect(rt.getNodes().length).toBe(1);
+    expect(rt.getEdges().length).toBe(0);
+  });
+
+  it('removes a connection only', () => {
+    const a = rt.addNode({ x: 0, y: 0, label: 'A' });
+    const b = rt.addNode({ x: 100, y: 0, label: 'B' });
+    const e = rt.addEdge(a.id, b.id, 'flow');
+    rt.graph.removeElement(rt.graph.getConnection(e!.id)!);
+    expect(rt.getEdges().length).toBe(0);
+    expect(rt.getNodes().length).toBe(2);
+  });
+
+  it('does not allow duplicate node IDs', () => {
+    const n1 = rt.addNode({ x: 0, y: 0, label: 'A' });
+    const n2 = rt.addNode({ x: 10, y: 10, label: 'B' });
+    n2.id = n1.id; // force duplicate
+    // The graph should still treat them as separate objects, but only one should be found by getNode
+    const found = rt.graph.getNode(n1.id);
+    expect(found).toBeDefined();
+    // There should not be more than one node with the same ID in the graph's node list
+    const allWithId = rt.getNodes().filter(n => n.id === n1.id);
+    expect(allWithId.length).toBe(1);
+  });
+
+  it('serializes and deserializes an empty graph', () => {
+    const json = rt.serialize();
+    const rt2 = new GraphRuntime(new Graph());
+    rt2.deserialize(json);
+    expect(rt2.getNodes().length).toBe(0);
+    expect(rt2.getEdges().length).toBe(0);
+  });
+
+  it('serializes and deserializes a graph with nodes and edges', () => {
+    const a = rt.addNode({ x: 0, y: 0, label: 'A' });
+    const b = rt.addNode({ x: 100, y: 0, label: 'B' });
+    rt.addEdge(a.id, b.id, 'flow');
+    const json = rt.serialize();
+    const rt2 = new GraphRuntime(new Graph());
+    rt2.deserialize(json);
+    expect(rt2.getNodes().length).toBe(2);
+    expect(rt2.getEdges().length).toBe(1);
+  });
+
+  it('does not break on invalid deserialization data', () => {
+    const rt2 = new GraphRuntime(new Graph());
+    rt2.deserialize(undefined);
+    expect(rt2.getNodes().length).toBe(0);
+    expect(rt2.getEdges().length).toBe(0);
+    rt2.deserialize({});
+    expect(rt2.getNodes().length).toBe(0);
+    expect(rt2.getEdges().length).toBe(0);
+  });
+
+  it('moves node by delta', () => {
+    const n = rt.addNode({ x: 10, y: 10 });
+    const nodeObj = rt.graph.getNode(n.id)!;
+    nodeObj.moveBy(5, 5);
+    expect(nodeObj.position.x).toBe(15);
+    expect(nodeObj.position.y).toBe(15);
+  });
+
+  it('moves node to position', () => {
+    const n = rt.addNode({ x: 10, y: 10 });
+    const nodeObj = rt.graph.getNode(n.id)!;
+    nodeObj.moveTo(100, 200);
+    expect(nodeObj.position.x).toBe(100);
+    expect(nodeObj.position.y).toBe(200);
+  });
+
+  it('connection position is midpoint between nodes', () => {
+    const a = rt.addNode({ x: 0, y: 0 });
+    const b = rt.addNode({ x: 100, y: 100 });
+    const e = rt.addEdge(a.id, b.id);
+    const connObj = rt.graph.getConnection(e!.id)!;
+    const pos = connObj.getPosition();
+    expect(pos.x).toBe(50);
+    expect(pos.y).toBe(50);
+  });
+
+  it('connection getConnection returns closer endpoint', () => {
+    const a = rt.addNode({ x: 0, y: 0 });
+    const b = rt.addNode({ x: 100, y: 0 });
+    const e = rt.addEdge(a.id, b.id);
+    const connObj = rt.graph.getConnection(e!.id)!;
+    const ref = { x: 10, y: 0, z: 0 };
+    const closer = connObj.getConnection(ref);
+    expect(closer.x).toBe(0);
+    expect(closer.y).toBe(0);
+  });
+
+  it('connection getPositionOnLine returns correct ratio', () => {
+    const a = rt.addNode({ x: 0, y: 0 });
+    const b = rt.addNode({ x: 100, y: 0 });
+    const e = rt.addEdge(a.id, b.id);
+    const connObj = rt.graph.getConnection(e!.id)!;
+    const pos = connObj.getPositionOnLine(0.5);
+    expect(pos.x).toBe(50);
+    expect(pos.y).toBe(0);
   });
 });

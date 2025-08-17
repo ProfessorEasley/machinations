@@ -28,6 +28,29 @@ export class Graph {
   }
 
   removeElement(element: GraphElement): void {
+    // Remove related connections if element is a node
+    if ('position' in element && 'name' in element) {
+      // It's a node
+      const nodeId = element.id;
+      // Remove all connections where this node is source or target
+      this.elements = this.elements.filter(e => {
+        // Type guard for GraphConnection
+        if (
+          typeof e === 'object' &&
+          e !== null &&
+          'source' in e &&
+          'target' in e &&
+          (e as GraphConnection).source &&
+          (e as GraphConnection).target &&
+          typeof (e as GraphConnection).source.id === 'string' &&
+          typeof (e as GraphConnection).target.id === 'string'
+        ) {
+          const conn = e as GraphConnection;
+          return conn.source.id !== nodeId && conn.target.id !== nodeId;
+        }
+        return true;
+      });
+    }
     this.elements = this.elements.filter(e => e !== element);
     element.graph = undefined;
     element.dispose?.();
