@@ -1,4 +1,3 @@
-// src/canvas/Canvas.tsx
 import React, { useMemo } from 'react';
 import { useGraphStore } from '../store/graphStore';
 

@@ -1,59 +1,107 @@
 import React, { useState } from 'react';
 import './ToolSideBar.css';
 
+const graphTools = [
+  'Select',
+  'Text Label',
+  'Group',
+  'Chart',
+  'Pool',
+  'Gate',
+  'Resource Connection',
+  'State Connection',
+  'Source',
+  'Drain',
+  'Convertor',
+  'Trader',
+  'Delay',
+  'Register',
+  'End Condition',
+  'Artifical Intelligence',
+];
+
+const editTools = [
+  'Select All (A)',
+  'Copy (C)',
+  'Paste (V)',
+  'Undo (Z)',
+  'Redo (Y)',
+  'Zoom (M)',
+];
+
+const fileTools = [
+  'New (N)',
+  'Open (O)',
+  'Import (I)',
+  'Save (S)',
+  'Export Selection(E)',
+  'Save as SVG (G)',
+];
+
+const runTools = ['Quick Run', 'Multiple Runs'];
+
 const ToolSideBar: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'Graph' | 'Edit' | 'File' | 'Run'>(
     'Graph'
   );
+  const [selectedTool, setSelectedTool] = useState<string>('Select');
 
   const renderToolButtons = () => {
     switch (activeTab) {
       case 'Graph':
         return (
           <>
-            <button>Pointer</button>
-            <button>Text</button>
-            <button>Group</button>
-            <button>Chart</button>
-            <button>Circle</button>
-            <button>Square</button>
-            <button>Diamond</button>
-            <button>Arrow</button>
-            <button>Play</button>
-            <button>Pause</button>
-            <button>Stop</button>
-            <button>AP</button>
-            <button>8</button>
-            <button>X</button>
+            {graphTools.map(tool => (
+              <button
+                key={tool}
+                className={selectedTool === tool ? 'selected' : ''}
+                onClick={() => setSelectedTool(tool)}
+              >
+                {tool}
+              </button>
+            ))}
           </>
         );
       case 'Edit':
         return (
           <>
-            <button>Select All (A)</button>
-            <button>Copy (C)</button>
-            <button>Paste (V)</button>
-            <button>Undo (Z)</button>
-            <button>Redo (Y)</button>
-            <button>Zoom (M)</button>
+            {editTools.map(tool => (
+              <button
+                key={tool}
+                className={selectedTool === tool ? 'selected' : ''}
+                onClick={() => setSelectedTool(tool)}
+              >
+                {tool}
+              </button>
+            ))}
           </>
         );
       case 'File':
         return (
           <>
-            <button>New (N)</button>
-            <button>Open (O)</button>
-            <button>Import (I)</button>
-            <button>Save (S)</button>
-            <button>Export (E)</button>
-            <button>Save as SVG (G)</button>
+            {fileTools.map(tool => (
+              <button
+                key={tool}
+                className={selectedTool === tool ? 'selected' : ''}
+                onClick={() => setSelectedTool(tool)}
+              >
+                {tool}
+              </button>
+            ))}
           </>
         );
       case 'Run':
         return (
           <>
-            <button>Quick Run</button>
-            <button>Multiple Runs</button>
+            {runTools.map(tool => (
+              <button
+                key={tool}
+                className={selectedTool === tool ? 'selected' : ''}
+                onClick={() => setSelectedTool(tool)}
+              >
+                {tool}
+              </button>
+            ))}
             <label>
               Runs <input type="number" defaultValue={100} />
             </label>
@@ -80,11 +128,9 @@ const ToolSideBar: React.FC = () => {
       </div>
 
       <div className="tool-buttons">{renderToolButtons()}</div>
-      <div className="sidebar-divider"></div>
-      <div className="section-divider"></div>
-
-      {/* Optional title label */}
-      <div className="machinations-label">Machinations I</div>
+      {/* <div className="sidebar-divider"></div>
+      <div className="section-divider"></div> */}
+      <div className="machinations-label">Machinations</div>
 
       <div className="properties-panel">
         <label>
@@ -98,6 +144,7 @@ const ToolSideBar: React.FC = () => {
           <select>
             <option>asynchronous</option>
             <option>synchronous</option>
+            <option>turn-based</option>
           </select>
         </label>
         <label>
@@ -106,8 +153,8 @@ const ToolSideBar: React.FC = () => {
         <label>
           Distribution
           <select>
+            <option>instantaneous</option>
             <option>fixed speed</option>
-            <option>random</option>
           </select>
         </label>
         <label>
