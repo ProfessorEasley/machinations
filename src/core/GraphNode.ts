@@ -5,14 +5,21 @@ import type { GraphSymbol } from './GraphSymbol';
 
 export class GraphNode extends GraphElement {
   name: string;
+  label?: string;
   position: Vector3 = { x: 0, y: 0, z: 0 };
   symbol?: GraphSymbol;
   width: number;
   height: number;
 
-  constructor(name: string = 'Node', width: number = 120, height: number = 60) {
+  constructor(
+    name: string = 'Node',
+    width: number = 120,
+    height: number = 60,
+    label?: string
+  ) {
     super();
     this.name = name;
+    this.label = label ?? name;
     this.width = width;
     this.height = height;
   }
@@ -51,7 +58,8 @@ export class GraphNode extends GraphElement {
 
   override generateXML(): string {
     const symbolName = this.symbol ? this.symbol.name : '';
-    return `<Node id="${this.id}" x="${this.position.x}" y="${this.position.y}" z="${this.position.z}" symbol="${symbolName}" />`;
+    const labelAttr = this.label ? ` label="${this.label}"` : '';
+    return `<Node id="${this.id}" x="${this.position.x}" y="${this.position.y}" z="${this.position.z}"${labelAttr} symbol="${symbolName}" />`;
   }
 
   // override readXML(xml: any): void {

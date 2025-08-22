@@ -83,7 +83,45 @@ describe('GraphRuntime (basic)', () => {
     expect(allWithId.length).toBe(1);
   });
 
-  it('serializes and deserializes an empty graph', () => {
+  it('serializes and deserializes an empty graph with XML', () => {
+    const xml = rt.graph.generateXML();
+    const rt2 = new GraphRuntime(new Graph());
+    rt2.graph.readXML(xml);
+    expect(rt2.getNodes().length).toBe(0);
+    expect(rt2.getEdges().length).toBe(0);
+  });
+
+  it('serializes and deserializes a graph with nodes and edges using XML', () => {
+    const a = rt.addNode({ x: 0, y: 0, label: 'A' });
+    const b = rt.addNode({ x: 100, y: 0, label: 'B' });
+    rt.addEdge(a.id, b.id, 'flow');
+    const xml = rt.graph.generateXML();
+    const rt2 = new GraphRuntime(new Graph());
+    rt2.graph.readXML(xml);
+    expect(rt2.getNodes().length).toBe(2);
+    expect(rt2.getEdges().length).toBe(1);
+    // Check node labels and positions
+    const nodes = rt2.getNodes();
+    expect(
+      nodes.some(n => n.label === 'A' && n.x === 0 && n.y === 0)
+    ).toBeTruthy();
+    expect(
+      nodes.some(n => n.label === 'B' && n.x === 100 && n.y === 0)
+    ).toBeTruthy();
+    // Check edge type
+    const edge = rt2.getEdges()[0];
+    expect(edge.type).toBe('flow');
+  });
+
+  it('serializes and deserializes grammar name with XML', () => {
+    rt.graph.grammar.name = 'testGrammar';
+    const xml = rt.graph.generateXML();
+    const rt2 = new GraphRuntime(new Graph());
+    rt2.graph.readXML(xml);
+    expect(rt2.graph.grammar.name).toBe('testGrammar');
+  });
+
+  it('serializes and deserializes an empty graph with JSON', () => {
     const json = rt.serialize();
     const rt2 = new GraphRuntime(new Graph());
     rt2.deserialize(json);
@@ -91,7 +129,7 @@ describe('GraphRuntime (basic)', () => {
     expect(rt2.getEdges().length).toBe(0);
   });
 
-  it('serializes and deserializes a graph with nodes and edges', () => {
+  it('serializes and deserializes a graph with nodes and edges with JSON', () => {
     const a = rt.addNode({ x: 0, y: 0, label: 'A' });
     const b = rt.addNode({ x: 100, y: 0, label: 'B' });
     rt.addEdge(a.id, b.id, 'flow');

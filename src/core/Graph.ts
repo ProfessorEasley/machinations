@@ -2,6 +2,8 @@ import { GraphElement } from './GraphElement';
 import { GraphNode } from './GraphNode';
 import { GraphConnection } from './GraphConnection';
 import { GraphGrammar } from './GraphGrammar';
+// No official types for fast-xml-parser
+import { XMLParser } from 'fast-xml-parser';
 
 const genId = (() => {
   let i = 0;
@@ -14,6 +16,43 @@ function isNode(e: GraphElement): e is GraphNode {
 
 function isConnection(e: GraphElement): e is GraphConnection {
   return 'source' in e && 'target' in e;
+}
+
+// ===== XML element types & helpers =====
+interface XmlNodeEl {
+  id?: string;
+  name?: string;
+  label?: string;
+  x?: string | number;
+  y?: string | number;
+  z?: string | number;
+  width?: string | number;
+  height?: string | number;
+}
+
+interface XmlConnectionEl {
+  id?: string;
+  from?: string;
+  to?: string;
+  type?: string;
+}
+
+interface ParsedGraphDoc {
+  Graph?: {
+    Elements?: {
+      Node?: XmlNodeEl | XmlNodeEl[];
+      Connection?: XmlConnectionEl | XmlConnectionEl[];
+    };
+    Grammar?: {
+      name?: string;
+    };
+  };
+}
+
+function toArray<T>(v: unknown): T[] {
+  if (Array.isArray(v)) return v as T[];
+  if (v == null) return [];
+  return [v as T];
 }
 
 export class Graph {
@@ -166,7 +205,59 @@ ${elementsXML}
 </Graph>`;
   }
 
-  readXML(xml: unknown): void {
-    void xml; // placeholder
+  readXML(xml: string): void {
+    // Use fast-xml-parser for Node.js compatibility
+    const parser = new XMLParser({
+      ignoreAttributes: false,
+      attributeNamePrefix: '',
+    });
+    const doc = parser.parse(xml) as ParsedGraphDoc;
+
+    this.elements = [];
+    const byId = new Map<string, GraphNode>();
+
+    // Parse grammar
+    const grammarName = doc.Graph?.Grammar?.name;
+    if (typeof grammarName === 'string') {
+      this.grammar.name = grammarName;
+    }
+
+    // Parse nodes
+    const nodesArr = toArray<XmlNodeEl>(doc.Graph?.Elements?.Node);
+    nodesArr.forEach(nodeEl => {
+      const id = nodeEl.id ?? genId();
+      const name = nodeEl.name ?? nodeEl.label ?? 'Node';
+      const label = nodeEl.label ?? nodeEl.name ?? 'Node';
+      const x = parseFloat(String(nodeEl.x ?? '0'));
+      const y = parseFloat(String(nodeEl.y ?? '0'));
+      const z = parseFloat(String(nodeEl.z ?? '0'));
+      const width = parseFloat(String(nodeEl.width ?? '120'));
+      const height = parseFloat(String(nodeEl.height ?? '60'));
+
+      const n = new GraphNode(name, width, height, label);
+      n.id = id;
+      n.position = { x, y, z };
+      n.label = label;
+      this.addNode(n);
+      byId.set(id, n);
+    });
+
+    // Parse connections
+    const connsArr = toArray<XmlConnectionEl>(doc.Graph?.Elements?.Connection);
+    connsArr.forEach(connEl => {
+      const id = connEl.id ?? genId();
+      const from = connEl.from;
+      const to = connEl.to;
+      const type = connEl.type ?? 'default';
+      if (!from || !to) return;
+      const fromNode = byId.get(from);
+      const toNode = byId.get(to);
+      if (!fromNode || !toNode) return;
+
+      const c = new GraphConnection(fromNode, toNode);
+      c.id = id;
+      c.type = type;
+      this.addConnection(c);
+    });
   }
 }
