@@ -17,28 +17,28 @@ export default defineConfig({
       crypto: 'crypto-browserify',
     },
   },
-  test: {
-    include: [
-      //   'src/core/__tests__/**/*.test.ts',
-      //   'src/core/__tests__/*.test.ts',
-      //   'src/stories/**/*.stories.@(js|jsx|mjs|ts|tsx)'
-      // ],
-      // setupFiles: ['.storybook/vitest.setup.ts'],
-      // browser: {
-      //   enabled: true,
-      //   headless: true,
-      //   provider: 'playwright',
-      //   instances: [
-      //     {
-      //       browser: 'chromium',
-      //     },
-      //   ],
-      // },
-      // plugins: [
-      //   storybookTest({
-      //     configDir: path.join(dirname, '.storybook'),
-      //   }),
-      'src/core/__tests__/*.test.ts',
-    ],
-  },
+  // test: {
+  //   include: [
+  //     //   'src/core/__tests__/**/*.test.ts',
+  //     //   'src/core/__tests__/*.test.ts',
+  //     //   'src/stories/**/*.stories.@(js|jsx|mjs|ts|tsx)'
+  //     // ],
+  //     // setupFiles: ['.storybook/vitest.setup.ts'],
+  //     // browser: {
+  //     //   enabled: true,
+  //     //   headless: true,
+  //     //   provider: 'playwright',
+  //     //   instances: [
+  //     //     {
+  //     //       browser: 'chromium',
+  //     //     },
+  //     //   ],
+  //     // },
+  //     // plugins: [
+  //     //   storybookTest({
+  //     //     configDir: path.join(dirname, '.storybook'),
+  //     //   }),
+  //     'src/core/__tests__/*.test.ts',
+  //   ],
+  // },
 });
