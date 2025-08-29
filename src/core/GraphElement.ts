@@ -1,7 +1,11 @@
 // src/core/GraphElement.ts
 import type { Vector3 } from './types/Vector3';
 import type { Graph } from './Graph';
+<<<<<<< HEAD
 import { GraphConnection } from './GraphConnection';
+=======
+import type { GraphConnection } from './GraphConnection';
+>>>>>>> 837c1f018fe6b583fd83f89ece7bda14111c4ed8
 
 export abstract class GraphElement {
   id: string = '';
