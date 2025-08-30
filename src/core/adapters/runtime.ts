@@ -76,11 +76,7 @@ export class GraphRuntime {
     y: n.position.y,
     width: n.width,
     height: n.height,
-<<<<<<< HEAD
-    label: n.name,
-=======
     label: n.label ?? n.name,
->>>>>>> 837c1f018fe6b583fd83f89ece7bda14111c4ed8
   });
 
   private asEdgeDTO = (e: GraphConnection): EdgeDTO => ({

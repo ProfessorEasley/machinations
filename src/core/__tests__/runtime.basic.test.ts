@@ -17,10 +17,6 @@ describe('GraphRuntime (basic)', () => {
     expect(n.y).toBe(20);
     expect(n.width).toBe(120);
     expect(n.height).toBe(60);
-<<<<<<< HEAD
-
-=======
->>>>>>> 837c1f018fe6b583fd83f89ece7bda14111c4ed8
     const nodes = rt.getNodes();
     expect(nodes.length).toBe(1);
     expect(nodes[0].id).toBe(n.id);
@@ -44,10 +40,6 @@ describe('GraphRuntime (basic)', () => {
   it('creates an edge between nodes', () => {
     const a = rt.addNode({ x: 0, y: 0, label: 'A' });
     const b = rt.addNode({ x: 100, y: 0, label: 'B' });
-<<<<<<< HEAD
-
-=======
->>>>>>> 837c1f018fe6b583fd83f89ece7bda14111c4ed8
     const e = rt.addEdge(a.id, b.id, 'flow');
     expect(e).toBeTruthy();
     expect(e!.from).toBe(a.id);
@@ -60,8 +52,6 @@ describe('GraphRuntime (basic)', () => {
     expect(e).toBeNull();
     expect(rt.getEdges().length).toBe(0);
   });
-<<<<<<< HEAD
-=======
 
   it('removes a node and its connections', () => {
     const a = rt.addNode({ x: 0, y: 0, label: 'A' });
@@ -206,5 +196,4 @@ describe('GraphRuntime (basic)', () => {
     expect(pos.x).toBe(50);
     expect(pos.y).toBe(0);
   });
->>>>>>> 837c1f018fe6b583fd83f89ece7bda14111c4ed8
 });

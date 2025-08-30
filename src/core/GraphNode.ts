@@ -5,20 +5,12 @@ import type { GraphSymbol } from './GraphSymbol';
 
 export class GraphNode extends GraphElement {
   name: string;
-<<<<<<< HEAD
-=======
   label?: string;
->>>>>>> 837c1f018fe6b583fd83f89ece7bda14111c4ed8
   position: Vector3 = { x: 0, y: 0, z: 0 };
   symbol?: GraphSymbol;
   width: number;
   height: number;
 
-<<<<<<< HEAD
-  constructor(name: string = 'Node', width: number = 120, height: number = 60) {
-    super();
-    this.name = name;
-=======
   constructor(
     name: string = 'Node',
     width: number = 120,
@@ -28,7 +20,6 @@ export class GraphNode extends GraphElement {
     super();
     this.name = name;
     this.label = label ?? name;
->>>>>>> 837c1f018fe6b583fd83f89ece7bda14111c4ed8
     this.width = width;
     this.height = height;
   }
@@ -67,12 +58,8 @@ export class GraphNode extends GraphElement {
 
   override generateXML(): string {
     const symbolName = this.symbol ? this.symbol.name : '';
-<<<<<<< HEAD
-    return `<Node id="${this.id}" x="${this.position.x}" y="${this.position.y}" z="${this.position.z}" symbol="${symbolName}" />`;
-=======
     const labelAttr = this.label ? ` label="${this.label}"` : '';
     return `<Node id="${this.id}" x="${this.position.x}" y="${this.position.y}" z="${this.position.z}"${labelAttr} symbol="${symbolName}" />`;
->>>>>>> 837c1f018fe6b583fd83f89ece7bda14111c4ed8
   }
 
   // override readXML(xml: any): void {

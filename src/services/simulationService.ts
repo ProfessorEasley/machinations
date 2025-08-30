@@ -5,7 +5,7 @@ export interface CreateSimulationPayload {
   name?: string;
   max_steps?: number;
   step_duration?: number;
-  configuration?: Record<string, any>;
+  configuration?: Record<string, unknown>;
 }
 
 export interface SimulationSession {

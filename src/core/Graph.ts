@@ -2,11 +2,8 @@ import { GraphElement } from './GraphElement';
 import { GraphNode } from './GraphNode';
 import { GraphConnection } from './GraphConnection';
 import { GraphGrammar } from './GraphGrammar';
-<<<<<<< HEAD
-=======
 // No official types for fast-xml-parser
 import { XMLParser } from 'fast-xml-parser';
->>>>>>> 837c1f018fe6b583fd83f89ece7bda14111c4ed8
 
 const genId = (() => {
   let i = 0;
@@ -21,8 +18,6 @@ function isConnection(e: GraphElement): e is GraphConnection {
   return 'source' in e && 'target' in e;
 }
 
-<<<<<<< HEAD
-=======
 // ===== XML element types & helpers =====
 interface XmlNodeEl {
   id?: string;
@@ -60,7 +55,6 @@ function toArray<T>(v: unknown): T[] {
   return [v as T];
 }
 
->>>>>>> 837c1f018fe6b583fd83f89ece7bda14111c4ed8
 export class Graph {
   elements: GraphElement[] = [];
   grammar: GraphGrammar = new GraphGrammar();
@@ -73,8 +67,6 @@ export class Graph {
   }
 
   removeElement(element: GraphElement): void {
-<<<<<<< HEAD
-=======
     // Remove related connections if element is a node
     if ('position' in element && 'name' in element) {
       // It's a node
@@ -98,7 +90,6 @@ export class Graph {
         return true;
       });
     }
->>>>>>> 837c1f018fe6b583fd83f89ece7bda14111c4ed8
     this.elements = this.elements.filter(e => e !== element);
     element.graph = undefined;
     element.dispose?.();
@@ -214,10 +205,6 @@ ${elementsXML}
 </Graph>`;
   }
 
-<<<<<<< HEAD
-  readXML(xml: unknown): void {
-    void xml; // placeholder
-=======
   readXML(xml: string): void {
     // Use fast-xml-parser for Node.js compatibility
     const parser = new XMLParser({
@@ -272,6 +259,5 @@ ${elementsXML}
       c.type = type;
       this.addConnection(c);
     });
->>>>>>> 837c1f018fe6b583fd83f89ece7bda14111c4ed8
   }
 }

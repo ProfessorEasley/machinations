@@ -37,9 +37,6 @@ out/
 # Temporary files
 *.tmp
 *.temp
-<<<<<<< HEAD
-=======
 
 *storybook.log
 storybook-static
->>>>>>> 837c1f018fe6b583fd83f89ece7bda14111c4ed8

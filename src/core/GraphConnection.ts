@@ -97,11 +97,7 @@ export class GraphConnection extends GraphElement {
 
   // --- Basic (de)serialization placeholders ---
   generateXML(): string {
-<<<<<<< HEAD
-    return `<Connection id="${this.id}" from="${this.source.id}" to="${this.target.id}" />`;
-=======
     return `<Connection id="${this.id}" from="${this.source.id}" to="${this.target.id}" type="${this.type}" />`;
->>>>>>> 837c1f018fe6b583fd83f89ece7bda14111c4ed8
   }
 
   readXML(xml: { $?: { id?: string } }): void {
