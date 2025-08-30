@@ -11,7 +11,8 @@ const ApiTester: React.FC = () => {
     setError('');
 
     try {
-      const base = import.meta.env.VITE_WEBSOCKET_URL || 'http://localhost:3000';
+      const base =
+        import.meta.env.VITE_WEBSOCKET_URL || 'http://localhost:3000';
       const res = await fetch(`${base}/health`, { credentials: 'include' });
       const data = await res.json();
       setResult(JSON.stringify(data));
@@ -29,7 +30,9 @@ const ApiTester: React.FC = () => {
         {loading ? 'Calling...' : 'Call /health'}
       </button>
       {result && (
-        <pre style={{ background: '#f7f7f7', padding: 8, marginTop: 8 }}>{result}</pre>
+        <pre style={{ background: '#f7f7f7', padding: 8, marginTop: 8 }}>
+          {result}
+        </pre>
       )}
       {error && (
         <div style={{ color: '#d32f2f', marginTop: 8 }}>Error: {error}</div>
@@ -39,5 +42,3 @@ const ApiTester: React.FC = () => {
 };
 
 export default ApiTester;
-
-
