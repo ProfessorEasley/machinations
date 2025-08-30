@@ -16,5 +16,3 @@ export const graphService = {
     return res.data;
   },
 };
-
-

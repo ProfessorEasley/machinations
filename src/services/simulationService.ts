@@ -20,7 +20,10 @@ export interface ApiResponse<T> {
 }
 
 export const simulationService = {
-  async create(token: string, payload: CreateSimulationPayload): Promise<SimulationSession> {
+  async create(
+    token: string,
+    payload: CreateSimulationPayload
+  ): Promise<SimulationSession> {
     const res = await apiFetch<ApiResponse<SimulationSession>>('/simulations', {
       method: 'POST',
       body: payload,
@@ -36,5 +39,3 @@ export const simulationService = {
     });
   },
 };
-
-
