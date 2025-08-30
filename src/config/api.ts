@@ -1,6 +1,6 @@
 interface ApiFetchOptions {
   method?: string;
-  body?: any;
+  body?: unknown;
   token?: string | null;
 }
 
