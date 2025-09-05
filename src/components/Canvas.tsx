@@ -66,10 +66,10 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
     <div
       className="canvas"
       style={{
-        width: 600,
-        height: 560,
+        width: '100%',
+        height: '100%',
         position: 'relative',
-        background: '#fafafa',
+        background: 'transparent',
       }}
       onDrop={handleDrop}
       onDragOver={handleDragOver}
