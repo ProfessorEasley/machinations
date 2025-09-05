@@ -46,6 +46,10 @@ const ToolSideBar: React.FC = () => {
   );
   const [selectedTool, setSelectedTool] = useState<string>('Select');
 
+  const handleDragStart = (e: React.DragEvent, tool: string) => {
+    e.dataTransfer.setData('tool', tool);
+  };
+
   const renderToolButtons = () => {
     switch (activeTab) {
       case 'Graph':
@@ -56,6 +60,8 @@ const ToolSideBar: React.FC = () => {
                 key={tool}
                 className={selectedTool === tool ? 'selected' : ''}
                 onClick={() => setSelectedTool(tool)}
+                draggable
+                onDragStart={e => handleDragStart(e, tool)}
               >
                 {tool}
               </button>

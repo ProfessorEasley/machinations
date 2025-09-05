@@ -1,62 +1,121 @@
-import React, { useMemo } from 'react';
-import { useGraphStore } from '../store/graphStore';
+import React, { useState } from 'react';
 
-const Canvas: React.FC = () => {
-  const nodes = useGraphStore(s => s.nodes()); // DTOs: {id,x,y,width,height,label}
-  const edges = useGraphStore(s => s.edges()); // DTOs: {id,from,to}
+interface CanvasProps {
+  selectedTool: string;
+}
 
-  // Fast lookup for edge endpoints
-  const nodeById = useMemo(() => {
-    const map = new Map<string, (typeof nodes)[number]>();
-    for (const n of nodes) map.set(n.id, n);
-    return map;
-  }, [nodes]);
+interface TextLabel {
+  id: number;
+  x: number;
+  y: number;
+  text: string;
+}
+
+const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
+  const [labels, setLabels] = useState<TextLabel[]>([]);
+  const [editingId, setEditingId] = useState<number | null>(null);
+
+  // Handle dropping a tool onto the canvas
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const tool = e.dataTransfer.getData('tool');
+    if (tool === 'Text Label') {
+      const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const newLabel: TextLabel = {
+        id: Date.now(),
+        x,
+        y,
+        text: 'Edit me',
+      };
+      setLabels([...labels, newLabel]);
+      setEditingId(newLabel.id);
+    }
+  };
+
+  // Allow dropping by preventing default
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+  };
+
+  // Optional: Also allow click-to-place if "Text Label" is selected
+  const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (selectedTool === 'Text Label') {
+      const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const newLabel: TextLabel = {
+        id: Date.now(),
+        x,
+        y,
+        text: 'Edit me',
+      };
+      setLabels([...labels, newLabel]);
+      setEditingId(newLabel.id);
+    }
+  };
+
+  const handleTextChange = (id: number, value: string) => {
+    setLabels(
+      labels.map(label => (label.id === id ? { ...label, text: value } : label))
+    );
+  };
 
   return (
-    <svg width="100%" height="100%" style={{ display: 'block' }}>
-      {/* Edges behind nodes */}
-      {edges.map(e => {
-        const from = nodeById.get(e.from);
-        const to = nodeById.get(e.to);
-        if (!from || !to) return null;
-
-        const x1 = from.x + from.width; // right-middle of source
-        const y1 = from.y + from.height / 2;
-        const x2 = to.x; // left-middle of target
-        const y2 = to.y + to.height / 2;
-
-        return (
-          <line
-            key={e.id}
-            x1={x1}
-            y1={y1}
-            x2={x2}
-            y2={y2}
-            stroke="black"
-            strokeWidth={1}
+    <div
+      className="canvas"
+      style={{
+        width: 600,
+        height: 560,
+        position: 'relative',
+        background: '#fafafa',
+      }}
+      onDrop={handleDrop}
+      onDragOver={handleDragOver}
+      onClick={handleCanvasClick}
+    >
+      {labels.map(label =>
+        editingId === label.id ? (
+          <input
+            key={label.id}
+            style={{
+              position: 'absolute',
+              left: label.x,
+              top: label.y,
+              border: 'none',
+              background: 'transparent',
+              fontSize: 16,
+              outline: 'none',
+              minWidth: 40,
+            }}
+            value={label.text}
+            autoFocus
+            onBlur={() => setEditingId(null)}
+            onChange={e => handleTextChange(label.id, e.target.value)}
+            onClick={e => e.stopPropagation()}
           />
-        );
-      })}
-
-      {/* Nodes */}
-      {nodes.map(n => (
-        <g key={n.id}>
-          <rect
-            x={n.x}
-            y={n.y}
-            width={n.width}
-            height={n.height}
-            fill="white"
-            stroke="black"
-            rx={10}
-            ry={10}
-          />
-          <text x={n.x + 8} y={n.y + 20} fontSize={12}>
-            {n.label}
-          </text>
-        </g>
-      ))}
-    </svg>
+        ) : (
+          <span
+            key={label.id}
+            style={{
+              position: 'absolute',
+              left: label.x,
+              top: label.y,
+              fontSize: 16,
+              cursor: 'pointer',
+              userSelect: 'none',
+            }}
+            onClick={e => {
+              e.stopPropagation();
+              setEditingId(label.id);
+            }}
+          >
+            {label.text}
+          </span>
+        )
+      )}
+    </div>
   );
 };
 
