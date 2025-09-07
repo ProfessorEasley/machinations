@@ -1,6 +1,11 @@
 import React, { useState } from 'react';
 import './ToolSideBar.css';
 
+interface ToolSideBarProps {
+  selectedTool: string;
+  setSelectedTool: React.Dispatch<React.SetStateAction<string>>;
+}
+
 const graphTools = [
   'Select',
   'Text Label',
@@ -40,11 +45,18 @@ const fileTools = [
 
 const runTools = ['Quick Run', 'Multiple Runs'];
 
-const ToolSideBar: React.FC = () => {
+const ToolSideBar: React.FC<ToolSideBarProps> = ({
+  selectedTool,
+  setSelectedTool,
+}) => {
   const [activeTab, setActiveTab] = useState<'Graph' | 'Edit' | 'File' | 'Run'>(
     'Graph'
   );
-  const [selectedTool, setSelectedTool] = useState<string>('Select');
+  // const [selectedTool, setSelectedTool] = useState<string>('Select');
+
+  const handleDragStart = (e: React.DragEvent, tool: string) => {
+    e.dataTransfer.setData('tool', tool);
+  };
 
   const renderToolButtons = () => {
     switch (activeTab) {
@@ -56,6 +68,8 @@ const ToolSideBar: React.FC = () => {
                 key={tool}
                 className={selectedTool === tool ? 'selected' : ''}
                 onClick={() => setSelectedTool(tool)}
+                draggable
+                onDragStart={e => handleDragStart(e, tool)}
               >
                 {tool}
               </button>
