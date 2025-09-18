@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import './Canvas.css';
 
 interface CanvasProps {
   selectedTool: string;
@@ -700,16 +701,10 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
         return editingId === el.id ? (
           <input
             key={el.id}
+            className={`text-label-input ${isSelected ? 'selected' : ''}`}
             style={{
-              position: 'absolute',
               left: el.x,
               top: el.y,
-              border: isSelected ? '2px solid #0078d4' : 'none',
-              background: 'transparent',
-              fontSize: 16,
-              outline: 'none',
-              minWidth: 40,
-              zIndex: isSelected ? 2 : 1,
             }}
             value={el.text || ''}
             autoFocus
@@ -720,17 +715,10 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
         ) : (
           <span
             key={el.id}
+            className={`text-label-span ${selectedTool === 'Select' ? 'selectable' : 'clickable'} ${isSelected ? 'selected' : ''}`}
             style={{
-              position: 'absolute',
               left: el.x,
               top: el.y,
-              fontSize: 16,
-              cursor: selectedTool === 'Select' ? 'move' : 'pointer',
-              userSelect: 'none',
-              border: isSelected ? '2px solid #0078d4' : 'none',
-              background: isSelected ? '#e3f2fd' : 'transparent',
-              zIndex: isSelected ? 2 : 1,
-              padding: isSelected ? '2px' : '0',
             }}
             onClick={e => {
               if (selectedTool === 'Select') {
@@ -759,14 +747,10 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
         return (
           <svg
             key={el.id}
+            className={`svg-element pool-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={{
-              position: 'absolute',
-              left: el.x - 20,
-              top: el.y - 20,
-              cursor: selectedTool === 'Select' ? 'move' : 'pointer',
-              zIndex: isSelected ? 2 : 1,
-              border: isSelected ? '2px solid #0078d4' : 'none',
-              background: isSelected ? '#e3f2fd' : 'transparent',
+              left: el.x,
+              top: el.y,
             }}
             width={40}
             height={40}
@@ -790,34 +774,18 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
               cx={20}
               cy={20}
               r={18}
-              fill="#2196f3"
-              stroke="#1565c0"
-              strokeWidth={2}
+              className={`pool-circle ${isSelected ? 'selected' : ''}`}
             />
-            {isSelected && (
-              <circle
-                cx={20}
-                cy={20}
-                r={19}
-                fill="none"
-                stroke="#0078d4"
-                strokeWidth={2}
-              />
-            )}
           </svg>
         );
       case 'Source':
         return (
           <svg
             key={el.id}
+            className={`svg-element source-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={{
-              position: 'absolute',
-              left: el.x - 20,
-              top: el.y - 20,
-              cursor: selectedTool === 'Select' ? 'move' : 'pointer',
-              zIndex: isSelected ? 2 : 1,
-              border: isSelected ? '2px solid #0078d4' : 'none',
-              background: isSelected ? '#e3f2fd' : 'transparent',
+              left: el.x,
+              top: el.y,
             }}
             width={40}
             height={40}
@@ -839,32 +807,18 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
           >
             <polygon
               points="20,5 35,35 5,35"
-              fill="#43a047"
-              stroke="#1b5e20"
-              strokeWidth={2}
+              className={`source-triangle ${isSelected ? 'selected' : ''}`}
             />
-            {isSelected && (
-              <polygon
-                points="20,5 35,35 5,35"
-                fill="none"
-                stroke="#0078d4"
-                strokeWidth={2}
-              />
-            )}
           </svg>
         );
       case 'Drain':
         return (
           <svg
             key={el.id}
+            className={`svg-element drain-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={{
-              position: 'absolute',
-              left: el.x - 20,
-              top: el.y - 20,
-              cursor: selectedTool === 'Select' ? 'move' : 'pointer',
-              zIndex: isSelected ? 2 : 1,
-              border: isSelected ? '2px solid #0078d4' : 'none',
-              background: isSelected ? '#e3f2fd' : 'transparent',
+              left: el.x,
+              top: el.y,
             }}
             width={40}
             height={40}
@@ -886,34 +840,20 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
           >
             <polygon
               points="5,5 35,5 20,35"
-              fill="#e53935"
-              stroke="#b71c1c"
-              strokeWidth={2}
+              className={`drain-triangle ${isSelected ? 'selected' : ''}`}
             />
-            {isSelected && (
-              <polygon
-                points="5,5 35,5 20,35"
-                fill="none"
-                stroke="#0078d4"
-                strokeWidth={2}
-              />
-            )}
           </svg>
         );
       case 'Group':
         return (
           <div
             key={el.id}
+            className={`group-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={{
-              position: 'absolute',
               left: el.x,
               top: el.y,
               width: el.width || 200,
               height: el.height || 150,
-              border: '2px dashed #666',
-              background: isSelected ? 'rgba(0,120,212,0.1)' : 'transparent',
-              cursor: selectedTool === 'Select' ? 'move' : 'pointer',
-              zIndex: isSelected ? 2 : 1,
             }}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
             onClick={e => {
@@ -936,62 +876,22 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
               <>
                 {/* Southeast handle */}
                 <div
-                  style={{
-                    position: 'absolute',
-                    right: -4,
-                    bottom: -4,
-                    width: 8,
-                    height: 8,
-                    background: '#0078d4',
-                    border: '1px solid white',
-                    cursor: 'se-resize',
-                    zIndex: 3,
-                  }}
+                  className="resize-handle se"
                   onMouseDown={e => handleResizeStart(e, el.id, 'se')}
                 />
                 {/* Southwest handle */}
                 <div
-                  style={{
-                    position: 'absolute',
-                    left: -4,
-                    bottom: -4,
-                    width: 8,
-                    height: 8,
-                    background: '#0078d4',
-                    border: '1px solid white',
-                    cursor: 'sw-resize',
-                    zIndex: 3,
-                  }}
+                  className="resize-handle sw"
                   onMouseDown={e => handleResizeStart(e, el.id, 'sw')}
                 />
                 {/* Northeast handle */}
                 <div
-                  style={{
-                    position: 'absolute',
-                    right: -4,
-                    top: -4,
-                    width: 8,
-                    height: 8,
-                    background: '#0078d4',
-                    border: '1px solid white',
-                    cursor: 'ne-resize',
-                    zIndex: 3,
-                  }}
+                  className="resize-handle ne"
                   onMouseDown={e => handleResizeStart(e, el.id, 'ne')}
                 />
                 {/* Northwest handle */}
                 <div
-                  style={{
-                    position: 'absolute',
-                    left: -4,
-                    top: -4,
-                    width: 8,
-                    height: 8,
-                    background: '#0078d4',
-                    border: '1px solid white',
-                    cursor: 'nw-resize',
-                    zIndex: 3,
-                  }}
+                  className="resize-handle nw"
                   onMouseDown={e => handleResizeStart(e, el.id, 'nw')}
                 />
               </>
@@ -1002,14 +902,10 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
         return (
           <svg
             key={el.id}
+            className={`svg-element gate-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={{
-              position: 'absolute',
-              left: el.x - 20,
-              top: el.y - 20,
-              cursor: selectedTool === 'Select' ? 'move' : 'pointer',
-              zIndex: isSelected ? 2 : 1,
-              border: isSelected ? '2px solid #0078d4' : 'none',
-              background: isSelected ? '#e3f2fd' : 'transparent',
+              left: el.x,
+              top: el.y,
             }}
             width={40}
             height={40}
@@ -1031,32 +927,18 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
           >
             <polygon
               points="20,5 35,20 20,35 5,20"
-              fill="#ff9800"
-              stroke="#e65100"
-              strokeWidth={2}
+              className={`gate-diamond ${isSelected ? 'selected' : ''}`}
             />
-            {isSelected && (
-              <polygon
-                points="20,5 35,20 20,35 5,20"
-                fill="none"
-                stroke="#0078d4"
-                strokeWidth={2}
-              />
-            )}
           </svg>
         );
       case 'Convertor':
         return (
           <svg
             key={el.id}
+            className={`svg-element convertor-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={{
-              position: 'absolute',
-              left: el.x - 20,
-              top: el.y - 20,
-              cursor: selectedTool === 'Select' ? 'move' : 'pointer',
-              zIndex: isSelected ? 2 : 1,
-              border: isSelected ? '2px solid #0078d4' : 'none',
-              background: isSelected ? '#e3f2fd' : 'transparent',
+              left: el.x,
+              top: el.y,
             }}
             width={40}
             height={40}
@@ -1078,40 +960,19 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
           >
             <polygon
               points="5,5 35,20 5,35"
-              fill="#9c27b0"
-              stroke="#4a148c"
-              strokeWidth={2}
+              className={`convertor-shape ${isSelected ? 'selected' : ''}`}
             />
-            <line
-              x1="5"
-              y1="5"
-              x2="5"
-              y2="35"
-              stroke="#4a148c"
-              strokeWidth={2}
-            />
-            {isSelected && (
-              <polygon
-                points="5,5 35,20 5,35"
-                fill="none"
-                stroke="#0078d4"
-                strokeWidth={2}
-              />
-            )}
+            <line x1="5" y1="5" x2="5" y2="35" className="convertor-line" />
           </svg>
         );
       case 'End Condition':
         return (
           <svg
             key={el.id}
+            className={`svg-element end-condition-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={{
-              position: 'absolute',
-              left: el.x - 20,
-              top: el.y - 20,
-              cursor: selectedTool === 'Select' ? 'move' : 'pointer',
-              zIndex: isSelected ? 2 : 1,
-              border: isSelected ? '2px solid #0078d4' : 'none',
-              background: isSelected ? '#e3f2fd' : 'transparent',
+              left: el.x,
+              top: el.y,
             }}
             width={40}
             height={40}
@@ -1136,36 +997,25 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
               y="5"
               width="30"
               height="30"
-              fill="#f44336"
-              stroke="#b71c1c"
-              strokeWidth={2}
+              className={`end-condition-rect ${isSelected ? 'selected' : ''}`}
             />
-            <rect x="12" y="12" width="16" height="16" fill="#b71c1c" />
-            {isSelected && (
-              <rect
-                x="5"
-                y="5"
-                width="30"
-                height="30"
-                fill="none"
-                stroke="#0078d4"
-                strokeWidth={2}
-              />
-            )}
+            <rect
+              x="12"
+              y="12"
+              width="16"
+              height="16"
+              className="end-condition-inner-rect"
+            />
           </svg>
         );
       case 'Artifical Intelligence':
         return (
           <svg
             key={el.id}
+            className={`svg-element ai-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={{
-              position: 'absolute',
-              left: el.x - 20,
-              top: el.y - 20,
-              cursor: selectedTool === 'Select' ? 'move' : 'pointer',
-              zIndex: isSelected ? 2 : 1,
-              border: isSelected ? '2px solid #0078d4' : 'none',
-              background: isSelected ? '#e3f2fd' : 'transparent',
+              left: el.x,
+              top: el.y,
             }}
             width={40}
             height={40}
@@ -1190,46 +1040,21 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
               y="5"
               width="30"
               height="30"
-              fill="#4caf50"
-              stroke="#2e7d32"
-              strokeWidth={2}
+              className={`ai-rect ${isSelected ? 'selected' : ''}`}
             />
-            <text
-              x="20"
-              y="22"
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fill="white"
-              fontSize="10"
-              fontWeight="bold"
-            >
+            <text x="20" y="22" className="ai-text">
               AP
             </text>
-            {isSelected && (
-              <rect
-                x="5"
-                y="5"
-                width="30"
-                height="30"
-                fill="none"
-                stroke="#0078d4"
-                strokeWidth={2}
-              />
-            )}
           </svg>
         );
       case 'Register':
         return (
           <svg
             key={el.id}
+            className={`svg-element register-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={{
-              position: 'absolute',
-              left: el.x - 20,
-              top: el.y - 20,
-              cursor: selectedTool === 'Select' ? 'move' : 'pointer',
-              zIndex: isSelected ? 2 : 1,
-              border: isSelected ? '2px solid #0078d4' : 'none',
-              background: isSelected ? '#e3f2fd' : 'transparent',
+              left: el.x,
+              top: el.y,
             }}
             width={40}
             height={40}
@@ -1254,46 +1079,21 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
               y="5"
               width="30"
               height="30"
-              fill="#607d8b"
-              stroke="#37474f"
-              strokeWidth={2}
+              className={`register-rect ${isSelected ? 'selected' : ''}`}
             />
-            <text
-              x="20"
-              y="22"
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fill="white"
-              fontSize="14"
-              fontWeight="bold"
-            >
+            <text x="20" y="22" className="register-text">
               x
             </text>
-            {isSelected && (
-              <rect
-                x="5"
-                y="5"
-                width="30"
-                height="30"
-                fill="none"
-                stroke="#0078d4"
-                strokeWidth={2}
-              />
-            )}
           </svg>
         );
       case 'Delay':
         return (
           <svg
             key={el.id}
+            className={`svg-element delay-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={{
-              position: 'absolute',
-              left: el.x - 20,
-              top: el.y - 20,
-              cursor: selectedTool === 'Select' ? 'move' : 'pointer',
-              zIndex: isSelected ? 2 : 1,
-              border: isSelected ? '2px solid #0078d4' : 'none',
-              background: isSelected ? '#e3f2fd' : 'transparent',
+              left: el.x,
+              top: el.y,
             }}
             width={40}
             height={40}
@@ -1317,45 +1117,21 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
               cx="20"
               cy="20"
               r="15"
-              fill="#ff5722"
-              stroke="#d84315"
-              strokeWidth={2}
+              className={`delay-circle ${isSelected ? 'selected' : ''}`}
             />
-            <text
-              x="20"
-              y="22"
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fill="white"
-              fontSize="14"
-              fontWeight="bold"
-            >
+            <text x="20" y="22" className="delay-text">
               8
             </text>
-            {isSelected && (
-              <circle
-                cx="20"
-                cy="20"
-                r="15"
-                fill="none"
-                stroke="#0078d4"
-                strokeWidth={2}
-              />
-            )}
           </svg>
         );
       case 'Trader':
         return (
           <svg
             key={el.id}
+            className={`svg-element trader-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={{
-              position: 'absolute',
-              left: el.x - 20,
-              top: el.y - 20,
-              cursor: selectedTool === 'Select' ? 'move' : 'pointer',
-              zIndex: isSelected ? 2 : 1,
-              border: isSelected ? '2px solid #0078d4' : 'none',
-              background: isSelected ? '#e3f2fd' : 'transparent',
+              left: el.x,
+              top: el.y,
             }}
             width={40}
             height={40}
@@ -1377,32 +1153,20 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
           >
             <polygon
               points="8,5 32,5 28,35 4,35"
-              fill="#795548"
-              stroke="#3e2723"
-              strokeWidth={2}
+              className={`trader-polygon ${isSelected ? 'selected' : ''}`}
             />
-            {isSelected && (
-              <polygon
-                points="8,5 32,5 28,35 4,35"
-                fill="none"
-                stroke="#0078d4"
-                strokeWidth={2}
-              />
-            )}
           </svg>
         );
       case 'Resource Connection':
         return (
           <div
             key={el.id}
+            className={`connection-container ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={{
-              position: 'absolute',
               left: Math.min(el.startX || el.x, el.endX || el.x) - 5,
               top: Math.min(el.startY || el.y, el.endY || el.y) - 5,
               width: Math.abs((el.endX || el.x) - (el.startX || el.x)) + 10,
               height: Math.abs((el.endY || el.y) - (el.startY || el.y)) + 10,
-              cursor: selectedTool === 'Select' ? 'move' : 'pointer',
-              zIndex: isSelected ? 2 : 1,
             }}
             onMouseDown={e => {
               e.stopPropagation();
@@ -1419,26 +1183,13 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
               }
             }}
           >
-            <svg
-              style={{
-                position: 'absolute',
-                left: 0,
-                top: 0,
-                width: '100%',
-                height: '100%',
-                pointerEvents: 'none',
-              }}
-            >
+            <svg className="connection-svg">
               <defs>
-                <marker
-                  id={`arrowhead-${el.id}`}
-                  markerWidth="10"
-                  markerHeight="7"
-                  refX="9"
-                  refY="3.5"
-                  orient="auto"
-                >
-                  <polygon points="0 0, 10 3.5, 0 7" fill="#333" />
+                <marker id={`arrowhead-${el.id}`} className="arrow-marker">
+                  <polygon
+                    points="0 0, 10 3.5, 0 7"
+                    className="arrow-polygon"
+                  />
                 </marker>
               </defs>
               <line
@@ -1462,45 +1213,17 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
                   Math.min(el.startY || el.y, el.endY || el.y) +
                   5
                 }
-                stroke="#333"
-                strokeWidth="2"
+                className={`connection-line ${isSelected ? 'selected' : ''}`}
                 markerEnd={`url(#arrowhead-${el.id})`}
               />
-              {isSelected && (
-                <line
-                  x1={
-                    (el.startX || el.x) -
-                    Math.min(el.startX || el.x, el.endX || el.x) +
-                    5
-                  }
-                  y1={
-                    (el.startY || el.y) -
-                    Math.min(el.startY || el.y, el.endY || el.y) +
-                    5
-                  }
-                  x2={
-                    (el.endX || el.x) -
-                    Math.min(el.startX || el.x, el.endX || el.x) +
-                    5
-                  }
-                  y2={
-                    (el.endY || el.y) -
-                    Math.min(el.startY || el.y, el.endY || el.y) +
-                    5
-                  }
-                  stroke="#0078d4"
-                  strokeWidth="3"
-                  markerEnd={`url(#arrowhead-${el.id})`}
-                />
-              )}
             </svg>
             {/* Resize handles for arrows */}
             {isSelected && (
               <>
                 {/* Start point handle */}
                 <div
+                  className="arrow-handle"
                   style={{
-                    position: 'absolute',
                     left:
                       (el.startX || el.x) -
                       Math.min(el.startX || el.x, el.endX || el.x) +
@@ -1509,21 +1232,13 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
                       (el.startY || el.y) -
                       Math.min(el.startY || el.y, el.endY || el.y) +
                       1,
-                    width: 8,
-                    height: 8,
-                    background: '#0078d4',
-                    border: '1px solid white',
-                    borderRadius: '50%',
-                    cursor: 'move',
-                    zIndex: 3,
-                    transform: 'translate(-50%, -50%)',
                   }}
                   onMouseDown={e => handleArrowResizeStart(e, el.id, 'start')}
                 />
                 {/* End point handle */}
                 <div
+                  className="arrow-handle"
                   style={{
-                    position: 'absolute',
                     left:
                       (el.endX || el.x) -
                       Math.min(el.startX || el.x, el.endX || el.x) +
@@ -1532,14 +1247,6 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
                       (el.endY || el.y) -
                       Math.min(el.startY || el.y, el.endY || el.y) +
                       1,
-                    width: 8,
-                    height: 8,
-                    background: '#0078d4',
-                    border: '1px solid white',
-                    borderRadius: '50%',
-                    cursor: 'move',
-                    zIndex: 3,
-                    transform: 'translate(-50%, -50%)',
                   }}
                   onMouseDown={e => handleArrowResizeStart(e, el.id, 'end')}
                 />
@@ -1551,14 +1258,12 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
         return (
           <div
             key={el.id}
+            className={`connection-container ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={{
-              position: 'absolute',
               left: Math.min(el.startX || el.x, el.endX || el.x) - 5,
               top: Math.min(el.startY || el.y, el.endY || el.y) - 5,
               width: Math.abs((el.endX || el.x) - (el.startX || el.x)) + 10,
               height: Math.abs((el.endY || el.y) - (el.startY || el.y)) + 10,
-              cursor: selectedTool === 'Select' ? 'move' : 'pointer',
-              zIndex: isSelected ? 2 : 1,
             }}
             onMouseDown={e => {
               e.stopPropagation();
@@ -1575,26 +1280,16 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
               }
             }}
           >
-            <svg
-              style={{
-                position: 'absolute',
-                left: 0,
-                top: 0,
-                width: '100%',
-                height: '100%',
-                pointerEvents: 'none',
-              }}
-            >
+            <svg className="connection-svg">
               <defs>
                 <marker
                   id={`arrowhead-dashed-${el.id}`}
-                  markerWidth="10"
-                  markerHeight="7"
-                  refX="9"
-                  refY="3.5"
-                  orient="auto"
+                  className="arrow-marker"
                 >
-                  <polygon points="0 0, 10 3.5, 0 7" fill="#666" />
+                  <polygon
+                    points="0 0, 10 3.5, 0 7"
+                    className="dashed-arrow-polygon"
+                  />
                 </marker>
               </defs>
               <line
@@ -1618,47 +1313,17 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
                   Math.min(el.startY || el.y, el.endY || el.y) +
                   5
                 }
-                stroke="#666"
-                strokeWidth="2"
-                strokeDasharray="5,5"
+                className={`state-connection-line ${isSelected ? 'selected' : ''}`}
                 markerEnd={`url(#arrowhead-dashed-${el.id})`}
               />
-              {isSelected && (
-                <line
-                  x1={
-                    (el.startX || el.x) -
-                    Math.min(el.startX || el.x, el.endX || el.x) +
-                    5
-                  }
-                  y1={
-                    (el.startY || el.y) -
-                    Math.min(el.startY || el.y, el.endY || el.y) +
-                    5
-                  }
-                  x2={
-                    (el.endX || el.x) -
-                    Math.min(el.startX || el.x, el.endX || el.x) +
-                    5
-                  }
-                  y2={
-                    (el.endY || el.y) -
-                    Math.min(el.startY || el.y, el.endY || el.y) +
-                    5
-                  }
-                  stroke="#0078d4"
-                  strokeWidth="3"
-                  strokeDasharray="5,5"
-                  markerEnd={`url(#arrowhead-dashed-${el.id})`}
-                />
-              )}
             </svg>
             {/* Resize handles for arrows */}
             {isSelected && (
               <>
                 {/* Start point handle */}
                 <div
+                  className="arrow-handle"
                   style={{
-                    position: 'absolute',
                     left:
                       (el.startX || el.x) -
                       Math.min(el.startX || el.x, el.endX || el.x) +
@@ -1667,21 +1332,13 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
                       (el.startY || el.y) -
                       Math.min(el.startY || el.y, el.endY || el.y) +
                       1,
-                    width: 8,
-                    height: 8,
-                    background: '#0078d4',
-                    border: '1px solid white',
-                    borderRadius: '50%',
-                    cursor: 'move',
-                    zIndex: 3,
-                    transform: 'translate(-50%, -50%)',
                   }}
                   onMouseDown={e => handleArrowResizeStart(e, el.id, 'start')}
                 />
                 {/* End point handle */}
                 <div
+                  className="arrow-handle"
                   style={{
-                    position: 'absolute',
                     left:
                       (el.endX || el.x) -
                       Math.min(el.startX || el.x, el.endX || el.x) +
@@ -1690,14 +1347,6 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
                       (el.endY || el.y) -
                       Math.min(el.startY || el.y, el.endY || el.y) +
                       1,
-                    width: 8,
-                    height: 8,
-                    background: '#0078d4',
-                    border: '1px solid white',
-                    borderRadius: '50%',
-                    cursor: 'move',
-                    zIndex: 3,
-                    transform: 'translate(-50%, -50%)',
                   }}
                   onMouseDown={e => handleArrowResizeStart(e, el.id, 'end')}
                 />
@@ -1720,26 +1369,17 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
 
       return (
         <svg
+          className="connection-preview"
           style={{
-            position: 'absolute',
             left,
             top,
             width,
             height,
-            pointerEvents: 'none',
-            zIndex: 99,
           }}
         >
           <defs>
-            <marker
-              id="arrowhead-preview"
-              markerWidth="10"
-              markerHeight="7"
-              refX="9"
-              refY="3.5"
-              orient="auto"
-            >
-              <polygon points="0 0, 10 3.5, 0 7" fill="#333" />
+            <marker id="arrowhead-preview" className="arrow-marker">
+              <polygon points="0 0, 10 3.5, 0 7" className="arrow-polygon" />
             </marker>
           </defs>
           <line
@@ -1747,11 +1387,7 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
             y1={connectionStart.y - top + 5}
             x2={connectionEnd.x - left + 5}
             y2={connectionEnd.y - top + 5}
-            stroke="#333"
-            strokeWidth="2"
-            strokeDasharray={
-              connectionType === 'State Connection' ? '5,5' : 'none'
-            }
+            className={`connection-line ${connectionType === 'State Connection' ? 'state-connection-line' : ''}`}
             markerEnd="url(#arrowhead-preview)"
           />
         </svg>
@@ -1769,16 +1405,12 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
       const height = Math.abs(boxEnd.y - boxStart.y);
       return (
         <div
+          className="selection-box"
           style={{
-            position: 'absolute',
             left,
             top,
             width,
             height,
-            border: '2px dashed #0078d4',
-            background: 'rgba(0,120,212,0.08)',
-            pointerEvents: 'none',
-            zIndex: 99,
           }}
         />
       );
@@ -1790,13 +1422,6 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
     <div
       ref={canvasRef}
       className="canvas"
-      style={{
-        width: '100%',
-        height: '100%',
-        position: 'relative',
-        background: 'transparent',
-        overflow: 'hidden',
-      }}
       onDrop={handleDrop}
       onDragOver={handleDragOver}
       onClick={handleCanvasClick}
