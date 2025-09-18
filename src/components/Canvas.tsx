@@ -3,6 +3,13 @@ import './Canvas.css';
 
 interface CanvasProps {
   selectedTool: string;
+  onElementUpdate?: (elementId: number, updates: Partial<GraphElement>) => void;
+  onElementSelection?: (element: GraphElement | null) => void;
+  externalElementUpdate?: {
+    elementId: number;
+    updates: Partial<GraphElement>;
+  } | null;
+  toolProperties?: { text: string; color: string };
 }
 
 type GraphElementType =
@@ -30,6 +37,7 @@ interface GraphElement {
   text?: string;
   width?: number;
   height?: number;
+  color?: string; // Color for text labels and groups
   // For connection elements
   startX?: number;
   startY?: number;
@@ -40,7 +48,13 @@ interface GraphElement {
   connectedToEnd?: number; // ID of element this connection ends at
 }
 
-const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
+const Canvas: React.FC<CanvasProps> = ({
+  selectedTool,
+  onElementUpdate,
+  onElementSelection,
+  externalElementUpdate,
+  toolProperties,
+}) => {
   const [elements, setElements] = useState<GraphElement[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
   // const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -221,12 +235,31 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
     const y = clientY - rect.top;
     const id = Date.now();
     if (type === 'Text Label') {
-      setElements(prev => [...prev, { id, type, x, y, text: 'Text Label' }]);
+      setElements(prev => [
+        ...prev,
+        {
+          id,
+          type,
+          x,
+          y,
+          text: toolProperties?.text || 'Text Label',
+          color: toolProperties?.color || '#000000',
+        },
+      ]);
       setEditingId(id);
     } else if (type === 'Group') {
       setElements(prev => [
         ...prev,
-        { id, type, x, y, width: 200, height: 150 },
+        {
+          id,
+          type,
+          x,
+          y,
+          width: 200,
+          height: 150,
+          text: toolProperties?.text || '',
+          color: toolProperties?.color || '#000000',
+        },
       ]);
     } else if (type === 'Resource Connection' || type === 'State Connection') {
       // Start connection creation
@@ -302,7 +335,40 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
     setElements(elements =>
       elements.map(el => (el.id === id ? { ...el, text: value } : el))
     );
+    // Notify parent component of the change
+    if (onElementUpdate) {
+      onElementUpdate(id, { text: value });
+    }
   };
+
+  // Get currently selected element
+  const getSelectedElement = (): GraphElement | null => {
+    if (selectedId.length === 1) {
+      return elements.find(el => el.id === selectedId[0]) || null;
+    }
+    return null;
+  };
+
+  // Handle external updates from parent component
+  React.useEffect(() => {
+    if (externalElementUpdate) {
+      setElements(prevElements =>
+        prevElements.map(el =>
+          el.id === externalElementUpdate.elementId
+            ? { ...el, ...externalElementUpdate.updates }
+            : el
+        )
+      );
+    }
+  }, [externalElementUpdate]);
+
+  // Expose selected element to parent
+  React.useEffect(() => {
+    const selectedEl = getSelectedElement();
+    if (onElementSelection) {
+      onElementSelection(selectedEl);
+    }
+  }, [selectedId, elements, onElementSelection]);
 
   const handleElementMouseDown = (e: React.MouseEvent, id: number) => {
     if (selectedTool === 'Select') {
@@ -705,6 +771,7 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
             style={{
               left: el.x,
               top: el.y,
+              color: el.color || '#000000',
             }}
             value={el.text || ''}
             autoFocus
@@ -719,6 +786,7 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
             style={{
               left: el.x,
               top: el.y,
+              color: el.color || '#000000',
             }}
             onClick={e => {
               if (selectedTool === 'Select') {
@@ -854,6 +922,7 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
               top: el.y,
               width: el.width || 200,
               height: el.height || 150,
+              color: el.color || '#000000',
             }}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
             onClick={e => {
@@ -871,6 +940,24 @@ const Canvas: React.FC<CanvasProps> = ({ selectedTool }) => {
               }
             }}
           >
+            {/* Group text content */}
+            {el.text && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  color: el.color || '#000000',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                  textAlign: 'center',
+                  pointerEvents: 'none',
+                }}
+              >
+                {el.text}
+              </div>
+            )}
             {/* Resize handles */}
             {isSelected && (
               <>
