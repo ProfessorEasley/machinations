@@ -252,14 +252,11 @@
 
 /* SVG Shape Styles */
 .pool-circle {
-  fill: #2196f3;
-  stroke: #1565c0;
   stroke-width: 2;
 }
 
 .pool-circle.selected {
   fill: none;
-  stroke: #0078d4;
   stroke-width: 2;
 }
 

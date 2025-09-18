@@ -31,6 +31,15 @@ interface GraphElement {
   width?: number;
   height?: number;
   color?: string;
+  // Pool-specific properties
+  thickness?: number;
+  activation?: 'passive' | 'interactive' | 'automatic' | 'onstart';
+  pullMode?: 'pull any' | 'pull all' | 'push any' | 'push all';
+  resources?: string;
+  number?: number;
+  max?: number;
+  displayLimit?: number;
+  // Connection properties
   startX?: number;
   startY?: number;
   endX?: number;
@@ -49,11 +58,33 @@ const Playground: React.FC = () => {
     updates: Partial<GraphElement>;
   } | null>(null);
   const [toolProperties, setToolProperties] = useState<{
-    text: string;
-    color: string;
+    textLabel: { text: string; color: string };
+    group: { text: string; color: string };
+    pool: {
+      color: string;
+      thickness: number;
+      text: string;
+      activation: 'passive' | 'interactive' | 'automatic' | 'onstart';
+      pullMode: 'pull any' | 'pull all' | 'push any' | 'push all';
+      resources: string;
+      number: number;
+      max: number;
+      displayLimit: number;
+    };
   }>({
-    text: '',
-    color: '#000000',
+    textLabel: { text: '', color: '#000000' },
+    group: { text: '', color: '#000000' },
+    pool: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      activation: 'passive',
+      pullMode: 'pull any',
+      resources: '',
+      number: 0,
+      max: 100,
+      displayLimit: 10,
+    },
   });
 
   const handleElementUpdate = (
@@ -72,11 +103,14 @@ const Playground: React.FC = () => {
     setSelectedElement(element);
   };
 
-  const handleToolPropertiesChange = (properties: {
-    text: string;
-    color: string;
-  }) => {
-    setToolProperties(properties);
+  const handleToolPropertiesChange = (
+    toolType: string,
+    properties: Record<string, unknown>
+  ) => {
+    setToolProperties(prev => ({
+      ...prev,
+      [toolType]: { ...prev[toolType as keyof typeof prev], ...properties },
+    }));
   };
 
   // Clear external update after it's been processed

@@ -27,6 +27,15 @@ interface GraphElement {
   width?: number;
   height?: number;
   color?: string;
+  // Pool-specific properties
+  thickness?: number;
+  activation?: 'passive' | 'interactive' | 'automatic' | 'onstart';
+  pullMode?: 'pull any' | 'pull all' | 'push any' | 'push all';
+  resources?: string;
+  number?: number;
+  max?: number;
+  displayLimit?: number;
+  // Connection properties
   startX?: number;
   startY?: number;
   endX?: number;
@@ -40,11 +49,25 @@ interface ToolSideBarProps {
   setSelectedTool: React.Dispatch<React.SetStateAction<string>>;
   selectedElement?: GraphElement | null;
   onElementUpdate?: (elementId: number, updates: Partial<GraphElement>) => void;
-  toolProperties?: { text: string; color: string };
-  onToolPropertiesChange?: (properties: {
-    text: string;
-    color: string;
-  }) => void;
+  toolProperties?: {
+    textLabel: { text: string; color: string };
+    group: { text: string; color: string };
+    pool: {
+      color: string;
+      thickness: number;
+      text: string;
+      activation: 'passive' | 'interactive' | 'automatic' | 'onstart';
+      pullMode: 'pull any' | 'pull all' | 'push any' | 'push all';
+      resources: string;
+      number: number;
+      max: number;
+      displayLimit: number;
+    };
+  };
+  onToolPropertiesChange?: (
+    toolType: string,
+    properties: Record<string, unknown>
+  ) => void;
 }
 
 const graphTools = [
@@ -216,20 +239,136 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
       );
     }
 
-    // Show tool-specific properties when Text Label or Group tool is selected
-    if (selectedTool === 'Text Label' || selectedTool === 'Group') {
+    // Show Pool-specific properties when Pool is selected
+    if (selectedElement && selectedElement.type === 'Pool') {
+      return (
+        <div className="element-properties-panel">
+          <label>
+            Color
+            <input
+              type="color"
+              className="color-input"
+              value={selectedElement.color || '#000000'}
+              onChange={e =>
+                handleElementPropertyChange('color', e.target.value)
+              }
+            />
+          </label>
+          <label>
+            Thickness
+            <input
+              type="number"
+              value={selectedElement.thickness || 2}
+              onChange={e =>
+                handleElementPropertyChange('thickness', e.target.value)
+              }
+              min="1"
+              max="10"
+            />
+          </label>
+          <label>
+            Label
+            <input
+              type="text"
+              value={selectedElement.text || ''}
+              onChange={e =>
+                handleElementPropertyChange('text', e.target.value)
+              }
+              placeholder="Enter label"
+            />
+          </label>
+          <label>
+            Activation
+            <div className="button-group">
+              {['passive', 'interactive', 'automatic', 'onstart'].map(
+                activation => (
+                  <button
+                    key={activation}
+                    className={`activation-button ${selectedElement.activation === activation ? 'active' : ''}`}
+                    onClick={() =>
+                      handleElementPropertyChange('activation', activation)
+                    }
+                  >
+                    {activation}
+                  </button>
+                )
+              )}
+            </div>
+          </label>
+          <label>
+            Pull Mode
+            <select
+              value={selectedElement.pullMode || 'pull any'}
+              onChange={e =>
+                handleElementPropertyChange('pullMode', e.target.value)
+              }
+            >
+              <option value="pull any">Pull Any</option>
+              <option value="pull all">Pull All</option>
+              <option value="push any">Push Any</option>
+              <option value="push all">Push All</option>
+            </select>
+          </label>
+          <label>
+            Resources
+            <input
+              type="text"
+              value={selectedElement.resources || ''}
+              onChange={e =>
+                handleElementPropertyChange('resources', e.target.value)
+              }
+              placeholder="Enter resources"
+            />
+          </label>
+          <label>
+            Number
+            <input
+              type="number"
+              value={selectedElement.number || 0}
+              onChange={e =>
+                handleElementPropertyChange('number', e.target.value)
+              }
+              min="0"
+            />
+          </label>
+          <label>
+            Max
+            <input
+              type="number"
+              value={selectedElement.max || 100}
+              onChange={e => handleElementPropertyChange('max', e.target.value)}
+              min="0"
+            />
+          </label>
+          <label>
+            Display Limit
+            <input
+              type="number"
+              value={selectedElement.displayLimit || 10}
+              onChange={e =>
+                handleElementPropertyChange('displayLimit', e.target.value)
+              }
+              min="1"
+            />
+          </label>
+        </div>
+      );
+    }
+
+    // Show tool-specific properties when Text Label tool is selected
+    if (selectedTool === 'Text Label') {
       return (
         <div className="element-properties-panel">
           <label>
             Label
             <input
               type="text"
-              value={toolProperties?.text || ''}
+              value={toolProperties?.textLabel?.text || ''}
               onChange={e => {
                 if (onToolPropertiesChange) {
-                  onToolPropertiesChange({
+                  onToolPropertiesChange('textLabel', {
                     text: e.target.value,
-                    color: toolProperties?.color || '#000000',
+                    color: toolProperties?.textLabel?.color || '#000000',
                   });
                 }
               }}
@@ -241,15 +380,226 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
             <input
               type="color"
               className="color-input"
-              value={toolProperties?.color || '#000000'}
+              value={toolProperties?.textLabel?.color || '#000000'}
               onChange={e => {
                 if (onToolPropertiesChange) {
-                  onToolPropertiesChange({
-                    text: toolProperties?.text || '',
+                  onToolPropertiesChange('textLabel', {
+                    text: toolProperties?.textLabel?.text || '',
                     color: e.target.value,
                   });
                 }
               }}
+            />
+          </label>
+        </div>
+      );
+    }
+
+    // Show tool-specific properties when Group tool is selected
+    if (selectedTool === 'Group') {
+      return (
+        <div className="element-properties-panel">
+          <label>
+            Label
+            <input
+              type="text"
+              value={toolProperties?.group?.text || ''}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('group', {
+                    text: e.target.value,
+                    color: toolProperties?.group?.color || '#000000',
+                  });
+                }
+              }}
+              placeholder="Enter label text"
+            />
+          </label>
+          <label>
+            Color
+            <input
+              type="color"
+              className="color-input"
+              value={toolProperties?.group?.color || '#000000'}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('group', {
+                    text: toolProperties?.group?.text || '',
+                    color: e.target.value,
+                  });
+                }
+              }}
+            />
+          </label>
+        </div>
+      );
+    }
+
+    // Show Pool tool properties when Pool tool is selected
+    if (selectedTool === 'Pool') {
+      return (
+        <div className="element-properties-panel">
+          <label>
+            Color
+            <input
+              type="color"
+              className="color-input"
+              value={toolProperties?.pool?.color || '#000000'}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('pool', {
+                    ...toolProperties?.pool,
+                    color: e.target.value,
+                  });
+                }
+              }}
+            />
+          </label>
+          <label>
+            Thickness
+            <input
+              type="number"
+              value={toolProperties?.pool?.thickness || 2}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('pool', {
+                    ...toolProperties?.pool,
+                    thickness: parseInt(e.target.value) || 2,
+                  });
+                }
+              }}
+              min="1"
+              max="10"
+            />
+          </label>
+          <label>
+            Label
+            <input
+              type="text"
+              value={toolProperties?.pool?.text || ''}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('pool', {
+                    ...toolProperties?.pool,
+                    text: e.target.value,
+                  });
+                }
+              }}
+              placeholder="Enter label"
+            />
+          </label>
+          <label>
+            Activation
+            <div className="button-group">
+              {['passive', 'interactive', 'automatic', 'onstart'].map(
+                activation => (
+                  <button
+                    key={activation}
+                    className={`activation-button ${toolProperties?.pool?.activation === activation ? 'active' : ''}`}
+                    onClick={() => {
+                      if (onToolPropertiesChange) {
+                        onToolPropertiesChange('pool', {
+                          ...toolProperties?.pool,
+                          activation: activation as
+                            | 'passive'
+                            | 'interactive'
+                            | 'automatic'
+                            | 'onstart',
+                        });
+                      }
+                    }}
+                  >
+                    {activation}
+                  </button>
+                )
+              )}
+            </div>
+          </label>
+          <label>
+            Pull Mode
+            <select
+              value={toolProperties?.pool?.pullMode || 'pull any'}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('pool', {
+                    ...toolProperties?.pool,
+                    pullMode: e.target.value as
+                      | 'pull any'
+                      | 'pull all'
+                      | 'push any'
+                      | 'push all',
+                  });
+                }
+              }}
+            >
+              <option value="pull any">Pull Any</option>
+              <option value="pull all">Pull All</option>
+              <option value="push any">Push Any</option>
+              <option value="push all">Push All</option>
+            </select>
+          </label>
+          <label>
+            Resources
+            <input
+              type="text"
+              value={toolProperties?.pool?.resources || ''}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('pool', {
+                    ...toolProperties?.pool,
+                    resources: e.target.value,
+                  });
+                }
+              }}
+              placeholder="Enter resources"
+            />
+          </label>
+          <label>
+            Number
+            <input
+              type="number"
+              value={toolProperties?.pool?.number || 0}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('pool', {
+                    ...toolProperties?.pool,
+                    number: parseInt(e.target.value) || 0,
+                  });
+                }
+              }}
+              min="0"
+            />
+          </label>
+          <label>
+            Max
+            <input
+              type="number"
+              value={toolProperties?.pool?.max || 100}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('pool', {
+                    ...toolProperties?.pool,
+                    max: parseInt(e.target.value) || 100,
+                  });
+                }
+              }}
+              min="0"
+            />
+          </label>
+          <label>
+            Display Limit
+            <input
+              type="number"
+              value={toolProperties?.pool?.displayLimit || 10}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('pool', {
+                    ...toolProperties?.pool,
+                    displayLimit: parseInt(e.target.value) || 10,
+                  });
+                }
+              }}
+              min="1"
             />
           </label>
         </div>

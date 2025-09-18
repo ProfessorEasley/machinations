@@ -9,7 +9,21 @@ interface CanvasProps {
     elementId: number;
     updates: Partial<GraphElement>;
   } | null;
-  toolProperties?: { text: string; color: string };
+  toolProperties?: {
+    textLabel: { text: string; color: string };
+    group: { text: string; color: string };
+    pool: {
+      color: string;
+      thickness: number;
+      text: string;
+      activation: 'passive' | 'interactive' | 'automatic' | 'onstart';
+      pullMode: 'pull any' | 'pull all' | 'push any' | 'push all';
+      resources: string;
+      number: number;
+      max: number;
+      displayLimit: number;
+    };
+  };
 }
 
 type GraphElementType =
@@ -38,6 +52,14 @@ interface GraphElement {
   width?: number;
   height?: number;
   color?: string; // Color for text labels and groups
+  // Pool-specific properties
+  thickness?: number;
+  activation?: 'passive' | 'interactive' | 'automatic' | 'onstart';
+  pullMode?: 'pull any' | 'pull all' | 'push any' | 'push all';
+  resources?: string;
+  number?: number;
+  max?: number;
+  displayLimit?: number;
   // For connection elements
   startX?: number;
   startY?: number;
@@ -242,8 +264,8 @@ const Canvas: React.FC<CanvasProps> = ({
           type,
           x,
           y,
-          text: toolProperties?.text || 'Text Label',
-          color: toolProperties?.color || '#000000',
+          text: toolProperties?.textLabel?.text || 'Text Label',
+          color: toolProperties?.textLabel?.color || '#000000',
         },
       ]);
       setEditingId(id);
@@ -257,8 +279,19 @@ const Canvas: React.FC<CanvasProps> = ({
           y,
           width: 200,
           height: 150,
-          text: toolProperties?.text || '',
-          color: toolProperties?.color || '#000000',
+          text: toolProperties?.group?.text || '',
+          color: toolProperties?.group?.color || '#000000',
+        },
+      ]);
+    } else if (type === 'Pool') {
+      setElements(prev => [
+        ...prev,
+        {
+          id,
+          type,
+          x,
+          y,
+          ...toolProperties?.pool,
         },
       ]);
     } else if (type === 'Resource Connection' || type === 'State Connection') {
@@ -368,7 +401,7 @@ const Canvas: React.FC<CanvasProps> = ({
     if (onElementSelection) {
       onElementSelection(selectedEl);
     }
-  }, [selectedId, elements, onElementSelection]);
+  }, [selectedId, elements, onElementSelection, getSelectedElement]);
 
   const handleElementMouseDown = (e: React.MouseEvent, id: number) => {
     if (selectedTool === 'Select') {
@@ -843,6 +876,9 @@ const Canvas: React.FC<CanvasProps> = ({
               cy={20}
               r={18}
               className={`pool-circle ${isSelected ? 'selected' : ''}`}
+              fill="none"
+              stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+              strokeWidth="2"
             />
           </svg>
         );
@@ -922,7 +958,7 @@ const Canvas: React.FC<CanvasProps> = ({
               top: el.y,
               width: el.width || 200,
               height: el.height || 150,
-              color: el.color || '#000000',
+              borderColor: el.color || '#666',
             }}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
             onClick={e => {

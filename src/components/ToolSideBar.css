@@ -123,3 +123,33 @@ button.selected {
   border-radius: 4px;
   cursor: pointer;
 }
+
+/* Pool Properties Panel */
+.button-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.activation-button {
+  flex: 1;
+  min-width: 60px;
+  padding: 4px 6px;
+  font-size: 10px;
+  background-color: #f5f5f5;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  cursor: pointer;
+  text-transform: capitalize;
+}
+
+.activation-button:hover {
+  background-color: #e0e0e0;
+}
+
+.activation-button.active {
+  background-color: #0078d4;
+  color: white;
+  border-color: #0078d4;
+}
