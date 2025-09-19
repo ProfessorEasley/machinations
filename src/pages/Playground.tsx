@@ -5,21 +5,148 @@ import ToolSideBar from '../components/ToolSideBar';
 import './Playground.css';
 import Canvas from '../components/Canvas';
 
+type GraphElementType =
+  | 'Text Label'
+  | 'Group'
+  | 'Chart'
+  | 'Pool'
+  | 'Gate'
+  | 'Resource Connection'
+  | 'State Connection'
+  | 'Source'
+  | 'Drain'
+  | 'Convertor'
+  | 'Trader'
+  | 'Delay'
+  | 'Register'
+  | 'End Condition'
+  | 'Artifical Intelligence';
+
+interface GraphElement {
+  id: number;
+  type: GraphElementType;
+  x: number;
+  y: number;
+  text?: string;
+  width?: number;
+  height?: number;
+  color?: string;
+  // Pool-specific properties
+  thickness?: number;
+  activation?: 'passive' | 'interactive' | 'automatic' | 'onstart';
+  pullMode?: 'pull any' | 'pull all' | 'push any' | 'push all';
+  resources?: string;
+  number?: number;
+  max?: number;
+  displayLimit?: number;
+  // Connection properties
+  startX?: number;
+  startY?: number;
+  endX?: number;
+  endY?: number;
+  connectedToStart?: number;
+  connectedToEnd?: number;
+}
+
 const Playground: React.FC = () => {
   const [selectedTool, setSelectedTool] = useState<string>('Select');
+  const [selectedElement, setSelectedElement] = useState<GraphElement | null>(
+    null
+  );
+  const [externalElementUpdate, setExternalElementUpdate] = useState<{
+    elementId: number;
+    updates: Partial<GraphElement>;
+  } | null>(null);
+  const [toolProperties, setToolProperties] = useState<{
+    textLabel: { text: string; color: string };
+    group: { text: string; color: string };
+    pool: {
+      color: string;
+      thickness: number;
+      text: string;
+      activation: 'passive' | 'interactive' | 'automatic' | 'onstart';
+      pullMode: 'pull any' | 'pull all' | 'push any' | 'push all';
+      resources: string;
+      number: number;
+      max: number;
+      displayLimit: number;
+    };
+  }>({
+    textLabel: { text: '', color: '#000000' },
+    group: { text: '', color: '#000000' },
+    pool: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      activation: 'passive',
+      pullMode: 'pull any',
+      resources: '',
+      number: 0,
+      max: 100,
+      displayLimit: 10,
+    },
+  });
+
+  const handleElementUpdate = (
+    elementId: number,
+    updates: Partial<GraphElement>
+  ) => {
+    // Update the selected element state
+    if (selectedElement && selectedElement.id === elementId) {
+      setSelectedElement({ ...selectedElement, ...updates });
+    }
+    // Trigger external update in Canvas
+    setExternalElementUpdate({ elementId, updates });
+  };
+
+  const handleElementSelection = (element: GraphElement | null) => {
+    setSelectedElement(element);
+  };
+
+  const handleToolPropertiesChange = (
+    toolType: string,
+    properties: Record<string, unknown>
+  ) => {
+    setToolProperties(prev => ({
+      ...prev,
+      [toolType]: { ...prev[toolType as keyof typeof prev], ...properties },
+    }));
+  };
+
+  // Clear external update after it's been processed
+  React.useEffect(() => {
+    if (externalElementUpdate) {
+      // Reset after a short delay to allow Canvas to process the update
+      const timer = setTimeout(() => {
+        setExternalElementUpdate(null);
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [externalElementUpdate]);
+
   return (
     <div className="playground-wrapper">
       <TopBar />
       <div className="playground-body">
         <div className="canvas-section">
           <div className="grid-canvas">
-            <Canvas selectedTool={selectedTool} />
+            <Canvas
+              selectedTool={selectedTool}
+              onElementUpdate={handleElementUpdate}
+              onElementSelection={handleElementSelection}
+              externalElementUpdate={externalElementUpdate}
+              toolProperties={toolProperties}
+            />
           </div>
         </div>
         <div className="right-panel">
           <ToolSideBar
             selectedTool={selectedTool}
             setSelectedTool={setSelectedTool}
+            selectedElement={selectedElement}
+            onElementUpdate={handleElementUpdate}
+            toolProperties={toolProperties}
+            onToolPropertiesChange={handleToolPropertiesChange}
           />
         </div>
       </div>

@@ -1,0 +1,442 @@
+/* Canvas Component Styles */
+
+/* Main Canvas Container */
+.canvas {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background: transparent;
+  overflow: hidden;
+}
+
+/* Text Label Styles */
+.text-label-input {
+  position: absolute;
+  border: none;
+  background: transparent;
+  font-size: 16px;
+  outline: none;
+  min-width: 40px;
+  z-index: 1;
+}
+
+.text-label-input.selected {
+  border: 2px solid #0078d4;
+  z-index: 2;
+}
+
+.text-label-span {
+  position: absolute;
+  font-size: 16px;
+  user-select: none;
+  z-index: 1;
+  padding: 0;
+}
+
+.text-label-span.selectable {
+  cursor: move;
+}
+
+.text-label-span.clickable {
+  cursor: pointer;
+}
+
+.text-label-span.selected {
+  border: 2px solid #0078d4;
+  background: #e3f2fd;
+  z-index: 2;
+  padding: 2px;
+}
+
+/* SVG Element Base Styles */
+.svg-element {
+  position: absolute;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.svg-element.selectable {
+  cursor: move;
+}
+
+.svg-element.selected {
+  border: 2px solid #0078d4;
+  background: #e3f2fd;
+  z-index: 2;
+}
+
+/* Pool Element */
+.pool-element {
+  left: -20px;
+  top: -20px;
+  width: 40px;
+  height: 40px;
+}
+
+/* Source Element */
+.source-element {
+  left: -20px;
+  top: -20px;
+  width: 40px;
+  height: 40px;
+}
+
+/* Drain Element */
+.drain-element {
+  left: -20px;
+  top: -20px;
+  width: 40px;
+  height: 40px;
+}
+
+/* Gate Element */
+.gate-element {
+  left: -20px;
+  top: -20px;
+  width: 40px;
+  height: 40px;
+}
+
+/* Convertor Element */
+.convertor-element {
+  left: -20px;
+  top: -20px;
+  width: 40px;
+  height: 40px;
+}
+
+/* End Condition Element */
+.end-condition-element {
+  left: -20px;
+  top: -20px;
+  width: 40px;
+  height: 40px;
+}
+
+/* Artificial Intelligence Element */
+.ai-element {
+  left: -20px;
+  top: -20px;
+  width: 40px;
+  height: 40px;
+}
+
+/* Register Element */
+.register-element {
+  left: -20px;
+  top: -20px;
+  width: 40px;
+  height: 40px;
+}
+
+/* Delay Element */
+.delay-element {
+  left: -20px;
+  top: -20px;
+  width: 40px;
+  height: 40px;
+}
+
+/* Trader Element */
+.trader-element {
+  left: -20px;
+  top: -20px;
+  width: 40px;
+  height: 40px;
+}
+
+/* Group Element */
+.group-element {
+  position: absolute;
+  border: 2px dashed #666;
+  background: transparent;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.group-element.selectable {
+  cursor: move;
+}
+
+.group-element.selected {
+  background: rgba(0, 120, 212, 0.1);
+  z-index: 2;
+}
+
+/* Group Resize Handles */
+.resize-handle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #0078d4;
+  border: 1px solid white;
+  z-index: 3;
+}
+
+.resize-handle.se {
+  right: -4px;
+  bottom: -4px;
+  cursor: se-resize;
+}
+
+.resize-handle.sw {
+  left: -4px;
+  bottom: -4px;
+  cursor: sw-resize;
+}
+
+.resize-handle.ne {
+  right: -4px;
+  top: -4px;
+  cursor: ne-resize;
+}
+
+.resize-handle.nw {
+  left: -4px;
+  top: -4px;
+  cursor: nw-resize;
+}
+
+/* Connection Elements */
+.connection-container {
+  position: absolute;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.connection-container.selectable {
+  cursor: move;
+}
+
+.connection-container.selected {
+  z-index: 2;
+}
+
+.connection-svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Connection Preview */
+.connection-preview {
+  position: absolute;
+  pointer-events: none;
+  z-index: 99;
+}
+
+/* Selection Box */
+.selection-box {
+  position: absolute;
+  border: 2px dashed #0078d4;
+  background: rgba(0, 120, 212, 0.08);
+  pointer-events: none;
+  z-index: 99;
+}
+
+/* Arrow Resize Handles */
+.arrow-handle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #0078d4;
+  border: 1px solid white;
+  border-radius: 50%;
+  cursor: move;
+  z-index: 3;
+  transform: translate(-50%, -50%);
+}
+
+/* SVG Shape Styles */
+.pool-circle {
+  stroke-width: 2;
+}
+
+.pool-circle.selected {
+  fill: none;
+  stroke-width: 2;
+}
+
+.source-triangle {
+  fill: #43a047;
+  stroke: #1b5e20;
+  stroke-width: 2;
+}
+
+.source-triangle.selected {
+  fill: none;
+  stroke: #0078d4;
+  stroke-width: 2;
+}
+
+.drain-triangle {
+  fill: #e53935;
+  stroke: #b71c1c;
+  stroke-width: 2;
+}
+
+.drain-triangle.selected {
+  fill: none;
+  stroke: #0078d4;
+  stroke-width: 2;
+}
+
+.gate-diamond {
+  fill: #ff9800;
+  stroke: #e65100;
+  stroke-width: 2;
+}
+
+.gate-diamond.selected {
+  fill: none;
+  stroke: #0078d4;
+  stroke-width: 2;
+}
+
+.convertor-shape {
+  fill: #9c27b0;
+  stroke: #4a148c;
+  stroke-width: 2;
+}
+
+.convertor-line {
+  stroke: #4a148c;
+  stroke-width: 2;
+}
+
+.convertor-shape.selected {
+  fill: none;
+  stroke: #0078d4;
+  stroke-width: 2;
+}
+
+.end-condition-rect {
+  fill: #f44336;
+  stroke: #b71c1c;
+  stroke-width: 2;
+}
+
+.end-condition-inner-rect {
+  fill: #b71c1c;
+}
+
+.end-condition-rect.selected {
+  fill: none;
+  stroke: #0078d4;
+  stroke-width: 2;
+}
+
+.ai-rect {
+  fill: #4caf50;
+  stroke: #2e7d32;
+  stroke-width: 2;
+}
+
+.ai-text {
+  text-anchor: middle;
+  dominant-baseline: middle;
+  fill: white;
+  font-size: 10px;
+  font-weight: bold;
+}
+
+.ai-rect.selected {
+  fill: none;
+  stroke: #0078d4;
+  stroke-width: 2;
+}
+
+.register-rect {
+  fill: #607d8b;
+  stroke: #37474f;
+  stroke-width: 2;
+}
+
+.register-text {
+  text-anchor: middle;
+  dominant-baseline: middle;
+  fill: white;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.register-rect.selected {
+  fill: none;
+  stroke: #0078d4;
+  stroke-width: 2;
+}
+
+.delay-circle {
+  fill: #ff5722;
+  stroke: #d84315;
+  stroke-width: 2;
+}
+
+.delay-text {
+  text-anchor: middle;
+  dominant-baseline: middle;
+  fill: white;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.delay-circle.selected {
+  fill: none;
+  stroke: #0078d4;
+  stroke-width: 2;
+}
+
+.trader-polygon {
+  fill: #795548;
+  stroke: #3e2723;
+  stroke-width: 2;
+}
+
+.trader-polygon.selected {
+  fill: none;
+  stroke: #0078d4;
+  stroke-width: 2;
+}
+
+/* Connection Line Styles */
+.connection-line {
+  stroke: #333;
+  stroke-width: 2;
+}
+
+.connection-line.selected {
+  stroke: #0078d4;
+  stroke-width: 3;
+}
+
+.state-connection-line {
+  stroke: #666;
+  stroke-width: 2;
+  stroke-dasharray: 5, 5;
+}
+
+.state-connection-line.selected {
+  stroke: #0078d4;
+  stroke-width: 3;
+  stroke-dasharray: 5, 5;
+}
+
+/* Arrow Marker Styles */
+.arrow-marker {
+  marker-width: 10;
+  marker-height: 7;
+  ref-x: 9;
+  ref-y: 3.5;
+  orient: auto;
+}
+
+.arrow-polygon {
+  fill: #333;
+}
+
+.dashed-arrow-polygon {
+  fill: #666;
+}
