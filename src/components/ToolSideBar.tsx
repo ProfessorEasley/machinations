@@ -35,6 +35,18 @@ interface GraphElement {
   number?: number;
   max?: number;
   displayLimit?: number;
+
+  actions?: number;
+  minValue?: number;
+  maxValue?: number;
+  gateType?: 'deterministic' | 'dice' | 'skill' | 'multiplayer' | 'strategy';
+
+  queue?: boolean;
+  formula?: string;
+  interactive?: boolean;
+  startingValue?: number;
+  step?: number;
+  script?: string;
   // Connection properties
   startX?: number;
   startY?: number;
@@ -62,6 +74,97 @@ interface ToolSideBarProps {
       number: number;
       max: number;
       displayLimit: number;
+    };
+    gate: {
+      color: string;
+      thickness: number;
+      text: string;
+      activation: 'passive' | 'interactive' | 'automatic' | 'onstart';
+      actions: number;
+      pullMode: 'pull any' | 'pull all' | 'push any' | 'push all';
+      type: 'deterministic' | 'dice' | 'skill' | 'multiplayer' | 'strategy';
+    };
+    resourceConnection: {
+      color: string;
+      thickness: number;
+      text: string;
+      minValue: number;
+      maxValue: number;
+    };
+    stateConnection: {
+      color: string;
+      thickness: number;
+      text: string;
+      minValue: number;
+      maxValue: number;
+    };
+    source: {
+      color: string;
+      thickness: number;
+      text: string;
+      activation: 'passive' | 'interactive' | 'automatic' | 'onstart';
+      actions: number;
+      pullMode: 'pull any' | 'pull all' | 'push any' | 'push all';
+      resources: string;
+    };
+    convertor: {
+      color: string;
+      thickness: number;
+      text: string;
+      activation: 'passive' | 'interactive' | 'automatic' | 'onstart';
+      actions: number;
+      pullMode: 'pull any' | 'pull all' | 'push any' | 'push all';
+      resources: string;
+    };
+    trader: {
+      color: string;
+      thickness: number;
+      text: string;
+      activation: 'passive' | 'interactive' | 'automatic' | 'onstart';
+      actions: number;
+      pullMode: 'pull any' | 'pull all' | 'push any' | 'push all';
+      resources: string;
+    };
+    drain: {
+      color: string;
+      thickness: number;
+      text: string;
+      activation: 'passive' | 'interactive' | 'automatic' | 'onstart';
+      actions: number;
+      pullMode: 'pull any' | 'pull all' | 'push any' | 'push all';
+    };
+    delay: {
+      color: string;
+      thickness: number;
+      text: string;
+      activation: 'passive' | 'interactive' | 'automatic' | 'onstart';
+      actions: number;
+      queue: boolean;
+    };
+    register: {
+      color: string;
+      thickness: number;
+      formula: string;
+      minValue: number;
+      maxValue: number;
+      interactive: boolean;
+      startingValue: number;
+      step: number;
+    };
+    endCondition: {
+      color: string;
+      thickness: number;
+      text: string;
+      actions: number;
+      pullMode: 'pull any' | 'pull all' | 'push any' | 'push all';
+    };
+    artificialIntelligence: {
+      color: string;
+      thickness: number;
+      text: string;
+      activation: 'passive' | 'interactive' | 'automatic' | 'onstart';
+      actions: number;
+      script: string;
     };
   };
   onToolPropertiesChange?: (
@@ -243,6 +346,7 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
     if (selectedElement && selectedElement.type === 'Pool') {
       return (
         <div className="element-properties-panel">
+          <div className="machinations-label">Pool</div>
           <label>
             Color
             <input
@@ -359,6 +463,7 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
     if (selectedTool === 'Text Label') {
       return (
         <div className="element-properties-panel">
+          <div className="machinations-label">Text Label</div>
           <label>
             Label
             <input
@@ -399,6 +504,7 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
     if (selectedTool === 'Group') {
       return (
         <div className="element-properties-panel">
+          <div className="machinations-label">Group</div>
           <label>
             Label
             <input
@@ -439,6 +545,7 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
     if (selectedTool === 'Pool') {
       return (
         <div className="element-properties-panel">
+          <div className="machinations-label">Pool</div>
           <label>
             Color
             <input
@@ -600,6 +707,1348 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
                 }
               }}
               min="1"
+            />
+          </label>
+        </div>
+      );
+    }
+
+    if (selectedTool === 'Gate') {
+      return (
+        <div className="element-properties-panel">
+          <div className="machinations-label">Gate</div>
+          <label>
+            Color
+            <input
+              type="color"
+              className="color-input"
+              value={toolProperties?.gate?.color || '#000000'}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('gate', {
+                    ...toolProperties?.gate,
+                    color: e.target.value,
+                  });
+                }
+              }}
+            />
+          </label>
+          <label>
+            Thickness
+            <input
+              type="number"
+              value={toolProperties?.gate?.thickness || 2}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('gate', {
+                    ...toolProperties?.gate,
+                    thickness: parseInt(e.target.value) || 2,
+                  });
+                }
+              }}
+              min="1"
+              max="10"
+            />
+          </label>
+          <label>
+            Label
+            <input
+              type="text"
+              value={toolProperties?.gate?.text || ''}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('gate', {
+                    ...toolProperties?.gate,
+                    text: e.target.value,
+                  });
+                }
+              }}
+              placeholder="Enter label"
+            />
+          </label>
+          <label>
+            Activation
+            <div className="button-group">
+              {['passive', 'interactive', 'automatic', 'onstart'].map(
+                activation => (
+                  <button
+                    key={activation}
+                    className={`activation-button ${toolProperties?.gate?.activation === activation ? 'active' : ''}`}
+                    onClick={() => {
+                      if (onToolPropertiesChange) {
+                        onToolPropertiesChange('gate', {
+                          ...toolProperties?.gate,
+                          activation: activation as
+                            | 'passive'
+                            | 'interactive'
+                            | 'automatic'
+                            | 'onstart',
+                        });
+                      }
+                    }}
+                  >
+                    {activation}
+                  </button>
+                )
+              )}
+            </div>
+          </label>
+          <label>
+            Actions
+            <input
+              type="number"
+              value={toolProperties?.gate?.actions || 1}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('gate', {
+                    ...toolProperties?.gate,
+                    actions: parseInt(e.target.value) || 1,
+                  });
+                }
+              }}
+              min="1"
+            />
+          </label>
+          <label>
+            Pull Mode
+            <select
+              value={toolProperties?.gate?.pullMode || 'pull any'}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('gate', {
+                    ...toolProperties?.gate,
+                    pullMode: e.target.value as
+                      | 'pull any'
+                      | 'pull all'
+                      | 'push any'
+                      | 'push all',
+                  });
+                }
+              }}
+            >
+              <option value="pull any">Pull Any</option>
+              <option value="pull all">Pull All</option>
+              <option value="push any">Push Any</option>
+              <option value="push all">Push All</option>
+            </select>
+          </label>
+          <label>
+            Type
+            <div className="button-group">
+              {[
+                'deterministic',
+                'dice',
+                'skill',
+                'multiplayer',
+                'strategy',
+              ].map(type => (
+                <button
+                  key={type}
+                  className={`activation-button ${toolProperties?.gate?.type === type ? 'active' : ''}`}
+                  onClick={() => {
+                    if (onToolPropertiesChange) {
+                      onToolPropertiesChange('gate', {
+                        ...toolProperties?.gate,
+                        type: type as
+                          | 'deterministic'
+                          | 'dice'
+                          | 'skill'
+                          | 'multiplayer'
+                          | 'strategy',
+                      });
+                    }
+                  }}
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
+          </label>
+        </div>
+      );
+    }
+
+    // Show Resource Connection tool properties
+    if (selectedTool === 'Resource Connection') {
+      return (
+        <div className="element-properties-panel">
+          <div className="machinations-label">Flow</div>
+          <label>
+            Color
+            <input
+              type="color"
+              className="color-input"
+              value={toolProperties?.resourceConnection?.color || '#000000'}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('resourceConnection', {
+                    ...toolProperties?.resourceConnection,
+                    color: e.target.value,
+                  });
+                }
+              }}
+            />
+          </label>
+          <label>
+            Thickness
+            <input
+              type="number"
+              value={toolProperties?.resourceConnection?.thickness || 2}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('resourceConnection', {
+                    ...toolProperties?.resourceConnection,
+                    thickness: parseInt(e.target.value) || 2,
+                  });
+                }
+              }}
+              min="1"
+              max="10"
+            />
+          </label>
+          <label>
+            Label
+            <input
+              type="text"
+              value={toolProperties?.resourceConnection?.text || ''}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('resourceConnection', {
+                    ...toolProperties?.resourceConnection,
+                    text: e.target.value,
+                  });
+                }
+              }}
+              placeholder="Enter label"
+            />
+          </label>
+          <label>
+            Min Value
+            <input
+              type="number"
+              value={toolProperties?.resourceConnection?.minValue ?? -999}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('resourceConnection', {
+                    ...toolProperties?.resourceConnection,
+                    minValue: parseInt(e.target.value) || -999,
+                  });
+                }
+              }}
+            />
+          </label>
+          <label>
+            Max Value
+            <input
+              type="number"
+              value={toolProperties?.resourceConnection?.maxValue ?? 999}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('resourceConnection', {
+                    ...toolProperties?.resourceConnection,
+                    maxValue: parseInt(e.target.value) || 999,
+                  });
+                }
+              }}
+            />
+          </label>
+        </div>
+      );
+    }
+
+    // Show State Connection tool properties
+    if (selectedTool === 'State Connection') {
+      return (
+        <div className="element-properties-panel">
+          <div className="machinations-label">State</div>
+          <label>
+            Color
+            <input
+              type="color"
+              className="color-input"
+              value={toolProperties?.stateConnection?.color || '#000000'}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('stateConnection', {
+                    ...toolProperties?.stateConnection,
+                    color: e.target.value,
+                  });
+                }
+              }}
+            />
+          </label>
+          <label>
+            Thickness
+            <input
+              type="number"
+              value={toolProperties?.stateConnection?.thickness || 2}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('stateConnection', {
+                    ...toolProperties?.stateConnection,
+                    thickness: parseInt(e.target.value) || 2,
+                  });
+                }
+              }}
+              min="1"
+              max="10"
+            />
+          </label>
+          <label>
+            Label
+            <input
+              type="text"
+              value={toolProperties?.stateConnection?.text || ''}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('stateConnection', {
+                    ...toolProperties?.stateConnection,
+                    text: e.target.value,
+                  });
+                }
+              }}
+              placeholder="Enter label"
+            />
+          </label>
+          <label>
+            Min Value
+            <input
+              type="number"
+              value={toolProperties?.stateConnection?.minValue ?? -999}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('stateConnection', {
+                    ...toolProperties?.stateConnection,
+                    minValue: parseInt(e.target.value) || -999,
+                  });
+                }
+              }}
+            />
+          </label>
+          <label>
+            Max Value
+            <input
+              type="number"
+              value={toolProperties?.stateConnection?.maxValue ?? 999}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('stateConnection', {
+                    ...toolProperties?.stateConnection,
+                    maxValue: parseInt(e.target.value) || 999,
+                  });
+                }
+              }}
+            />
+          </label>
+        </div>
+      );
+    }
+
+    // Show Source tool properties
+    if (selectedTool === 'Source') {
+      return (
+        <div className="element-properties-panel">
+          <div className="machinations-label">Source</div>
+          <label>
+            Color
+            <input
+              type="color"
+              className="color-input"
+              value={toolProperties?.source?.color || '#000000'}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('source', {
+                    ...toolProperties?.source,
+                    color: e.target.value,
+                  });
+                }
+              }}
+            />
+          </label>
+          <label>
+            Thickness
+            <input
+              type="number"
+              value={toolProperties?.source?.thickness || 2}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('source', {
+                    ...toolProperties?.source,
+                    thickness: parseInt(e.target.value) || 2,
+                  });
+                }
+              }}
+              min="1"
+              max="10"
+            />
+          </label>
+          <label>
+            Label
+            <input
+              type="text"
+              value={toolProperties?.source?.text || ''}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('source', {
+                    ...toolProperties?.source,
+                    text: e.target.value,
+                  });
+                }
+              }}
+              placeholder="Enter label"
+            />
+          </label>
+          <label>
+            Activation
+            <div className="button-group">
+              {['passive', 'interactive', 'automatic', 'onstart'].map(
+                activation => (
+                  <button
+                    key={activation}
+                    className={`activation-button ${toolProperties?.source?.activation === activation ? 'active' : ''}`}
+                    onClick={() => {
+                      if (onToolPropertiesChange) {
+                        onToolPropertiesChange('source', {
+                          ...toolProperties?.source,
+                          activation: activation as
+                            | 'passive'
+                            | 'interactive'
+                            | 'automatic'
+                            | 'onstart',
+                        });
+                      }
+                    }}
+                  >
+                    {activation}
+                  </button>
+                )
+              )}
+            </div>
+          </label>
+          <label>
+            Actions
+            <input
+              type="number"
+              value={toolProperties?.source?.actions || 1}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('source', {
+                    ...toolProperties?.source,
+                    actions: parseInt(e.target.value) || 1,
+                  });
+                }
+              }}
+              min="1"
+            />
+          </label>
+          <label>
+            Pull Mode
+            <select
+              value={toolProperties?.source?.pullMode || 'pull any'}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('source', {
+                    ...toolProperties?.source,
+                    pullMode: e.target.value as
+                      | 'pull any'
+                      | 'pull all'
+                      | 'push any'
+                      | 'push all',
+                  });
+                }
+              }}
+            >
+              <option value="pull any">Pull Any</option>
+              <option value="pull all">Pull All</option>
+              <option value="push any">Push Any</option>
+              <option value="push all">Push All</option>
+            </select>
+          </label>
+          <label>
+            Resources
+            <input
+              type="color"
+              className="color-input"
+              value={toolProperties?.source?.resources || '#000000'}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('source', {
+                    ...toolProperties?.source,
+                    resources: e.target.value,
+                  });
+                }
+              }}
+            />
+          </label>
+        </div>
+      );
+    }
+
+    // Show Convertor tool properties
+    if (selectedTool === 'Convertor') {
+      return (
+        <div className="element-properties-panel">
+          <div className="machinations-label">Convertor</div>
+          <label>
+            Color
+            <input
+              type="color"
+              className="color-input"
+              value={toolProperties?.convertor?.color || '#000000'}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('convertor', {
+                    ...toolProperties?.convertor,
+                    color: e.target.value,
+                  });
+                }
+              }}
+            />
+          </label>
+          <label>
+            Thickness
+            <input
+              type="number"
+              value={toolProperties?.convertor?.thickness || 2}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('convertor', {
+                    ...toolProperties?.convertor,
+                    thickness: parseInt(e.target.value) || 2,
+                  });
+                }
+              }}
+              min="1"
+              max="10"
+            />
+          </label>
+          <label>
+            Label
+            <input
+              type="text"
+              value={toolProperties?.convertor?.text || ''}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('convertor', {
+                    ...toolProperties?.convertor,
+                    text: e.target.value,
+                  });
+                }
+              }}
+              placeholder="Enter label"
+            />
+          </label>
+          <label>
+            Activation
+            <div className="button-group">
+              {['passive', 'interactive', 'automatic', 'onstart'].map(
+                activation => (
+                  <button
+                    key={activation}
+                    className={`activation-button ${toolProperties?.convertor?.activation === activation ? 'active' : ''}`}
+                    onClick={() => {
+                      if (onToolPropertiesChange) {
+                        onToolPropertiesChange('convertor', {
+                          ...toolProperties?.convertor,
+                          activation: activation as
+                            | 'passive'
+                            | 'interactive'
+                            | 'automatic'
+                            | 'onstart',
+                        });
+                      }
+                    }}
+                  >
+                    {activation}
+                  </button>
+                )
+              )}
+            </div>
+          </label>
+          <label>
+            Actions
+            <input
+              type="number"
+              value={toolProperties?.convertor?.actions || 1}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('convertor', {
+                    ...toolProperties?.convertor,
+                    actions: parseInt(e.target.value) || 1,
+                  });
+                }
+              }}
+              min="1"
+            />
+          </label>
+          <label>
+            Pull Mode
+            <select
+              value={toolProperties?.convertor?.pullMode || 'pull any'}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('convertor', {
+                    ...toolProperties?.convertor,
+                    pullMode: e.target.value as
+                      | 'pull any'
+                      | 'pull all'
+                      | 'push any'
+                      | 'push all',
+                  });
+                }
+              }}
+            >
+              <option value="pull any">Pull Any</option>
+              <option value="pull all">Pull All</option>
+              <option value="push any">Push Any</option>
+              <option value="push all">Push All</option>
+            </select>
+          </label>
+          <label>
+            Resources
+            <input
+              type="color"
+              className="color-input"
+              value={toolProperties?.convertor?.resources || '#000000'}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('convertor', {
+                    ...toolProperties?.convertor,
+                    resources: e.target.value,
+                  });
+                }
+              }}
+            />
+          </label>
+        </div>
+      );
+    }
+
+    // Show Trader tool properties
+    if (selectedTool === 'Trader') {
+      return (
+        <div className="element-properties-panel">
+          <div className="machinations-label">Trader</div>
+          <label>
+            Color
+            <input
+              type="color"
+              className="color-input"
+              value={toolProperties?.trader?.color || '#000000'}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('trader', {
+                    ...toolProperties?.trader,
+                    color: e.target.value,
+                  });
+                }
+              }}
+            />
+          </label>
+          <label>
+            Thickness
+            <input
+              type="number"
+              value={toolProperties?.trader?.thickness || 2}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('trader', {
+                    ...toolProperties?.trader,
+                    thickness: parseInt(e.target.value) || 2,
+                  });
+                }
+              }}
+              min="1"
+              max="10"
+            />
+          </label>
+          <label>
+            Label
+            <input
+              type="text"
+              value={toolProperties?.trader?.text || ''}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('trader', {
+                    ...toolProperties?.trader,
+                    text: e.target.value,
+                  });
+                }
+              }}
+              placeholder="Enter label"
+            />
+          </label>
+          <label>
+            Activation
+            <div className="button-group">
+              {['passive', 'interactive', 'automatic', 'onstart'].map(
+                activation => (
+                  <button
+                    key={activation}
+                    className={`activation-button ${toolProperties?.trader?.activation === activation ? 'active' : ''}`}
+                    onClick={() => {
+                      if (onToolPropertiesChange) {
+                        onToolPropertiesChange('trader', {
+                          ...toolProperties?.trader,
+                          activation: activation as
+                            | 'passive'
+                            | 'interactive'
+                            | 'automatic'
+                            | 'onstart',
+                        });
+                      }
+                    }}
+                  >
+                    {activation}
+                  </button>
+                )
+              )}
+            </div>
+          </label>
+          <label>
+            Actions
+            <input
+              type="number"
+              value={toolProperties?.trader?.actions || 1}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('trader', {
+                    ...toolProperties?.trader,
+                    actions: parseInt(e.target.value) || 1,
+                  });
+                }
+              }}
+              min="1"
+            />
+          </label>
+          <label>
+            Pull Mode
+            <select
+              value={toolProperties?.trader?.pullMode || 'pull any'}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('trader', {
+                    ...toolProperties?.trader,
+                    pullMode: e.target.value as
+                      | 'pull any'
+                      | 'pull all'
+                      | 'push any'
+                      | 'push all',
+                  });
+                }
+              }}
+            >
+              <option value="pull any">Pull Any</option>
+              <option value="pull all">Pull All</option>
+              <option value="push any">Push Any</option>
+              <option value="push all">Push All</option>
+            </select>
+          </label>
+          <label>
+            Resources
+            <input
+              type="color"
+              className="color-input"
+              value={toolProperties?.trader?.resources || '#000000'}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('trader', {
+                    ...toolProperties?.trader,
+                    resources: e.target.value,
+                  });
+                }
+              }}
+            />
+          </label>
+        </div>
+      );
+    }
+
+    // Show Drain tool properties
+    if (selectedTool === 'Drain') {
+      return (
+        <div className="element-properties-panel">
+          <div className="machinations-label">Drain</div>
+          <label>
+            Color
+            <input
+              type="color"
+              className="color-input"
+              value={toolProperties?.drain?.color || '#000000'}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('drain', {
+                    ...toolProperties?.drain,
+                    color: e.target.value,
+                  });
+                }
+              }}
+            />
+          </label>
+          <label>
+            Thickness
+            <input
+              type="number"
+              value={toolProperties?.drain?.thickness || 2}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('drain', {
+                    ...toolProperties?.drain,
+                    thickness: parseInt(e.target.value) || 2,
+                  });
+                }
+              }}
+              min="1"
+              max="10"
+            />
+          </label>
+          <label>
+            Label
+            <input
+              type="text"
+              value={toolProperties?.drain?.text || ''}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('drain', {
+                    ...toolProperties?.drain,
+                    text: e.target.value,
+                  });
+                }
+              }}
+              placeholder="Enter label"
+            />
+          </label>
+          <label>
+            Activation
+            <div className="button-group">
+              {['passive', 'interactive', 'automatic', 'onstart'].map(
+                activation => (
+                  <button
+                    key={activation}
+                    className={`activation-button ${toolProperties?.drain?.activation === activation ? 'active' : ''}`}
+                    onClick={() => {
+                      if (onToolPropertiesChange) {
+                        onToolPropertiesChange('drain', {
+                          ...toolProperties?.drain,
+                          activation: activation as
+                            | 'passive'
+                            | 'interactive'
+                            | 'automatic'
+                            | 'onstart',
+                        });
+                      }
+                    }}
+                  >
+                    {activation}
+                  </button>
+                )
+              )}
+            </div>
+          </label>
+          <label>
+            Actions
+            <input
+              type="number"
+              value={toolProperties?.drain?.actions || 1}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('drain', {
+                    ...toolProperties?.drain,
+                    actions: parseInt(e.target.value) || 1,
+                  });
+                }
+              }}
+              min="1"
+            />
+          </label>
+          <label>
+            Pull Mode
+            <select
+              value={toolProperties?.drain?.pullMode || 'pull any'}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('drain', {
+                    ...toolProperties?.drain,
+                    pullMode: e.target.value as
+                      | 'pull any'
+                      | 'pull all'
+                      | 'push any'
+                      | 'push all',
+                  });
+                }
+              }}
+            >
+              <option value="pull any">Pull Any</option>
+              <option value="pull all">Pull All</option>
+              <option value="push any">Push Any</option>
+              <option value="push all">Push All</option>
+            </select>
+          </label>
+        </div>
+      );
+    }
+
+    if (selectedTool === 'Delay') {
+      return (
+        <div className="element-properties-panel">
+          <div className="machinations-label">Delay</div>
+          <label>
+            Color
+            <input
+              type="color"
+              className="color-input"
+              value={toolProperties?.delay?.color || '#000000'}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('delay', {
+                    ...toolProperties?.delay,
+                    color: e.target.value,
+                  });
+                }
+              }}
+            />
+          </label>
+          <label>
+            Thickness
+            <input
+              type="number"
+              value={toolProperties?.delay?.thickness || 2}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('delay', {
+                    ...toolProperties?.delay,
+                    thickness: parseInt(e.target.value) || 2,
+                  });
+                }
+              }}
+              min="1"
+              max="10"
+            />
+          </label>
+          <label>
+            Label
+            <input
+              type="text"
+              value={toolProperties?.delay?.text || ''}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('delay', {
+                    ...toolProperties?.delay,
+                    text: e.target.value,
+                  });
+                }
+              }}
+              placeholder="Enter label"
+            />
+          </label>
+          <label>
+            Activation
+            <div className="button-group">
+              {['passive', 'interactive', 'automatic', 'onstart'].map(
+                activation => (
+                  <button
+                    key={activation}
+                    className={`activation-button ${toolProperties?.delay?.activation === activation ? 'active' : ''}`}
+                    onClick={() => {
+                      if (onToolPropertiesChange) {
+                        onToolPropertiesChange('delay', {
+                          ...toolProperties?.delay,
+                          activation: activation as
+                            | 'passive'
+                            | 'interactive'
+                            | 'automatic'
+                            | 'onstart',
+                        });
+                      }
+                    }}
+                  >
+                    {activation}
+                  </button>
+                )
+              )}
+            </div>
+          </label>
+          <label>
+            Actions
+            <input
+              type="number"
+              value={toolProperties?.delay?.actions || 1}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('delay', {
+                    ...toolProperties?.delay,
+                    actions: parseInt(e.target.value) || 1,
+                  });
+                }
+              }}
+              min="1"
+            />
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={toolProperties?.delay?.queue || false}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('delay', {
+                    ...toolProperties?.delay,
+                    queue: e.target.checked,
+                  });
+                }
+              }}
+            />
+            Queue
+          </label>
+        </div>
+      );
+    }
+
+    // Show Register tool properties
+    if (selectedTool === 'Register') {
+      return (
+        <div className="element-properties-panel">
+          <div className="machinations-label">Register</div>
+          <label>
+            Color
+            <input
+              type="color"
+              className="color-input"
+              value={toolProperties?.register?.color || '#000000'}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('register', {
+                    ...toolProperties?.register,
+                    color: e.target.value,
+                  });
+                }
+              }}
+            />
+          </label>
+          <label>
+            Thickness
+            <input
+              type="number"
+              value={toolProperties?.register?.thickness || 2}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('register', {
+                    ...toolProperties?.register,
+                    thickness: parseInt(e.target.value) || 2,
+                  });
+                }
+              }}
+              min="1"
+              max="10"
+            />
+          </label>
+          <label>
+            Formula
+            <input
+              type="text"
+              value={toolProperties?.register?.formula || ''}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('register', {
+                    ...toolProperties?.register,
+                    formula: e.target.value,
+                  });
+                }
+              }}
+              placeholder="Enter formula"
+            />
+          </label>
+          <label>
+            Min Value
+            <input
+              type="number"
+              value={toolProperties?.register?.minValue ?? -9999}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('register', {
+                    ...toolProperties?.register,
+                    minValue: parseInt(e.target.value) || -9999,
+                  });
+                }
+              }}
+            />
+          </label>
+          <label>
+            Max Value
+            <input
+              type="number"
+              value={toolProperties?.register?.maxValue ?? 9999}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('register', {
+                    ...toolProperties?.register,
+                    maxValue: parseInt(e.target.value) || 9999,
+                  });
+                }
+              }}
+            />
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={toolProperties?.register?.interactive || false}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('register', {
+                    ...toolProperties?.register,
+                    interactive: e.target.checked,
+                  });
+                }
+              }}
+            />
+            Interactive
+          </label>
+          {toolProperties?.register?.interactive && (
+            <>
+              <label>
+                Starting Value
+                <input
+                  type="number"
+                  value={toolProperties?.register?.startingValue || 0}
+                  onChange={e => {
+                    if (onToolPropertiesChange) {
+                      onToolPropertiesChange('register', {
+                        ...toolProperties?.register,
+                        startingValue: parseInt(e.target.value) || 0,
+                      });
+                    }
+                  }}
+                />
+              </label>
+              <label>
+                Step
+                <input
+                  type="number"
+                  value={toolProperties?.register?.step || 1}
+                  onChange={e => {
+                    if (onToolPropertiesChange) {
+                      onToolPropertiesChange('register', {
+                        ...toolProperties?.register,
+                        step: parseInt(e.target.value) || 1,
+                      });
+                    }
+                  }}
+                />
+              </label>
+            </>
+          )}
+        </div>
+      );
+    }
+
+    // Show End Condition tool properties
+    if (selectedTool === 'End Condition') {
+      return (
+        <div className="element-properties-panel">
+          <div className="machinations-label">End Condition</div>
+          <label>
+            Color
+            <input
+              type="color"
+              className="color-input"
+              value={toolProperties?.endCondition?.color || '#000000'}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('endCondition', {
+                    ...toolProperties?.endCondition,
+                    color: e.target.value,
+                  });
+                }
+              }}
+            />
+          </label>
+          <label>
+            Thickness
+            <input
+              type="number"
+              value={toolProperties?.endCondition?.thickness || 2}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('endCondition', {
+                    ...toolProperties?.endCondition,
+                    thickness: parseInt(e.target.value) || 2,
+                  });
+                }
+              }}
+              min="1"
+              max="10"
+            />
+          </label>
+          <label>
+            Label
+            <input
+              type="text"
+              value={toolProperties?.endCondition?.text || ''}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('endCondition', {
+                    ...toolProperties?.endCondition,
+                    text: e.target.value,
+                  });
+                }
+              }}
+              placeholder="Enter label"
+            />
+          </label>
+          <label>
+            Actions
+            <input
+              type="number"
+              value={toolProperties?.endCondition?.actions || 1}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('endCondition', {
+                    ...toolProperties?.endCondition,
+                    actions: parseInt(e.target.value) || 1,
+                  });
+                }
+              }}
+              min="1"
+            />
+          </label>
+          <label>
+            Pull Mode
+            <select
+              value={toolProperties?.endCondition?.pullMode || 'pull any'}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('endCondition', {
+                    ...toolProperties?.endCondition,
+                    pullMode: e.target.value as
+                      | 'pull any'
+                      | 'pull all'
+                      | 'push any'
+                      | 'push all',
+                  });
+                }
+              }}
+            >
+              <option value="pull any">Pull Any</option>
+              <option value="pull all">Pull All</option>
+              <option value="push any">Push Any</option>
+              <option value="push all">Push All</option>
+            </select>
+          </label>
+        </div>
+      );
+    }
+
+    // Show Artificial Intelligence tool properties
+    if (selectedTool === 'Artifical Intelligence') {
+      return (
+        <div className="element-properties-panel">
+          <div className="machinations-label">Artificial Intelligence</div>
+          <label>
+            Color
+            <input
+              type="color"
+              className="color-input"
+              value={toolProperties?.artificialIntelligence?.color || '#000000'}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('artificialIntelligence', {
+                    ...toolProperties?.artificialIntelligence,
+                    color: e.target.value,
+                  });
+                }
+              }}
+            />
+          </label>
+          <label>
+            Thickness
+            <input
+              type="number"
+              value={toolProperties?.artificialIntelligence?.thickness || 2}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('artificialIntelligence', {
+                    ...toolProperties?.artificialIntelligence,
+                    thickness: parseInt(e.target.value) || 2,
+                  });
+                }
+              }}
+              min="1"
+              max="10"
+            />
+          </label>
+          <label>
+            Label
+            <input
+              type="text"
+              value={toolProperties?.artificialIntelligence?.text || ''}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('artificialIntelligence', {
+                    ...toolProperties?.artificialIntelligence,
+                    text: e.target.value,
+                  });
+                }
+              }}
+              placeholder="Enter label"
+            />
+          </label>
+          <label>
+            Activation
+            <div className="button-group">
+              {['passive', 'interactive', 'automatic', 'onstart'].map(
+                activation => (
+                  <button
+                    key={activation}
+                    className={`activation-button ${toolProperties?.artificialIntelligence?.activation === activation ? 'active' : ''}`}
+                    onClick={() => {
+                      if (onToolPropertiesChange) {
+                        onToolPropertiesChange('artificialIntelligence', {
+                          ...toolProperties?.artificialIntelligence,
+                          activation: activation as
+                            | 'passive'
+                            | 'interactive'
+                            | 'automatic'
+                            | 'onstart',
+                        });
+                      }
+                    }}
+                  >
+                    {activation}
+                  </button>
+                )
+              )}
+            </div>
+          </label>
+          <label>
+            Actions/Turn
+            <input
+              type="number"
+              value={toolProperties?.artificialIntelligence?.actions || 1}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('artificialIntelligence', {
+                    ...toolProperties?.artificialIntelligence,
+                    actions: parseInt(e.target.value) || 1,
+                  });
+                }
+              }}
+              min="1"
+            />
+          </label>
+          <label>
+            Script
+            <textarea
+              value={toolProperties?.artificialIntelligence?.script || ''}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('artificialIntelligence', {
+                    ...toolProperties?.artificialIntelligence,
+                    script: e.target.value,
+                  });
+                }
+              }}
+              placeholder="Enter script"
+              rows={6}
+              style={{ width: '100%', resize: 'vertical' }}
             />
           </label>
         </div>
