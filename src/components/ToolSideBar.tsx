@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './ToolSideBar.css';
 
 type GraphElementType =
@@ -89,15 +89,6 @@ const graphTools = [
   'Artifical Intelligence',
 ];
 
-const editTools = [
-  'Select All (A)',
-  'Copy (C)',
-  'Paste (V)',
-  'Undo (Z)',
-  'Redo (Y)',
-  'Zoom (M)',
-];
-
 const fileTools = [
   'New (N)',
   'Open (O)',
@@ -120,7 +111,123 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
   const [activeTab, setActiveTab] = useState<'Graph' | 'Edit' | 'File' | 'Run'>(
     'Graph'
   );
-  // const [selectedTool, setSelectedTool] = useState<string>('Select');
+  //edit
+  const [copiedElement, setCopiedElement] = useState<GraphElement | null>(null);
+  const [history, setHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  //edit
+  const canPaste = copiedElement !== null;
+  const canUndo = history.length > 0 && historyIndex >= 0;
+  const canRedo = historyIndex < history.length - 1;
+
+  //edit
+  // Edit operation handlers
+  const handleSelectAll = useCallback(() => {
+    console.log('Select All clicked');
+    alert('Select All functionality triggered');
+  }, []);
+  
+  const handleCopy = useCallback(() => {
+    if (selectedElement) {
+      setCopiedElement({ ...selectedElement });
+      setHistory(prev => [...prev, 'copy_operation']);
+      setHistoryIndex(prev => prev + 1);
+      console.log('Element copied:', selectedElement);
+      alert('Element copied to clipboard');
+    } else {
+      alert('Please select an element first');
+    }
+  }, [selectedElement]);
+  
+  const handlePaste = useCallback(() => {
+    if (canPaste && copiedElement) {
+      console.log('Pasting element:', copiedElement);
+      alert('Paste functionality triggered');
+    } else {
+      alert('Clipboard is empty, cannot paste');
+    }
+  }, [canPaste, copiedElement]);
+  
+  const handleUndo = useCallback(() => {
+    console.log('Undo clicked');
+    if (canUndo) {
+      setHistoryIndex(prev => Math.max(prev - 1, -1));
+      alert('Undo functionality triggered');
+    } else {
+      alert('Nothing to undo');
+    }
+  }, [canUndo]);
+  
+  const handleRedo = useCallback(() => {
+    console.log('Redo clicked');
+    if (canRedo) {
+      setHistoryIndex(prev => Math.min(prev + 1, history.length - 1));
+      alert('Redo functionality triggered');
+    } else {
+      alert('Nothing to redo');
+    }
+  }, [canRedo, history.length]);
+  
+  const handleZoom = useCallback(() => {
+    console.log('Zoom clicked');
+    alert('Zoom functionality triggered');
+  }, []);
+
+  //edit
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Prevent shortcuts when typing in input fields
+      if (
+        event.target instanceof HTMLInputElement ||
+        event.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+
+      const isCtrlOrCmd = event.ctrlKey || event.metaKey;
+
+      if (isCtrlOrCmd && activeTab === 'Edit') {
+        switch (event.key.toLowerCase()) {
+          case 'a':
+            event.preventDefault();
+            handleSelectAll();
+            break;
+          case 'c':
+            if (selectedElement) {
+              event.preventDefault();
+              handleCopy();
+            }
+            break;
+          case 'v':
+            if (canPaste) {
+              event.preventDefault();
+              handlePaste();
+            }
+            break;
+          case 'z':
+            event.preventDefault();
+            if (event.shiftKey) {
+              handleRedo();
+            } else {
+              handleUndo();
+            }
+            break;
+          case 'y':
+            event.preventDefault();
+            handleRedo();
+            break;
+          case 'm':
+            event.preventDefault();
+            handleZoom();
+            break;
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [activeTab, selectedElement, canPaste, canUndo, canRedo, handleSelectAll, handleCopy, handlePaste, handleUndo, handleRedo, handleZoom]);
 
   const handleDragStart = (e: React.DragEvent, tool: string) => {
     e.dataTransfer.setData('tool', tool);
@@ -153,19 +260,57 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
             ))}
           </>
         );
+      //edit
       case 'Edit':
         return (
-          <>
-            {editTools.map(tool => (
-              <button
-                key={tool}
-                className={selectedTool === tool ? 'selected' : ''}
-                onClick={() => setSelectedTool(tool)}
-              >
-                {tool}
-              </button>
-            ))}
-          </>
+          <div className="edit-tools">
+            <button
+              className="edit-button"
+              onClick={handleSelectAll}
+              title="Select All (Ctrl+A)"
+            >
+              Select All (A)
+            </button>
+            <button
+              className="edit-button"
+              onClick={handleCopy}
+              disabled={!selectedElement}
+              title="Copy (Ctrl+C)"
+            >
+              Copy (C)
+            </button>
+            <button
+              className="edit-button"
+              onClick={handlePaste}
+              disabled={!canPaste}
+              title="Paste (Ctrl+V)"
+            >
+              Paste (V)
+            </button>
+            <button
+              className="edit-button"
+              onClick={handleUndo}
+              disabled={!canUndo}
+              title="Undo (Ctrl+Z)"
+            >
+              Undo (Z)
+            </button>
+            <button
+              className="edit-button"
+              onClick={handleRedo}
+              disabled={!canRedo}
+              title="Redo (Ctrl+Y)"
+            >
+              Redo (Y)
+            </button>
+            <button
+              className="edit-button"
+              onClick={handleZoom}
+              title="Zoom (Ctrl+M)"
+            >
+              Zoom (M)
+            </button>
+          </div>
         );
       case 'File':
         return (
