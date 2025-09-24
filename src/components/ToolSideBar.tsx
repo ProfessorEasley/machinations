@@ -459,6 +459,952 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
       );
     }
 
+    // Show Gate-specific properties when Gate is selected
+    if (selectedElement && selectedElement.type === 'Gate') {
+      return (
+        <div className="element-properties-panel">
+          <div className="machinations-label">Gate</div>
+          <label>
+            Color
+            <input
+              type="color"
+              className="color-input"
+              value={selectedElement.color || '#000000'}
+              onChange={e =>
+                handleElementPropertyChange('color', e.target.value)
+              }
+            />
+          </label>
+          <label>
+            Thickness
+            <input
+              type="number"
+              value={selectedElement.thickness || 2}
+              onChange={e =>
+                handleElementPropertyChange('thickness', e.target.value)
+              }
+              min="1"
+              max="10"
+            />
+          </label>
+          <label>
+            Label
+            <input
+              type="text"
+              value={selectedElement.text || ''}
+              onChange={e =>
+                handleElementPropertyChange('text', e.target.value)
+              }
+              placeholder="Enter label"
+            />
+          </label>
+          <label>
+            Activation
+            <div className="button-group">
+              {['passive', 'interactive', 'automatic', 'onstart'].map(
+                activation => (
+                  <button
+                    key={activation}
+                    className={`activation-button ${selectedElement.activation === activation ? 'active' : ''}`}
+                    onClick={() =>
+                      handleElementPropertyChange('activation', activation)
+                    }
+                  >
+                    {activation}
+                  </button>
+                )
+              )}
+            </div>
+          </label>
+          <label>
+            Actions
+            <input
+              type="number"
+              value={selectedElement.actions || 1}
+              onChange={e =>
+                handleElementPropertyChange('actions', e.target.value)
+              }
+              min="1"
+            />
+          </label>
+          <label>
+            Pull Mode
+            <select
+              value={selectedElement.pullMode || 'pull any'}
+              onChange={e =>
+                handleElementPropertyChange('pullMode', e.target.value)
+              }
+            >
+              <option value="pull any">Pull Any</option>
+              <option value="pull all">Pull All</option>
+              <option value="push any">Push Any</option>
+              <option value="push all">Push All</option>
+            </select>
+          </label>
+          <label>
+            Type
+            <div className="button-group">
+              {[
+                'deterministic',
+                'dice',
+                'skill',
+                'multiplayer',
+                'strategy',
+              ].map(type => (
+                <button
+                  key={type}
+                  className={`activation-button ${selectedElement.gateType === type ? 'active' : ''}`}
+                  onClick={() => handleElementPropertyChange('gateType', type)}
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
+          </label>
+        </div>
+      );
+    }
+
+    // Show Source-specific properties when Source is selected
+    if (selectedElement && selectedElement.type === 'Source') {
+      return (
+        <div className="element-properties-panel">
+          <div className="machinations-label">Source</div>
+          <label>
+            Color
+            <input
+              type="color"
+              className="color-input"
+              value={selectedElement.color || '#000000'}
+              onChange={e =>
+                handleElementPropertyChange('color', e.target.value)
+              }
+            />
+          </label>
+          <label>
+            Thickness
+            <input
+              type="number"
+              value={selectedElement.thickness || 2}
+              onChange={e =>
+                handleElementPropertyChange('thickness', e.target.value)
+              }
+              min="1"
+              max="10"
+            />
+          </label>
+          <label>
+            Label
+            <input
+              type="text"
+              value={selectedElement.text || ''}
+              onChange={e =>
+                handleElementPropertyChange('text', e.target.value)
+              }
+              placeholder="Enter label"
+            />
+          </label>
+          <label>
+            Activation
+            <div className="button-group">
+              {['passive', 'interactive', 'automatic', 'onstart'].map(
+                activation => (
+                  <button
+                    key={activation}
+                    className={`activation-button ${selectedElement.activation === activation ? 'active' : ''}`}
+                    onClick={() =>
+                      handleElementPropertyChange('activation', activation)
+                    }
+                  >
+                    {activation}
+                  </button>
+                )
+              )}
+            </div>
+          </label>
+          <label>
+            Actions
+            <input
+              type="number"
+              value={selectedElement.actions || 1}
+              onChange={e =>
+                handleElementPropertyChange('actions', e.target.value)
+              }
+              min="1"
+            />
+          </label>
+          <label>
+            Pull Mode
+            <select
+              value={selectedElement.pullMode || 'pull any'}
+              onChange={e =>
+                handleElementPropertyChange('pullMode', e.target.value)
+              }
+            >
+              <option value="pull any">Pull Any</option>
+              <option value="pull all">Pull All</option>
+              <option value="push any">Push Any</option>
+              <option value="push all">Push All</option>
+            </select>
+          </label>
+          <label>
+            Resources
+            <input
+              type="text"
+              value={selectedElement.resources || ''}
+              onChange={e =>
+                handleElementPropertyChange('resources', e.target.value)
+              }
+              placeholder="Enter resources"
+            />
+          </label>
+        </div>
+      );
+    }
+
+    // Show Drain-specific properties when Drain is selected
+    if (selectedElement && selectedElement.type === 'Drain') {
+      return (
+        <div className="element-properties-panel">
+          <div className="machinations-label">Drain</div>
+          <label>
+            Color
+            <input
+              type="color"
+              className="color-input"
+              value={selectedElement.color || '#000000'}
+              onChange={e =>
+                handleElementPropertyChange('color', e.target.value)
+              }
+            />
+          </label>
+          <label>
+            Thickness
+            <input
+              type="number"
+              value={selectedElement.thickness || 2}
+              onChange={e =>
+                handleElementPropertyChange('thickness', e.target.value)
+              }
+              min="1"
+              max="10"
+            />
+          </label>
+          <label>
+            Label
+            <input
+              type="text"
+              value={selectedElement.text || ''}
+              onChange={e =>
+                handleElementPropertyChange('text', e.target.value)
+              }
+              placeholder="Enter label"
+            />
+          </label>
+          <label>
+            Activation
+            <div className="button-group">
+              {['passive', 'interactive', 'automatic', 'onstart'].map(
+                activation => (
+                  <button
+                    key={activation}
+                    className={`activation-button ${selectedElement.activation === activation ? 'active' : ''}`}
+                    onClick={() =>
+                      handleElementPropertyChange('activation', activation)
+                    }
+                  >
+                    {activation}
+                  </button>
+                )
+              )}
+            </div>
+          </label>
+          <label>
+            Actions
+            <input
+              type="number"
+              value={selectedElement.actions || 1}
+              onChange={e =>
+                handleElementPropertyChange('actions', e.target.value)
+              }
+              min="1"
+            />
+          </label>
+          <label>
+            Pull Mode
+            <select
+              value={selectedElement.pullMode || 'pull any'}
+              onChange={e =>
+                handleElementPropertyChange('pullMode', e.target.value)
+              }
+            >
+              <option value="pull any">Pull Any</option>
+              <option value="pull all">Pull All</option>
+              <option value="push any">Push Any</option>
+              <option value="push all">Push All</option>
+            </select>
+          </label>
+        </div>
+      );
+    }
+
+    // Show Convertor-specific properties when Convertor is selected
+    if (selectedElement && selectedElement.type === 'Convertor') {
+      return (
+        <div className="element-properties-panel">
+          <div className="machinations-label">Convertor</div>
+          <label>
+            Color
+            <input
+              type="color"
+              className="color-input"
+              value={selectedElement.color || '#000000'}
+              onChange={e =>
+                handleElementPropertyChange('color', e.target.value)
+              }
+            />
+          </label>
+          <label>
+            Thickness
+            <input
+              type="number"
+              value={selectedElement.thickness || 2}
+              onChange={e =>
+                handleElementPropertyChange('thickness', e.target.value)
+              }
+              min="1"
+              max="10"
+            />
+          </label>
+          <label>
+            Label
+            <input
+              type="text"
+              value={selectedElement.text || ''}
+              onChange={e =>
+                handleElementPropertyChange('text', e.target.value)
+              }
+              placeholder="Enter label"
+            />
+          </label>
+          <label>
+            Activation
+            <div className="button-group">
+              {['passive', 'interactive', 'automatic', 'onstart'].map(
+                activation => (
+                  <button
+                    key={activation}
+                    className={`activation-button ${selectedElement.activation === activation ? 'active' : ''}`}
+                    onClick={() =>
+                      handleElementPropertyChange('activation', activation)
+                    }
+                  >
+                    {activation}
+                  </button>
+                )
+              )}
+            </div>
+          </label>
+          <label>
+            Actions
+            <input
+              type="number"
+              value={selectedElement.actions || 1}
+              onChange={e =>
+                handleElementPropertyChange('actions', e.target.value)
+              }
+              min="1"
+            />
+          </label>
+          <label>
+            Pull Mode
+            <select
+              value={selectedElement.pullMode || 'pull any'}
+              onChange={e =>
+                handleElementPropertyChange('pullMode', e.target.value)
+              }
+            >
+              <option value="pull any">Pull Any</option>
+              <option value="pull all">Pull All</option>
+              <option value="push any">Push Any</option>
+              <option value="push all">Push All</option>
+            </select>
+          </label>
+          <label>
+            Resources
+            <input
+              type="text"
+              value={selectedElement.resources || ''}
+              onChange={e =>
+                handleElementPropertyChange('resources', e.target.value)
+              }
+              placeholder="Enter resources"
+            />
+          </label>
+        </div>
+      );
+    }
+
+    // Show Trader-specific properties when Trader is selected
+    if (selectedElement && selectedElement.type === 'Trader') {
+      return (
+        <div className="element-properties-panel">
+          <div className="machinations-label">Trader</div>
+          <label>
+            Color
+            <input
+              type="color"
+              className="color-input"
+              value={selectedElement.color || '#000000'}
+              onChange={e =>
+                handleElementPropertyChange('color', e.target.value)
+              }
+            />
+          </label>
+          <label>
+            Thickness
+            <input
+              type="number"
+              value={selectedElement.thickness || 2}
+              onChange={e =>
+                handleElementPropertyChange('thickness', e.target.value)
+              }
+              min="1"
+              max="10"
+            />
+          </label>
+          <label>
+            Label
+            <input
+              type="text"
+              value={selectedElement.text || ''}
+              onChange={e =>
+                handleElementPropertyChange('text', e.target.value)
+              }
+              placeholder="Enter label"
+            />
+          </label>
+          <label>
+            Activation
+            <div className="button-group">
+              {['passive', 'interactive', 'automatic', 'onstart'].map(
+                activation => (
+                  <button
+                    key={activation}
+                    className={`activation-button ${selectedElement.activation === activation ? 'active' : ''}`}
+                    onClick={() =>
+                      handleElementPropertyChange('activation', activation)
+                    }
+                  >
+                    {activation}
+                  </button>
+                )
+              )}
+            </div>
+          </label>
+          <label>
+            Actions
+            <input
+              type="number"
+              value={selectedElement.actions || 1}
+              onChange={e =>
+                handleElementPropertyChange('actions', e.target.value)
+              }
+              min="1"
+            />
+          </label>
+          <label>
+            Pull Mode
+            <select
+              value={selectedElement.pullMode || 'pull any'}
+              onChange={e =>
+                handleElementPropertyChange('pullMode', e.target.value)
+              }
+            >
+              <option value="pull any">Pull Any</option>
+              <option value="pull all">Pull All</option>
+              <option value="push any">Push Any</option>
+              <option value="push all">Push All</option>
+            </select>
+          </label>
+          <label>
+            Resources
+            <input
+              type="text"
+              value={selectedElement.resources || ''}
+              onChange={e =>
+                handleElementPropertyChange('resources', e.target.value)
+              }
+              placeholder="Enter resources"
+            />
+          </label>
+        </div>
+      );
+    }
+
+    // Show Delay-specific properties when Delay is selected
+    if (selectedElement && selectedElement.type === 'Delay') {
+      return (
+        <div className="element-properties-panel">
+          <div className="machinations-label">Delay</div>
+          <label>
+            Color
+            <input
+              type="color"
+              className="color-input"
+              value={selectedElement.color || '#000000'}
+              onChange={e =>
+                handleElementPropertyChange('color', e.target.value)
+              }
+            />
+          </label>
+          <label>
+            Thickness
+            <input
+              type="number"
+              value={selectedElement.thickness || 2}
+              onChange={e =>
+                handleElementPropertyChange('thickness', e.target.value)
+              }
+              min="1"
+              max="10"
+            />
+          </label>
+          <label>
+            Label
+            <input
+              type="text"
+              value={selectedElement.text || ''}
+              onChange={e =>
+                handleElementPropertyChange('text', e.target.value)
+              }
+              placeholder="Enter label"
+            />
+          </label>
+          <label>
+            Activation
+            <div className="button-group">
+              {['passive', 'interactive', 'automatic', 'onstart'].map(
+                activation => (
+                  <button
+                    key={activation}
+                    className={`activation-button ${selectedElement.activation === activation ? 'active' : ''}`}
+                    onClick={() =>
+                      handleElementPropertyChange('activation', activation)
+                    }
+                  >
+                    {activation}
+                  </button>
+                )
+              )}
+            </div>
+          </label>
+          <label>
+            Actions
+            <input
+              type="number"
+              value={selectedElement.actions || 1}
+              onChange={e =>
+                handleElementPropertyChange('actions', e.target.value)
+              }
+              min="1"
+            />
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={selectedElement.queue || false}
+              onChange={e =>
+                handleElementPropertyChange(
+                  'queue',
+                  e.target.checked.toString()
+                )
+              }
+            />
+            Queue
+          </label>
+        </div>
+      );
+    }
+
+    // Show Register-specific properties when Register is selected
+    if (selectedElement && selectedElement.type === 'Register') {
+      return (
+        <div className="element-properties-panel">
+          <div className="machinations-label">Register</div>
+          <label>
+            Color
+            <input
+              type="color"
+              className="color-input"
+              value={selectedElement.color || '#000000'}
+              onChange={e =>
+                handleElementPropertyChange('color', e.target.value)
+              }
+            />
+          </label>
+          <label>
+            Thickness
+            <input
+              type="number"
+              value={selectedElement.thickness || 2}
+              onChange={e =>
+                handleElementPropertyChange('thickness', e.target.value)
+              }
+              min="1"
+              max="10"
+            />
+          </label>
+          <label>
+            Formula
+            <input
+              type="text"
+              value={selectedElement.formula || ''}
+              onChange={e =>
+                handleElementPropertyChange('formula', e.target.value)
+              }
+              placeholder="Enter formula"
+            />
+          </label>
+          <label>
+            Min Value
+            <input
+              type="number"
+              value={selectedElement.minValue ?? -9999}
+              onChange={e =>
+                handleElementPropertyChange('minValue', e.target.value)
+              }
+            />
+          </label>
+          <label>
+            Max Value
+            <input
+              type="number"
+              value={selectedElement.maxValue ?? 9999}
+              onChange={e =>
+                handleElementPropertyChange('maxValue', e.target.value)
+              }
+            />
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={selectedElement.interactive || false}
+              onChange={e =>
+                handleElementPropertyChange(
+                  'interactive',
+                  e.target.checked.toString()
+                )
+              }
+            />
+            Interactive
+          </label>
+          {selectedElement.interactive && (
+            <>
+              <label>
+                Starting Value
+                <input
+                  type="number"
+                  value={selectedElement.startingValue || 0}
+                  onChange={e =>
+                    handleElementPropertyChange('startingValue', e.target.value)
+                  }
+                />
+              </label>
+              <label>
+                Step
+                <input
+                  type="number"
+                  value={selectedElement.step || 1}
+                  onChange={e =>
+                    handleElementPropertyChange('step', e.target.value)
+                  }
+                />
+              </label>
+            </>
+          )}
+        </div>
+      );
+    }
+
+    // Show End Condition-specific properties when End Condition is selected
+    if (selectedElement && selectedElement.type === 'End Condition') {
+      return (
+        <div className="element-properties-panel">
+          <div className="machinations-label">End Condition</div>
+          <label>
+            Color
+            <input
+              type="color"
+              className="color-input"
+              value={selectedElement.color || '#000000'}
+              onChange={e =>
+                handleElementPropertyChange('color', e.target.value)
+              }
+            />
+          </label>
+          <label>
+            Thickness
+            <input
+              type="number"
+              value={selectedElement.thickness || 2}
+              onChange={e =>
+                handleElementPropertyChange('thickness', e.target.value)
+              }
+              min="1"
+              max="10"
+            />
+          </label>
+          <label>
+            Label
+            <input
+              type="text"
+              value={selectedElement.text || ''}
+              onChange={e =>
+                handleElementPropertyChange('text', e.target.value)
+              }
+              placeholder="Enter label"
+            />
+          </label>
+          <label>
+            Actions
+            <input
+              type="number"
+              value={selectedElement.actions || 1}
+              onChange={e =>
+                handleElementPropertyChange('actions', e.target.value)
+              }
+              min="1"
+            />
+          </label>
+          <label>
+            Pull Mode
+            <select
+              value={selectedElement.pullMode || 'pull any'}
+              onChange={e =>
+                handleElementPropertyChange('pullMode', e.target.value)
+              }
+            >
+              <option value="pull any">Pull Any</option>
+              <option value="pull all">Pull All</option>
+              <option value="push any">Push Any</option>
+              <option value="push all">Push All</option>
+            </select>
+          </label>
+        </div>
+      );
+    }
+
+    // Show Artificial Intelligence-specific properties when Artificial Intelligence is selected
+    if (selectedElement && selectedElement.type === 'Artifical Intelligence') {
+      return (
+        <div className="element-properties-panel">
+          <div className="machinations-label">Artificial Intelligence</div>
+          <label>
+            Color
+            <input
+              type="color"
+              className="color-input"
+              value={selectedElement.color || '#000000'}
+              onChange={e =>
+                handleElementPropertyChange('color', e.target.value)
+              }
+            />
+          </label>
+          <label>
+            Thickness
+            <input
+              type="number"
+              value={selectedElement.thickness || 2}
+              onChange={e =>
+                handleElementPropertyChange('thickness', e.target.value)
+              }
+              min="1"
+              max="10"
+            />
+          </label>
+          <label>
+            Label
+            <input
+              type="text"
+              value={selectedElement.text || ''}
+              onChange={e =>
+                handleElementPropertyChange('text', e.target.value)
+              }
+              placeholder="Enter label"
+            />
+          </label>
+          <label>
+            Activation
+            <div className="button-group">
+              {['passive', 'interactive', 'automatic', 'onstart'].map(
+                activation => (
+                  <button
+                    key={activation}
+                    className={`activation-button ${selectedElement.activation === activation ? 'active' : ''}`}
+                    onClick={() =>
+                      handleElementPropertyChange('activation', activation)
+                    }
+                  >
+                    {activation}
+                  </button>
+                )
+              )}
+            </div>
+          </label>
+          <label>
+            Actions/Turn
+            <input
+              type="number"
+              value={selectedElement.actions || 1}
+              onChange={e =>
+                handleElementPropertyChange('actions', e.target.value)
+              }
+              min="1"
+            />
+          </label>
+          <label>
+            Script
+            <textarea
+              value={selectedElement.script || ''}
+              onChange={e =>
+                handleElementPropertyChange('script', e.target.value)
+              }
+              placeholder="Enter script"
+              rows={6}
+              style={{ width: '100%', resize: 'vertical' }}
+            />
+          </label>
+        </div>
+      );
+    }
+
+    // Show Resource Connection-specific properties when Resource Connection is selected
+    if (selectedElement && selectedElement.type === 'Resource Connection') {
+      return (
+        <div className="element-properties-panel">
+          <div className="machinations-label">Resource Connection</div>
+          <label>
+            Color
+            <input
+              type="color"
+              className="color-input"
+              value={selectedElement.color || '#000000'}
+              onChange={e =>
+                handleElementPropertyChange('color', e.target.value)
+              }
+            />
+          </label>
+          <label>
+            Thickness
+            <input
+              type="number"
+              value={selectedElement.thickness || 2}
+              onChange={e =>
+                handleElementPropertyChange('thickness', e.target.value)
+              }
+              min="1"
+              max="10"
+            />
+          </label>
+          <label>
+            Label
+            <input
+              type="text"
+              value={selectedElement.text || ''}
+              onChange={e =>
+                handleElementPropertyChange('text', e.target.value)
+              }
+              placeholder="Enter label"
+            />
+          </label>
+          <label>
+            Min Value
+            <input
+              type="number"
+              value={selectedElement.minValue ?? -999}
+              onChange={e =>
+                handleElementPropertyChange('minValue', e.target.value)
+              }
+            />
+          </label>
+          <label>
+            Max Value
+            <input
+              type="number"
+              value={selectedElement.maxValue ?? 999}
+              onChange={e =>
+                handleElementPropertyChange('maxValue', e.target.value)
+              }
+            />
+          </label>
+        </div>
+      );
+    }
+
+    // Show State Connection-specific properties when State Connection is selected
+    if (selectedElement && selectedElement.type === 'State Connection') {
+      return (
+        <div className="element-properties-panel">
+          <div className="machinations-label">State Connection</div>
+          <label>
+            Color
+            <input
+              type="color"
+              className="color-input"
+              value={selectedElement.color || '#000000'}
+              onChange={e =>
+                handleElementPropertyChange('color', e.target.value)
+              }
+            />
+          </label>
+          <label>
+            Thickness
+            <input
+              type="number"
+              value={selectedElement.thickness || 2}
+              onChange={e =>
+                handleElementPropertyChange('thickness', e.target.value)
+              }
+              min="1"
+              max="10"
+            />
+          </label>
+          <label>
+            Label
+            <input
+              type="text"
+              value={selectedElement.text || ''}
+              onChange={e =>
+                handleElementPropertyChange('text', e.target.value)
+              }
+              placeholder="Enter label"
+            />
+          </label>
+          <label>
+            Min Value
+            <input
+              type="number"
+              value={selectedElement.minValue ?? -999}
+              onChange={e =>
+                handleElementPropertyChange('minValue', e.target.value)
+              }
+            />
+          </label>
+          <label>
+            Max Value
+            <input
+              type="number"
+              value={selectedElement.maxValue ?? 999}
+              onChange={e =>
+                handleElementPropertyChange('maxValue', e.target.value)
+              }
+            />
+          </label>
+        </div>
+      );
+    }
+
     // Show tool-specific properties when Text Label tool is selected
     if (selectedTool === 'Text Label') {
       return (
