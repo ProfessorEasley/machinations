@@ -23,8 +23,6 @@ interface CanvasProps {
       max: number;
       displayLimit: number;
     };
-<<<<<<< HEAD
-=======
     gate: {
       color: string;
       thickness: number;
@@ -116,7 +114,6 @@ interface CanvasProps {
       actions: number;
       script: string;
     };
->>>>>>> origin/development
   };
 }
 
@@ -145,12 +142,7 @@ interface GraphElement {
   text?: string;
   width?: number;
   height?: number;
-<<<<<<< HEAD
-  color?: string; // Color for text labels and groups
-  // Pool-specific properties
-=======
   color?: string;
->>>>>>> origin/development
   thickness?: number;
   activation?: 'passive' | 'interactive' | 'automatic' | 'onstart';
   pullMode?: 'pull any' | 'pull all' | 'push any' | 'push all';
@@ -1165,11 +1157,8 @@ const Canvas: React.FC<CanvasProps> = ({
           >
             <polygon
               points="20,5 35,35 5,35"
-<<<<<<< HEAD
-=======
               fill={el.color || '#000000'}
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
->>>>>>> origin/development
               className={`source-triangle ${isSelected ? 'selected' : ''}`}
             />
           </svg>
@@ -1203,11 +1192,8 @@ const Canvas: React.FC<CanvasProps> = ({
           >
             <polygon
               points="5,5 35,5 20,35"
-<<<<<<< HEAD
-=======
               fill={el.color || '#000000'} // Add this
               stroke={isSelected ? '#0078d4' : el.color || '#000000'} // Add this
->>>>>>> origin/development
               className={`drain-triangle ${isSelected ? 'selected' : ''}`}
             />
           </svg>
@@ -1314,11 +1300,8 @@ const Canvas: React.FC<CanvasProps> = ({
           >
             <polygon
               points="20,5 35,20 20,35 5,20"
-<<<<<<< HEAD
-=======
               fill={el.color || '#000000'}
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
->>>>>>> origin/development
               className={`gate-diamond ${isSelected ? 'selected' : ''}`}
             />
           </svg>
@@ -1352,11 +1335,8 @@ const Canvas: React.FC<CanvasProps> = ({
           >
             <polygon
               points="5,5 35,20 5,35"
-<<<<<<< HEAD
-=======
               fill={el.color || '#000000'}
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
->>>>>>> origin/development
               className={`convertor-shape ${isSelected ? 'selected' : ''}`}
             />
             <line x1="5" y1="5" x2="5" y2="35" className="convertor-line" />
@@ -1394,11 +1374,8 @@ const Canvas: React.FC<CanvasProps> = ({
               y="5"
               width="30"
               height="30"
-<<<<<<< HEAD
-=======
               fill={el.color || '#000000'}
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
->>>>>>> origin/development
               className={`end-condition-rect ${isSelected ? 'selected' : ''}`}
             />
             <rect
@@ -1406,10 +1383,7 @@ const Canvas: React.FC<CanvasProps> = ({
               y="12"
               width="16"
               height="16"
-<<<<<<< HEAD
-=======
               fill={el.color || '#000000'}
->>>>>>> origin/development
               className="end-condition-inner-rect"
             />
           </svg>
@@ -1446,11 +1420,8 @@ const Canvas: React.FC<CanvasProps> = ({
               y="5"
               width="30"
               height="30"
-<<<<<<< HEAD
-=======
               fill={el.color || '#000000'}
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
->>>>>>> origin/development
               className={`ai-rect ${isSelected ? 'selected' : ''}`}
             />
             <text x="20" y="22" className="ai-text">
@@ -1490,11 +1461,8 @@ const Canvas: React.FC<CanvasProps> = ({
               y="5"
               width="30"
               height="30"
-<<<<<<< HEAD
-=======
               fill={el.color || '#000000'}
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
->>>>>>> origin/development
               className={`register-rect ${isSelected ? 'selected' : ''}`}
             />
             <text x="20" y="22" className="register-text">
@@ -1533,11 +1501,8 @@ const Canvas: React.FC<CanvasProps> = ({
               cx="20"
               cy="20"
               r="15"
-<<<<<<< HEAD
-=======
               fill={el.color || '#000000'}
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
->>>>>>> origin/development
               className={`delay-circle ${isSelected ? 'selected' : ''}`}
             />
             <text x="20" y="22" className="delay-text">
@@ -1574,11 +1539,8 @@ const Canvas: React.FC<CanvasProps> = ({
           >
             <polygon
               points="8,5 32,5 28,35 4,35"
-<<<<<<< HEAD
-=======
               fill={el.color || '#000000'}
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
->>>>>>> origin/development
               className={`trader-polygon ${isSelected ? 'selected' : ''}`}
             />
           </svg>
@@ -1614,10 +1576,7 @@ const Canvas: React.FC<CanvasProps> = ({
                 <marker id={`arrowhead-${el.id}`} className="arrow-marker">
                   <polygon
                     points="0 0, 10 3.5, 0 7"
-<<<<<<< HEAD
-=======
                     fill={el.color || '#000000'}
->>>>>>> origin/development
                     className="arrow-polygon"
                   />
                 </marker>
@@ -1643,11 +1602,8 @@ const Canvas: React.FC<CanvasProps> = ({
                   Math.min(el.startY || el.y, el.endY || el.y) +
                   5
                 }
-<<<<<<< HEAD
-=======
                 stroke={isSelected ? '#0078d4' : el.color || '#333'}
                 strokeWidth={isSelected ? 3 : 2}
->>>>>>> origin/development
                 className={`connection-line ${isSelected ? 'selected' : ''}`}
                 markerEnd={`url(#arrowhead-${el.id})`}
               />
@@ -1723,10 +1679,7 @@ const Canvas: React.FC<CanvasProps> = ({
                 >
                   <polygon
                     points="0 0, 10 3.5, 0 7"
-<<<<<<< HEAD
-=======
                     fill={el.color || '#000000'}
->>>>>>> origin/development
                     className="dashed-arrow-polygon"
                   />
                 </marker>
@@ -1752,12 +1705,9 @@ const Canvas: React.FC<CanvasProps> = ({
                   Math.min(el.startY || el.y, el.endY || el.y) +
                   5
                 }
-<<<<<<< HEAD
-=======
                 stroke={isSelected ? '#0078d4' : el.color || '#666'}
                 strokeWidth={isSelected ? 3 : 2}
                 strokeDasharray={isSelected ? '5,5' : '5,5'}
->>>>>>> origin/development
                 className={`state-connection-line ${isSelected ? 'selected' : ''}`}
                 markerEnd={`url(#arrowhead-dashed-${el.id})`}
               />

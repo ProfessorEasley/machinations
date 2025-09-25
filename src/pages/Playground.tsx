@@ -71,8 +71,6 @@ const Playground: React.FC = () => {
       max: number;
       displayLimit: number;
     };
-<<<<<<< HEAD
-=======
     gate: {
       color: string;
       thickness: number;
@@ -164,7 +162,6 @@ const Playground: React.FC = () => {
       actions: number;
       script: string;
     };
->>>>>>> origin/development
   }>({
     textLabel: { text: '', color: '#000000' },
     group: { text: '', color: '#000000' },
@@ -179,8 +176,6 @@ const Playground: React.FC = () => {
       max: 100,
       displayLimit: 10,
     },
-<<<<<<< HEAD
-=======
     gate: {
       color: '#000000',
       thickness: 2,
@@ -272,7 +267,6 @@ const Playground: React.FC = () => {
       actions: 1,
       script: '',
     },
->>>>>>> origin/development
   });
 
   const handleElementUpdate = (
