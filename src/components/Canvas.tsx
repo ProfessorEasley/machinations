@@ -23,6 +23,100 @@ interface CanvasProps {
       max: number;
       displayLimit: number;
     };
+<<<<<<< HEAD
+=======
+    gate: {
+      color: string;
+      thickness: number;
+      text: string;
+      activation: 'passive' | 'interactive' | 'automatic' | 'onstart';
+      actions: number;
+      pullMode: 'pull any' | 'pull all' | 'push any' | 'push all';
+      type: 'deterministic' | 'dice' | 'skill' | 'multiplayer' | 'strategy';
+    };
+    resourceConnection: {
+      color: string;
+      thickness: number;
+      text: string;
+      minValue: number;
+      maxValue: number;
+    };
+    stateConnection: {
+      color: string;
+      thickness: number;
+      text: string;
+      minValue: number;
+      maxValue: number;
+    };
+    source: {
+      color: string;
+      thickness: number;
+      text: string;
+      activation: 'passive' | 'interactive' | 'automatic' | 'onstart';
+      actions: number;
+      pullMode: 'pull any' | 'pull all' | 'push any' | 'push all';
+      resources: string;
+    };
+    convertor: {
+      color: string;
+      thickness: number;
+      text: string;
+      activation: 'passive' | 'interactive' | 'automatic' | 'onstart';
+      actions: number;
+      pullMode: 'pull any' | 'pull all' | 'push any' | 'push all';
+      resources: string;
+    };
+    trader: {
+      color: string;
+      thickness: number;
+      text: string;
+      activation: 'passive' | 'interactive' | 'automatic' | 'onstart';
+      actions: number;
+      pullMode: 'pull any' | 'pull all' | 'push any' | 'push all';
+      resources: string;
+    };
+    drain: {
+      color: string;
+      thickness: number;
+      text: string;
+      activation: 'passive' | 'interactive' | 'automatic' | 'onstart';
+      actions: number;
+      pullMode: 'pull any' | 'pull all' | 'push any' | 'push all';
+    };
+    delay: {
+      color: string;
+      thickness: number;
+      text: string;
+      activation: 'passive' | 'interactive' | 'automatic' | 'onstart';
+      actions: number;
+      queue: boolean;
+    };
+    register: {
+      color: string;
+      thickness: number;
+      formula: string;
+      minValue: number;
+      maxValue: number;
+      interactive: boolean;
+      startingValue: number;
+      step: number;
+    };
+    endCondition: {
+      color: string;
+      thickness: number;
+      text: string;
+      actions: number;
+      pullMode: 'pull any' | 'pull all' | 'push any' | 'push all';
+    };
+    artificialIntelligence: {
+      color: string;
+      thickness: number;
+      text: string;
+      activation: 'passive' | 'interactive' | 'automatic' | 'onstart';
+      actions: number;
+      script: string;
+    };
+>>>>>>> origin/development
   };
 }
 
@@ -51,8 +145,12 @@ interface GraphElement {
   text?: string;
   width?: number;
   height?: number;
+<<<<<<< HEAD
   color?: string; // Color for text labels and groups
   // Pool-specific properties
+=======
+  color?: string;
+>>>>>>> origin/development
   thickness?: number;
   activation?: 'passive' | 'interactive' | 'automatic' | 'onstart';
   pullMode?: 'pull any' | 'pull all' | 'push any' | 'push all';
@@ -79,7 +177,6 @@ const Canvas: React.FC<CanvasProps> = ({
 }) => {
   const [elements, setElements] = useState<GraphElement[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
-  // const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedId, setSelectedId] = useState<number[]>([]);
   const [dragOffset, setDragOffset] = useState<{ x: number; y: number } | null>(
     null
@@ -256,6 +353,7 @@ const Canvas: React.FC<CanvasProps> = ({
     const x = clientX - rect.left;
     const y = clientY - rect.top;
     const id = Date.now();
+
     if (type === 'Text Label') {
       setElements(prev => [
         ...prev,
@@ -295,11 +393,161 @@ const Canvas: React.FC<CanvasProps> = ({
         },
       ]);
     } else if (type === 'Resource Connection' || type === 'State Connection') {
-      // Start connection creation
       setIsCreatingConnection(true);
       setConnectionStart({ x, y });
       setConnectionEnd({ x, y });
       setConnectionType(type);
+    } else if (type === 'Source') {
+      setElements(prev => [
+        ...prev,
+        {
+          id,
+          type,
+          x,
+          y,
+
+          ...toolProperties?.source,
+          // color: toolProperties?.source?.color,
+          // thickness: toolProperties?.source?.thickness,
+          // text: toolProperties?.source?.text,
+          // activation: toolProperties?.source?.activation,
+          // actions: toolProperties?.source?.actions,
+          // pullMode: toolProperties?.source?.pullMode,
+          // resources: toolProperties?.source?.resources,
+        },
+      ]);
+    } else if (type === 'Gate') {
+      setElements(prev => [
+        ...prev,
+        {
+          id,
+          type,
+          x,
+          y,
+          color: toolProperties?.gate?.color,
+          thickness: toolProperties?.gate?.thickness,
+          text: toolProperties?.gate?.text,
+          activation: toolProperties?.gate?.activation,
+          actions: toolProperties?.gate?.actions,
+          pullMode: toolProperties?.gate?.pullMode,
+          gateType: toolProperties?.gate?.type,
+        },
+      ]);
+    } else if (type === 'Drain') {
+      setElements(prev => [
+        ...prev,
+        {
+          id,
+          type,
+          x,
+          y,
+          color: toolProperties?.drain?.color,
+          thickness: toolProperties?.drain?.thickness,
+          text: toolProperties?.drain?.text,
+          activation: toolProperties?.drain?.activation,
+          actions: toolProperties?.drain?.actions,
+          pullMode: toolProperties?.drain?.pullMode,
+        },
+      ]);
+    } else if (type === 'Convertor') {
+      setElements(prev => [
+        ...prev,
+        {
+          id,
+          type,
+          x,
+          y,
+          color: toolProperties?.convertor?.color,
+          thickness: toolProperties?.convertor?.thickness,
+          text: toolProperties?.convertor?.text,
+          activation: toolProperties?.convertor?.activation,
+          actions: toolProperties?.convertor?.actions,
+          pullMode: toolProperties?.convertor?.pullMode,
+          resources: toolProperties?.convertor?.resources,
+        },
+      ]);
+    } else if (type === 'Trader') {
+      setElements(prev => [
+        ...prev,
+        {
+          id,
+          type,
+          x,
+          y,
+          color: toolProperties?.trader?.color,
+          thickness: toolProperties?.trader?.thickness,
+          text: toolProperties?.trader?.text,
+          activation: toolProperties?.trader?.activation,
+          actions: toolProperties?.trader?.actions,
+          pullMode: toolProperties?.trader?.pullMode,
+          resources: toolProperties?.trader?.resources,
+        },
+      ]);
+    } else if (type === 'Delay') {
+      setElements(prev => [
+        ...prev,
+        {
+          id,
+          type,
+          x,
+          y,
+          color: toolProperties?.delay?.color,
+          thickness: toolProperties?.delay?.thickness,
+          text: toolProperties?.delay?.text,
+          activation: toolProperties?.delay?.activation,
+          actions: toolProperties?.delay?.actions,
+          queue: toolProperties?.delay?.queue,
+        },
+      ]);
+    } else if (type === 'Register') {
+      setElements(prev => [
+        ...prev,
+        {
+          id,
+          type,
+          x,
+          y,
+          color: toolProperties?.register?.color,
+          thickness: toolProperties?.register?.thickness,
+          formula: toolProperties?.register?.formula,
+          minValue: toolProperties?.register?.minValue,
+          maxValue: toolProperties?.register?.maxValue,
+          interactive: toolProperties?.register?.interactive,
+          startingValue: toolProperties?.register?.startingValue,
+          step: toolProperties?.register?.step,
+        },
+      ]);
+    } else if (type === 'End Condition') {
+      setElements(prev => [
+        ...prev,
+        {
+          id,
+          type,
+          x,
+          y,
+          color: toolProperties?.endCondition?.color,
+          thickness: toolProperties?.endCondition?.thickness,
+          text: toolProperties?.endCondition?.text,
+          actions: toolProperties?.endCondition?.actions,
+          pullMode: toolProperties?.endCondition?.pullMode,
+        },
+      ]);
+    } else if (type === 'Artifical Intelligence') {
+      setElements(prev => [
+        ...prev,
+        {
+          id,
+          type,
+          x,
+          y,
+          color: toolProperties?.artificialIntelligence?.color,
+          thickness: toolProperties?.artificialIntelligence?.thickness,
+          text: toolProperties?.artificialIntelligence?.text,
+          activation: toolProperties?.artificialIntelligence?.activation,
+          actions: toolProperties?.artificialIntelligence?.actions,
+          script: toolProperties?.artificialIntelligence?.script,
+        },
+      ]);
     } else {
       setElements(prev => [...prev, { id, type, x, y }]);
     }
@@ -606,6 +854,12 @@ const Canvas: React.FC<CanvasProps> = ({
           endY: finalEndY,
           connectedToStart: startElement?.id,
           connectedToEnd: endElement?.id,
+          ...(connectionType === 'Resource Connection'
+            ? toolProperties?.resourceConnection
+            : {}),
+          ...(connectionType === 'State Connection'
+            ? toolProperties?.stateConnection
+            : {}),
         },
       ]);
       setIsCreatingConnection(false);
@@ -911,6 +1165,11 @@ const Canvas: React.FC<CanvasProps> = ({
           >
             <polygon
               points="20,5 35,35 5,35"
+<<<<<<< HEAD
+=======
+              fill={el.color || '#000000'}
+              stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+>>>>>>> origin/development
               className={`source-triangle ${isSelected ? 'selected' : ''}`}
             />
           </svg>
@@ -944,6 +1203,11 @@ const Canvas: React.FC<CanvasProps> = ({
           >
             <polygon
               points="5,5 35,5 20,35"
+<<<<<<< HEAD
+=======
+              fill={el.color || '#000000'} // Add this
+              stroke={isSelected ? '#0078d4' : el.color || '#000000'} // Add this
+>>>>>>> origin/development
               className={`drain-triangle ${isSelected ? 'selected' : ''}`}
             />
           </svg>
@@ -1050,6 +1314,11 @@ const Canvas: React.FC<CanvasProps> = ({
           >
             <polygon
               points="20,5 35,20 20,35 5,20"
+<<<<<<< HEAD
+=======
+              fill={el.color || '#000000'}
+              stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+>>>>>>> origin/development
               className={`gate-diamond ${isSelected ? 'selected' : ''}`}
             />
           </svg>
@@ -1083,6 +1352,11 @@ const Canvas: React.FC<CanvasProps> = ({
           >
             <polygon
               points="5,5 35,20 5,35"
+<<<<<<< HEAD
+=======
+              fill={el.color || '#000000'}
+              stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+>>>>>>> origin/development
               className={`convertor-shape ${isSelected ? 'selected' : ''}`}
             />
             <line x1="5" y1="5" x2="5" y2="35" className="convertor-line" />
@@ -1120,6 +1394,11 @@ const Canvas: React.FC<CanvasProps> = ({
               y="5"
               width="30"
               height="30"
+<<<<<<< HEAD
+=======
+              fill={el.color || '#000000'}
+              stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+>>>>>>> origin/development
               className={`end-condition-rect ${isSelected ? 'selected' : ''}`}
             />
             <rect
@@ -1127,6 +1406,10 @@ const Canvas: React.FC<CanvasProps> = ({
               y="12"
               width="16"
               height="16"
+<<<<<<< HEAD
+=======
+              fill={el.color || '#000000'}
+>>>>>>> origin/development
               className="end-condition-inner-rect"
             />
           </svg>
@@ -1163,6 +1446,11 @@ const Canvas: React.FC<CanvasProps> = ({
               y="5"
               width="30"
               height="30"
+<<<<<<< HEAD
+=======
+              fill={el.color || '#000000'}
+              stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+>>>>>>> origin/development
               className={`ai-rect ${isSelected ? 'selected' : ''}`}
             />
             <text x="20" y="22" className="ai-text">
@@ -1202,6 +1490,11 @@ const Canvas: React.FC<CanvasProps> = ({
               y="5"
               width="30"
               height="30"
+<<<<<<< HEAD
+=======
+              fill={el.color || '#000000'}
+              stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+>>>>>>> origin/development
               className={`register-rect ${isSelected ? 'selected' : ''}`}
             />
             <text x="20" y="22" className="register-text">
@@ -1240,6 +1533,11 @@ const Canvas: React.FC<CanvasProps> = ({
               cx="20"
               cy="20"
               r="15"
+<<<<<<< HEAD
+=======
+              fill={el.color || '#000000'}
+              stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+>>>>>>> origin/development
               className={`delay-circle ${isSelected ? 'selected' : ''}`}
             />
             <text x="20" y="22" className="delay-text">
@@ -1276,6 +1574,11 @@ const Canvas: React.FC<CanvasProps> = ({
           >
             <polygon
               points="8,5 32,5 28,35 4,35"
+<<<<<<< HEAD
+=======
+              fill={el.color || '#000000'}
+              stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+>>>>>>> origin/development
               className={`trader-polygon ${isSelected ? 'selected' : ''}`}
             />
           </svg>
@@ -1311,6 +1614,10 @@ const Canvas: React.FC<CanvasProps> = ({
                 <marker id={`arrowhead-${el.id}`} className="arrow-marker">
                   <polygon
                     points="0 0, 10 3.5, 0 7"
+<<<<<<< HEAD
+=======
+                    fill={el.color || '#000000'}
+>>>>>>> origin/development
                     className="arrow-polygon"
                   />
                 </marker>
@@ -1336,6 +1643,11 @@ const Canvas: React.FC<CanvasProps> = ({
                   Math.min(el.startY || el.y, el.endY || el.y) +
                   5
                 }
+<<<<<<< HEAD
+=======
+                stroke={isSelected ? '#0078d4' : el.color || '#333'}
+                strokeWidth={isSelected ? 3 : 2}
+>>>>>>> origin/development
                 className={`connection-line ${isSelected ? 'selected' : ''}`}
                 markerEnd={`url(#arrowhead-${el.id})`}
               />
@@ -1411,6 +1723,10 @@ const Canvas: React.FC<CanvasProps> = ({
                 >
                   <polygon
                     points="0 0, 10 3.5, 0 7"
+<<<<<<< HEAD
+=======
+                    fill={el.color || '#000000'}
+>>>>>>> origin/development
                     className="dashed-arrow-polygon"
                   />
                 </marker>
@@ -1436,6 +1752,12 @@ const Canvas: React.FC<CanvasProps> = ({
                   Math.min(el.startY || el.y, el.endY || el.y) +
                   5
                 }
+<<<<<<< HEAD
+=======
+                stroke={isSelected ? '#0078d4' : el.color || '#666'}
+                strokeWidth={isSelected ? 3 : 2}
+                strokeDasharray={isSelected ? '5,5' : '5,5'}
+>>>>>>> origin/development
                 className={`state-connection-line ${isSelected ? 'selected' : ''}`}
                 markerEnd={`url(#arrowhead-dashed-${el.id})`}
               />

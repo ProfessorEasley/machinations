@@ -71,6 +71,100 @@ const Playground: React.FC = () => {
       max: number;
       displayLimit: number;
     };
+<<<<<<< HEAD
+=======
+    gate: {
+      color: string;
+      thickness: number;
+      text: string;
+      activation: 'passive' | 'interactive' | 'automatic' | 'onstart';
+      actions: number;
+      pullMode: 'pull any' | 'pull all' | 'push any' | 'push all';
+      type: 'deterministic' | 'dice' | 'skill' | 'multiplayer' | 'strategy';
+    };
+    resourceConnection: {
+      color: string;
+      thickness: number;
+      text: string;
+      minValue: number;
+      maxValue: number;
+    };
+    stateConnection: {
+      color: string;
+      thickness: number;
+      text: string;
+      minValue: number;
+      maxValue: number;
+    };
+    source: {
+      color: string;
+      thickness: number;
+      text: string;
+      activation: 'passive' | 'interactive' | 'automatic' | 'onstart';
+      actions: number;
+      pullMode: 'pull any' | 'pull all' | 'push any' | 'push all';
+      resources: string;
+    };
+    convertor: {
+      color: string;
+      thickness: number;
+      text: string;
+      activation: 'passive' | 'interactive' | 'automatic' | 'onstart';
+      actions: number;
+      pullMode: 'pull any' | 'pull all' | 'push any' | 'push all';
+      resources: string;
+    };
+    trader: {
+      color: string;
+      thickness: number;
+      text: string;
+      activation: 'passive' | 'interactive' | 'automatic' | 'onstart';
+      actions: number;
+      pullMode: 'pull any' | 'pull all' | 'push any' | 'push all';
+      resources: string;
+    };
+    drain: {
+      color: string;
+      thickness: number;
+      text: string;
+      activation: 'passive' | 'interactive' | 'automatic' | 'onstart';
+      actions: number;
+      pullMode: 'pull any' | 'pull all' | 'push any' | 'push all';
+    };
+    delay: {
+      color: string;
+      thickness: number;
+      text: string;
+      activation: 'passive' | 'interactive' | 'automatic' | 'onstart';
+      actions: number;
+      queue: boolean;
+    };
+    register: {
+      color: string;
+      thickness: number;
+      formula: string;
+      minValue: number;
+      maxValue: number;
+      interactive: boolean;
+      startingValue: number;
+      step: number;
+    };
+    endCondition: {
+      color: string;
+      thickness: number;
+      text: string;
+      actions: number;
+      pullMode: 'pull any' | 'pull all' | 'push any' | 'push all';
+    };
+    artificialIntelligence: {
+      color: string;
+      thickness: number;
+      text: string;
+      activation: 'passive' | 'interactive' | 'automatic' | 'onstart';
+      actions: number;
+      script: string;
+    };
+>>>>>>> origin/development
   }>({
     textLabel: { text: '', color: '#000000' },
     group: { text: '', color: '#000000' },
@@ -85,6 +179,100 @@ const Playground: React.FC = () => {
       max: 100,
       displayLimit: 10,
     },
+<<<<<<< HEAD
+=======
+    gate: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      activation: 'passive',
+      actions: 1,
+      pullMode: 'pull any',
+      type: 'deterministic',
+    },
+    resourceConnection: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      minValue: -999,
+      maxValue: 999,
+    },
+    stateConnection: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      minValue: -999,
+      maxValue: 999,
+    },
+    source: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      activation: 'passive',
+      actions: 1,
+      pullMode: 'pull any',
+      resources: '',
+    },
+    convertor: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      activation: 'passive',
+      actions: 1,
+      pullMode: 'pull any',
+      resources: '',
+    },
+    trader: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      activation: 'passive',
+      actions: 1,
+      pullMode: 'pull any',
+      resources: '',
+    },
+    drain: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      activation: 'passive',
+      actions: 1,
+      pullMode: 'pull any',
+    },
+    delay: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      activation: 'passive',
+      actions: 1,
+      queue: false,
+    },
+    register: {
+      color: '#000000',
+      thickness: 2,
+      formula: '',
+      minValue: -9999,
+      maxValue: 9999,
+      interactive: false,
+      startingValue: 0,
+      step: 1,
+    },
+    endCondition: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      actions: 1,
+      pullMode: 'pull any',
+    },
+    artificialIntelligence: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      activation: 'passive',
+      actions: 1,
+      script: '',
+    },
+>>>>>>> origin/development
   });
 
   const handleElementUpdate = (

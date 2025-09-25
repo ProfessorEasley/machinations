@@ -261,8 +261,12 @@
 }
 
 .source-triangle {
+<<<<<<< HEAD
   fill: #43a047;
   stroke: #1b5e20;
+=======
+  fill: none;
+>>>>>>> origin/development
   stroke-width: 2;
 }
 
@@ -273,8 +277,12 @@
 }
 
 .drain-triangle {
+<<<<<<< HEAD
   fill: #e53935;
   stroke: #b71c1c;
+=======
+  fill: none;
+>>>>>>> origin/development
   stroke-width: 2;
 }
 
@@ -285,25 +293,39 @@
 }
 
 .gate-diamond {
+<<<<<<< HEAD
   fill: #ff9800;
   stroke: #e65100;
+=======
+  fill: none;
+>>>>>>> origin/development
   stroke-width: 2;
 }
 
 .gate-diamond.selected {
   fill: none;
+<<<<<<< HEAD
   stroke: #0078d4;
+=======
+>>>>>>> origin/development
   stroke-width: 2;
 }
 
 .convertor-shape {
+<<<<<<< HEAD
   fill: #9c27b0;
   stroke: #4a148c;
+=======
+  fill: none;
+>>>>>>> origin/development
   stroke-width: 2;
 }
 
 .convertor-line {
+<<<<<<< HEAD
   stroke: #4a148c;
+=======
+>>>>>>> origin/development
   stroke-width: 2;
 }
 
@@ -314,6 +336,7 @@
 }
 
 .end-condition-rect {
+<<<<<<< HEAD
   fill: #f44336;
   stroke: #b71c1c;
   stroke-width: 2;
@@ -323,6 +346,12 @@
   fill: #b71c1c;
 }
 
+=======
+  fill: none;
+  stroke-width: 2;
+}
+
+>>>>>>> origin/development
 .end-condition-rect.selected {
   fill: none;
   stroke: #0078d4;
@@ -330,16 +359,24 @@
 }
 
 .ai-rect {
+<<<<<<< HEAD
   fill: #4caf50;
   stroke: #2e7d32;
+=======
+  fill: none;
+>>>>>>> origin/development
   stroke-width: 2;
 }
 
 .ai-text {
   text-anchor: middle;
   dominant-baseline: middle;
+<<<<<<< HEAD
   fill: white;
   font-size: 10px;
+=======
+  font-size: 14px;
+>>>>>>> origin/development
   font-weight: bold;
 }
 
@@ -350,8 +387,11 @@
 }
 
 .register-rect {
+<<<<<<< HEAD
   fill: #607d8b;
   stroke: #37474f;
+=======
+>>>>>>> origin/development
   stroke-width: 2;
 }
 
@@ -370,15 +410,22 @@
 }
 
 .delay-circle {
+<<<<<<< HEAD
   fill: #ff5722;
   stroke: #d84315;
+=======
+  fill: none;
+>>>>>>> origin/development
   stroke-width: 2;
 }
 
 .delay-text {
   text-anchor: middle;
   dominant-baseline: middle;
+<<<<<<< HEAD
   fill: white;
+=======
+>>>>>>> origin/development
   font-size: 14px;
   font-weight: bold;
 }
@@ -390,8 +437,12 @@
 }
 
 .trader-polygon {
+<<<<<<< HEAD
   fill: #795548;
   stroke: #3e2723;
+=======
+  fill: none;
+>>>>>>> origin/development
   stroke-width: 2;
 }
 
@@ -432,6 +483,7 @@
   ref-y: 3.5;
   orient: auto;
 }
+<<<<<<< HEAD
 
 .arrow-polygon {
   fill: #333;
@@ -440,3 +492,5 @@
 .dashed-arrow-polygon {
   fill: #666;
 }
+=======
+>>>>>>> origin/development
