@@ -49,6 +49,7 @@ interface GraphElement {
 }
 
 const Playground: React.FC = () => {
+  const [isRunning, setIsRunning] = useState(false);
   const [selectedTool, setSelectedTool] = useState<string>('Select');
   const [selectedElement, setSelectedElement] = useState<GraphElement | null>(
     null
@@ -269,6 +270,10 @@ const Playground: React.FC = () => {
     },
   });
 
+  const handleRunClick = () => {
+    setIsRunning(prevIsRunning => !prevIsRunning);
+  };
+
   const handleElementUpdate = (
     elementId: number,
     updates: Partial<GraphElement>
@@ -313,6 +318,7 @@ const Playground: React.FC = () => {
         <div className="canvas-section">
           <div className="grid-canvas">
             <Canvas
+              isRunning={isRunning}
               selectedTool={selectedTool}
               onElementUpdate={handleElementUpdate}
               onElementSelection={handleElementSelection}
@@ -326,6 +332,8 @@ const Playground: React.FC = () => {
             selectedTool={selectedTool}
             setSelectedTool={setSelectedTool}
             selectedElement={selectedElement}
+            isRunning={isRunning}
+            onRunClick={handleRunClick}
             onElementUpdate={handleElementUpdate}
             toolProperties={toolProperties}
             onToolPropertiesChange={handleToolPropertiesChange}
