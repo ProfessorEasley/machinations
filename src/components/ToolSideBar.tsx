@@ -60,7 +60,12 @@ interface ToolSideBarProps {
   selectedTool: string;
   setSelectedTool: React.Dispatch<React.SetStateAction<string>>;
   selectedElement?: GraphElement | null;
+  selectedElements?: GraphElement[];
+  allElements?: GraphElement[];
   onElementUpdate?: (elementId: number, updates: Partial<GraphElement>) => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
+
   toolProperties?: {
     textLabel: { text: string; color: string };
     group: { text: string; color: string };
@@ -207,74 +212,80 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
   selectedTool,
   setSelectedTool,
   selectedElement,
+  selectedElements = [],
+  allElements = [],
   onElementUpdate,
+  canUndo = false,
+  canRedo = false,
   toolProperties,
   onToolPropertiesChange,
 }) => {
-  const [activeTab, setActiveTab] = useState<'Graph' | 'Edit' | 'File' | 'Run'>(
-    'Graph'
-  );
-  //edit
-  const [copiedElement, setCopiedElement] = useState<GraphElement | null>(null);
-  const [history, setHistory] = useState<string[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
-  //edit
-  const canPaste = copiedElement !== null;
-  const canUndo = history.length > 0 && historyIndex >= 0;
-  const canRedo = historyIndex < history.length - 1;
+  const [activeTab, setActiveTab] = useState<'Graph' | 'Edit' | 'File' | 'Run'>('Graph');
+
+  const [clipboard, setClipboard] = useState<GraphElement[]>([]);
+  
+  const canCopy = selectedElements.length > 0;
+  const canPaste = clipboard.length > 0;
+  const canDelete = selectedElements.length > 0;
 
   //edit
   // Edit operation handlers
   const handleSelectAll = useCallback(() => {
     console.log('Select All clicked');
-    alert('Select All functionality triggered');
+    const selectAllEvent = new CustomEvent('canvas-select-all');
+    document.dispatchEvent(selectAllEvent);
   }, []);
-  
+
   const handleCopy = useCallback(() => {
-    if (selectedElement) {
-      setCopiedElement({ ...selectedElement });
-      setHistory(prev => [...prev, 'copy_operation']);
-      setHistoryIndex(prev => prev + 1);
-      console.log('Element copied:', selectedElement);
-      alert('Element copied to clipboard');
-    } else {
-      alert('Please select an element first');
-    }
-  }, [selectedElement]);
+    if (!canCopy) return;
+    
+    setClipboard([...selectedElements]);
+    
+    const resetEvent = new CustomEvent('canvas-reset-paste-count');
+    document.dispatchEvent(resetEvent);
+    
+    console.log(`Copied ${selectedElements.length} elements to clipboard`);
+  }, [canCopy, selectedElements]);
   
   const handlePaste = useCallback(() => {
-    if (canPaste && copiedElement) {
-      console.log('Pasting element:', copiedElement);
-      alert('Paste functionality triggered');
-    } else {
-      alert('Clipboard is empty, cannot paste');
-    }
-  }, [canPaste, copiedElement]);
+    if (!canPaste) return;
+    
+    const pasteEvent = new CustomEvent('canvas-paste-elements', {
+      detail: { elements: clipboard }
+    });
+    document.dispatchEvent(pasteEvent);
+    console.log(`Pasted ${clipboard.length} elements from clipboard`);
+  }, [canPaste, clipboard]);
   
   const handleUndo = useCallback(() => {
-    console.log('Undo clicked');
-    if (canUndo) {
-      setHistoryIndex(prev => Math.max(prev - 1, -1));
-      alert('Undo functionality triggered');
-    } else {
-      alert('Nothing to undo');
-    }
+    if (!canUndo) return;
+    
+    console.log('Undo button clicked');
+    const undoEvent = new CustomEvent('canvas-undo');
+    document.dispatchEvent(undoEvent);
   }, [canUndo]);
-  
+
   const handleRedo = useCallback(() => {
-    console.log('Redo clicked');
-    if (canRedo) {
-      setHistoryIndex(prev => Math.min(prev + 1, history.length - 1));
-      alert('Redo functionality triggered');
-    } else {
-      alert('Nothing to redo');
-    }
-  }, [canRedo, history.length]);
-  
+    if (!canRedo) return;
+    
+    console.log('Redo button clicked');
+    const redoEvent = new CustomEvent('canvas-redo');
+    document.dispatchEvent(redoEvent);
+  }, [canRedo]);
+
   const handleZoom = useCallback(() => {
     console.log('Zoom clicked');
-    alert('Zoom functionality triggered');
+    const zoomEvent = new CustomEvent('canvas-zoom-fit');
+    document.dispatchEvent(zoomEvent);
   }, []);
+
+  const handleDelete = useCallback(() => {
+    if (!canDelete) return;
+    
+    const deleteEvent = new CustomEvent('canvas-delete-selected');
+    document.dispatchEvent(deleteEvent);
+    console.log(`Deleted ${selectedElements.length} elements`);
+  }, [canDelete, selectedElements.length]);
 
   //edit
   // Keyboard shortcuts
@@ -283,7 +294,8 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
       // Prevent shortcuts when typing in input fields
       if (
         event.target instanceof HTMLInputElement ||
-        event.target instanceof HTMLTextAreaElement
+        event.target instanceof HTMLTextAreaElement ||
+        activeTab !== 'Edit'
       ) {
         return;
       }
@@ -297,7 +309,7 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
             handleSelectAll();
             break;
           case 'c':
-            if (selectedElement) {
+            if (canCopy) {
               event.preventDefault();
               handleCopy();
             }
@@ -326,11 +338,29 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
             break;
         }
       }
+      if (event.key === 'Delete' && canDelete) {
+        event.preventDefault();
+        handleDelete();
+      }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [activeTab, selectedElement, canPaste, canUndo, canRedo, handleSelectAll, handleCopy, handlePaste, handleUndo, handleRedo, handleZoom]);
+  }, [
+    activeTab,
+    canCopy,
+    canPaste,
+    canDelete,
+    canUndo,
+    canRedo,
+    handleSelectAll,
+    handleCopy,
+    handlePaste,
+    handleUndo,
+    handleRedo,
+    handleZoom,
+    handleDelete,
+  ]);
 
   const handleDragStart = (e: React.DragEvent, tool: string) => {
     e.dataTransfer.setData('tool', tool);
@@ -370,6 +400,7 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
             <button
               className="edit-button"
               onClick={handleSelectAll}
+              disabled={allElements.length === 0}
               title="Select All (Ctrl+A)"
             >
               Select All (A)
@@ -377,7 +408,7 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
             <button
               className="edit-button"
               onClick={handleCopy}
-              disabled={!selectedElement}
+              disabled={!canCopy}
               title="Copy (Ctrl+C)"
             >
               Copy (C)
@@ -413,6 +444,14 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
             >
               Zoom (M)
             </button>
+            <button
+                className="edit-button"
+                onClick={handleDelete}
+                disabled={!canDelete}
+                title="Delete Selected (Delete)"
+              >
+                Delete
+              </button>
           </div>
         );
       case 'File':

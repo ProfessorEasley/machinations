@@ -1,14 +1,19 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import './Canvas.css';
 
 interface CanvasProps {
   selectedTool: string;
+  elements?: GraphElement[];
+  selectedElementIds?: number[];
+  onElementsChange?: (elements: GraphElement[]) => void;
+  onSelectionChange?: (selectedIds: number[]) => void;
+
   onElementUpdate?: (elementId: number, updates: Partial<GraphElement>) => void;
   onElementSelection?: (element: GraphElement | null) => void;
-  externalElementUpdate?: {
-    elementId: number;
-    updates: Partial<GraphElement>;
-  } | null;
+  //externalElementUpdate?: {
+    //elementId: number;
+    //updates: Partial<GraphElement>;
+  //} | null;
   toolProperties?: {
     textLabel: { text: string; color: string };
     group: { text: string; color: string };
@@ -162,28 +167,57 @@ interface GraphElement {
 
 const Canvas: React.FC<CanvasProps> = ({
   selectedTool,
+  elements: externalElements,
+  selectedElementIds: externalSelectedIds,
+  onElementsChange,
+  onSelectionChange,
   onElementUpdate,
   onElementSelection,
-  externalElementUpdate,
+  //externalElementUpdate,
   toolProperties,
 }) => {
-  const [elements, setElements] = useState<GraphElement[]>([]);
+  const [internalElements, setInternalElements] = useState<GraphElement[]>([]);
+  const [internalSelectedIds, setInternalSelectedIds] = useState<number[]>([]);
+  
+  const elements = externalElements ?? internalElements;
+  const selectedId = externalSelectedIds ?? internalSelectedIds;
+  
+  const setElements = useCallback((newElements: GraphElement[] | ((prev: GraphElement[]) => GraphElement[])) => {
+    const updatedElements = typeof newElements === 'function' 
+      ? newElements(elements) 
+      : newElements;
+      
+    if (onElementsChange) {
+      onElementsChange(updatedElements);
+    } else {
+      setInternalElements(updatedElements);
+    }
+  }, [elements, onElementsChange]);
+  
+  const setSelectedId = useCallback((newSelection: number[] | ((prev: number[]) => number[])) => {
+    const updatedSelection = typeof newSelection === 'function' 
+      ? newSelection(selectedId) 
+      : newSelection;
+      
+    if (onSelectionChange) {
+      onSelectionChange(updatedSelection);
+    } else {
+      setInternalSelectedIds(updatedSelection);
+    }
+  }, [selectedId, onSelectionChange]);
+
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [selectedId, setSelectedId] = useState<number[]>([]);
-  const [dragOffset, setDragOffset] = useState<{ x: number; y: number } | null>(
-    null
-  );
+  const [dragOffset, setDragOffset] = useState<{ x: number; y: number } | null>(null);
   const [draggingId, setDraggingId] = useState<number | null>(null);
+  const [draggedElements, setDraggedElements] = useState<GraphElement[] | null>(null);
+  const [pasteCount, setPasteCount] = useState(0);
 
   // Bounding box selection state
   const [isSelectingBox, setIsSelectingBox] = useState(false);
-  const [boxStart, setBoxStart] = useState<{ x: number; y: number } | null>(
-    null
-  );
+  const [boxStart, setBoxStart] = useState<{ x: number; y: number } | null>(null);
   const [boxEnd, setBoxEnd] = useState<{ x: number; y: number } | null>(null);
   const [mouseDownOnCanvas, setMouseDownOnCanvas] = useState(false);
-  const [justCompletedBoxSelection, setJustCompletedBoxSelection] =
-    useState(false);
+  const [justCompletedBoxSelection, setJustCompletedBoxSelection] = useState(false);
 
   // Resize state
   const [isResizing, setIsResizing] = useState(false);
@@ -198,17 +232,9 @@ const Canvas: React.FC<CanvasProps> = ({
 
   // Connection creation state
   const [isCreatingConnection, setIsCreatingConnection] = useState(false);
-  const [connectionStart, setConnectionStart] = useState<{
-    x: number;
-    y: number;
-  } | null>(null);
-  const [connectionEnd, setConnectionEnd] = useState<{
-    x: number;
-    y: number;
-  } | null>(null);
-  const [connectionType, setConnectionType] = useState<GraphElementType | null>(
-    null
-  );
+  const [connectionStart, setConnectionStart] = useState<{ x: number; y: number } | null>(null);
+  const [connectionEnd, setConnectionEnd] = useState<{ x: number; y: number } | null>(null);
+  const [connectionType, setConnectionType] = useState<GraphElementType | null>(null);
 
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -230,9 +256,117 @@ const Canvas: React.FC<CanvasProps> = ({
       }
     };
 
+    //edit
+    const handleSelectAll = () => {
+      const allIds = elements.map(el => el.id);
+      setSelectedId(allIds);
+      console.log('Selected all elements:', allIds.length);
+    };
+
+    const handleDeleteSelected = () => {
+      if (selectedId.length > 0) {
+        setElements(prev => prev.filter(el => !selectedId.includes(el.id)));
+        setSelectedId([]);
+        console.log('Deleted selected elements');
+      }
+    };
+
+    const handlePasteElements = (event: CustomEvent) => {
+      const { elements: clipboardElements } = event.detail;
+      if (clipboardElements && clipboardElements.length > 0) {
+        const maxId = Math.max(...elements.map(el => el.id), 0);
+        const offset = (pasteCount + 1) * 20;
+        
+        const pastedElements = clipboardElements.map((el: GraphElement, index: number) => ({
+          ...el,
+          id: maxId + index + 1,
+          x: el.x + offset,
+          y: el.y + offset,
+          connectedToStart: undefined,
+          connectedToEnd: undefined,
+        }));
+        
+        setElements(prev => [...prev, ...pastedElements]);
+        setSelectedId(pastedElements.map((el: { id: any; }) => el.id));
+        setPasteCount(prev => prev + 1);
+        console.log('Pasted elements with offset:', offset);
+      }
+    };
+
+    const handleResetPasteCount = () => {
+      setPasteCount(0);
+      console.log('Reset paste count on new copy');
+    };
+
+    const handleUndo = () => {
+      console.log('Undo event received in Canvas');
+    };
+    
+    
+    const handleRedo = () => {
+      console.log('Redo event received in Canvas');
+    };
+
+    const handleZoomFit = () => {
+      console.log('Zoom to fit triggered');
+      if (elements.length === 0) return;
+      
+      const bounds = elements.reduce(
+        (acc, el) => ({
+          minX: Math.min(acc.minX, el.x),
+          minY: Math.min(acc.minY, el.y),
+          maxX: Math.max(acc.maxX, el.x + (el.width || 40)),
+          maxY: Math.max(acc.maxY, el.y + (el.height || 40)),
+        }),
+        { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }
+      );
+      const canvasWidth = canvasRef.current?.clientWidth || 800;
+      const canvasHeight = canvasRef.current?.clientHeight || 600;
+      const contentWidth = bounds.maxX - bounds.minX;
+      const contentHeight = bounds.maxY - bounds.minY;
+      
+      const scaleX = (canvasWidth - 100) / contentWidth;
+      const scaleY = (canvasHeight - 100) / contentHeight;
+      const scale = Math.min(scaleX, scaleY, 1);
+      
+      console.log('Zoom calculated:', { bounds, scale, canvasWidth, canvasHeight });
+      
+      const zoomEvent = new CustomEvent('canvas-zoom-update', {
+        detail: { bounds, scale, elementCount: elements.length }
+      });
+      document.dispatchEvent(zoomEvent);
+    };
+
     document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isCreatingConnection, selectedId]);
+    document.addEventListener('canvas-select-all', handleSelectAll);
+    document.addEventListener('canvas-delete-selected', handleDeleteSelected);
+    document.addEventListener('canvas-paste-elements', handlePasteElements as EventListener);
+    document.addEventListener('canvas-reset-paste-count', handleResetPasteCount);
+    document.addEventListener('canvas-undo', handleUndo);
+    document.addEventListener('canvas-redo', handleRedo);
+    document.addEventListener('canvas-zoom-fit', handleZoomFit);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('canvas-select-all', handleSelectAll);
+      document.removeEventListener('canvas-delete-selected', handleDeleteSelected);
+      document.removeEventListener('canvas-paste-elements', handlePasteElements as EventListener);
+      document.removeEventListener('canvas-reset-paste-count', handleResetPasteCount);
+      document.removeEventListener('canvas-undo', handleUndo);
+      document.removeEventListener('canvas-redo', handleRedo);
+      document.removeEventListener('canvas-zoom-fit', handleZoomFit);
+    };
+  }, [isCreatingConnection, selectedId, elements, setElements, setSelectedId]);
+
+  useEffect(() => {
+    if (onElementSelection) {
+      if (selectedId.length === 1) {
+        const element = elements.find(el => el.id === selectedId[0]);
+        onElementSelection(element || null);
+      } else if (selectedId.length === 0) {
+        onElementSelection(null);
+      }
+    }
+  }, [selectedId.length, selectedId[0]]);
 
   // Helper function to find the closest element to a point
   const findClosestElement = (
@@ -623,17 +757,17 @@ const Canvas: React.FC<CanvasProps> = ({
   };
 
   // Handle external updates from parent component
-  React.useEffect(() => {
-    if (externalElementUpdate) {
-      setElements(prevElements =>
-        prevElements.map(el =>
-          el.id === externalElementUpdate.elementId
-            ? { ...el, ...externalElementUpdate.updates }
-            : el
-        )
-      );
-    }
-  }, [externalElementUpdate]);
+  //React.useEffect(() => {
+    //if (externalElementUpdate) {
+      //setElements(prevElements =>
+        //prevElements.map(el =>
+          //el.id === externalElementUpdate.elementId
+            //? { ...el, ...externalElementUpdate.updates }
+            //: el
+        //)
+      //);
+    //}
+  //}, [externalElementUpdate]);
 
   // Expose selected element to parent
   React.useEffect(() => {
@@ -641,7 +775,7 @@ const Canvas: React.FC<CanvasProps> = ({
     if (onElementSelection) {
       onElementSelection(selectedEl);
     }
-  }, [selectedId, elements, onElementSelection, getSelectedElement]);
+  }, [selectedId, elements, onElementSelection]);
 
   const handleElementMouseDown = (e: React.MouseEvent, id: number) => {
     if (selectedTool === 'Select') {
@@ -651,7 +785,10 @@ const Canvas: React.FC<CanvasProps> = ({
           prev.includes(id) ? prev.filter(selId => selId !== id) : [...prev, id]
         );
       } else {
-        setSelectedId([id]);
+        if (selectedId.includes(id)) {
+        } else {
+          setSelectedId([id]);
+        }
       }
       setDraggingId(id);
       const el = elements.find(el => el.id === id);
@@ -698,81 +835,61 @@ const Canvas: React.FC<CanvasProps> = ({
           const rect = canvasRef.current.getBoundingClientRect();
           const newX = e.clientX - rect.left - dragOffset.x;
           const newY = e.clientY - rect.top - dragOffset.y;
-          const deltaX =
-            newX - (elements.find(el => el.id === draggingId)?.x ?? 0);
-          const deltaY =
-            newY - (elements.find(el => el.id === draggingId)?.y ?? 0);
-
-          // Update elements and connections in one operation
-          setElements(prevElements => {
-            const updatedElements = prevElements.map(el =>
-              selectedId.includes(el.id)
-                ? { ...el, x: el.x + deltaX, y: el.y + deltaY }
-                : el
-            );
-
-            // Update connections for moved elements
-            return updatedElements.map(element => {
-              // Skip if this is not a connection element
-              if (
-                element.type !== 'Resource Connection' &&
-                element.type !== 'State Connection'
-              ) {
-                return element;
-              }
-
-              const updatedElement = { ...element };
-              let needsUpdate = false;
-
-              // Check if this connection is connected to any moved element
-              selectedId.forEach(movedId => {
-                const movedElement = updatedElements.find(
-                  el => el.id === movedId
+          const baseElements = draggedElements || elements;
+          const draggingElement = baseElements.find(el => el.id === draggingId);
+          
+          if (!draggingElement) return;
+          
+          const deltaX = newX - draggingElement.x;
+          const deltaY = newY - draggingElement.y;
+    
+          const updatedElements = baseElements.map(el =>
+            selectedId.includes(el.id)
+              ? { ...el, x: el.x + deltaX, y: el.y + deltaY }
+              : el
+          );
+    
+          const finalElements = updatedElements.map(element => {
+            if (element.type !== 'Resource Connection' && element.type !== 'State Connection') {
+              return element;
+            }
+    
+            const updatedElement = { ...element };
+            let needsUpdate = false;
+    
+            selectedId.forEach(movedId => {
+              const movedElement = updatedElements.find(el => el.id === movedId);
+              if (!movedElement) return;
+    
+              if (element.connectedToStart === movedId) {
+                const startEdgePoint = findClosestEdgePoint(
+                  element.endX || element.x,
+                  element.endY || element.y,
+                  movedElement
                 );
-                if (!movedElement) return;
-
-                if (element.connectedToStart === movedId) {
-                  console.log(
-                    'Updating connection start for element',
-                    movedId,
-                    'connection',
-                    element.id
-                  );
-                  // Find the closest edge point for the start element
-                  const startEdgePoint = findClosestEdgePoint(
-                    element.endX || element.x, // Use the other end as reference
-                    element.endY || element.y,
-                    movedElement
-                  );
-                  updatedElement.startX = startEdgePoint.x;
-                  updatedElement.startY = startEdgePoint.y;
-                  updatedElement.x = updatedElement.startX;
-                  updatedElement.y = updatedElement.startY;
-                  needsUpdate = true;
-                }
-
-                if (element.connectedToEnd === movedId) {
-                  console.log(
-                    'Updating connection end for element',
-                    movedId,
-                    'connection',
-                    element.id
-                  );
-                  // Find the closest edge point for the end element
-                  const endEdgePoint = findClosestEdgePoint(
-                    element.startX || element.x, // Use the other end as reference
-                    element.startY || element.y,
-                    movedElement
-                  );
-                  updatedElement.endX = endEdgePoint.x;
-                  updatedElement.endY = endEdgePoint.y;
-                  needsUpdate = true;
-                }
-              });
-
-              return needsUpdate ? updatedElement : element;
+                updatedElement.startX = startEdgePoint.x;
+                updatedElement.startY = startEdgePoint.y;
+                updatedElement.x = updatedElement.startX;
+                updatedElement.y = updatedElement.startY;
+                needsUpdate = true;
+              }
+    
+              if (element.connectedToEnd === movedId) {
+                const endEdgePoint = findClosestEdgePoint(
+                  element.startX || element.x,
+                  element.startY || element.y,
+                  movedElement
+                );
+                updatedElement.endX = endEdgePoint.x;
+                updatedElement.endY = endEdgePoint.y;
+                needsUpdate = true;
+              }
             });
+    
+            return needsUpdate ? updatedElement : element;
           });
+    
+          setDraggedElements(finalElements);
         }
       }
     }
@@ -780,6 +897,12 @@ const Canvas: React.FC<CanvasProps> = ({
 
   // Mouse up to end dragging or bounding box selection or resize or create connection
   const handleMouseUp = () => {
+    const wasDragging = draggingId !== null && dragOffset !== null;
+    if (wasDragging && draggedElements) {
+      setElements(draggedElements);
+      setDraggedElements(null);
+    }
+
     setMouseDownOnCanvas(false);
     setDragOffset(null);
     setDraggingId(null);
@@ -1813,6 +1936,8 @@ const Canvas: React.FC<CanvasProps> = ({
     return null;
   };
 
+  const displayElements = draggedElements || elements;
+
   return (
     <div
       ref={canvasRef}
@@ -1824,6 +1949,7 @@ const Canvas: React.FC<CanvasProps> = ({
       onMouseDown={handleCanvasMouseDown}
       onMouseUp={handleMouseUp}
     >
+      {displayElements.map(renderElement)}
       {elements.map(renderElement)}
       {renderConnectionPreview()}
       {renderSelectionBox()}
