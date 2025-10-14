@@ -220,10 +220,12 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
   toolProperties,
   onToolPropertiesChange,
 }) => {
-  const [activeTab, setActiveTab] = useState<'Graph' | 'Edit' | 'File' | 'Run'>('Graph');
+  const [activeTab, setActiveTab] = useState<'Graph' | 'Edit' | 'File' | 'Run'>(
+    'Graph'
+  );
 
   const [clipboard, setClipboard] = useState<GraphElement[]>([]);
-  
+
   const canCopy = selectedElements.length > 0;
   const canPaste = clipboard.length > 0;
   const canDelete = selectedElements.length > 0;
@@ -238,28 +240,28 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
 
   const handleCopy = useCallback(() => {
     if (!canCopy) return;
-    
+
     setClipboard([...selectedElements]);
-    
+
     const resetEvent = new CustomEvent('canvas-reset-paste-count');
     document.dispatchEvent(resetEvent);
-    
+
     console.log(`Copied ${selectedElements.length} elements to clipboard`);
   }, [canCopy, selectedElements]);
-  
+
   const handlePaste = useCallback(() => {
     if (!canPaste) return;
-    
+
     const pasteEvent = new CustomEvent('canvas-paste-elements', {
-      detail: { elements: clipboard }
+      detail: { elements: clipboard },
     });
     document.dispatchEvent(pasteEvent);
     console.log(`Pasted ${clipboard.length} elements from clipboard`);
   }, [canPaste, clipboard]);
-  
+
   const handleUndo = useCallback(() => {
     if (!canUndo) return;
-    
+
     console.log('Undo button clicked');
     const undoEvent = new CustomEvent('canvas-undo');
     document.dispatchEvent(undoEvent);
@@ -267,7 +269,7 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
 
   const handleRedo = useCallback(() => {
     if (!canRedo) return;
-    
+
     console.log('Redo button clicked');
     const redoEvent = new CustomEvent('canvas-redo');
     document.dispatchEvent(redoEvent);
@@ -281,7 +283,7 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
 
   const handleDelete = useCallback(() => {
     if (!canDelete) return;
-    
+
     const deleteEvent = new CustomEvent('canvas-delete-selected');
     document.dispatchEvent(deleteEvent);
     console.log(`Deleted ${selectedElements.length} elements`);
@@ -444,13 +446,13 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
               Zoom (M)
             </button>
             <button
-                className="edit-button"
-                onClick={handleDelete}
-                disabled={!canDelete}
-                title="Delete Selected (Delete)"
-              >
-                Delete
-              </button>
+              className="edit-button"
+              onClick={handleDelete}
+              disabled={!canDelete}
+              title="Delete Selected (Delete)"
+            >
+              Delete
+            </button>
           </div>
         );
       case 'File':

@@ -19,22 +19,25 @@ export function useHistory<T>(initialState: T): UseHistoryReturn<T> {
   const canUndo = currentIndex > 0;
   const canRedo = currentIndex < history.length - 1;
 
-  const setState = useCallback((newState: T) => {
-    if (isApplyingHistoryRef.current) {
-      return;
-    }
+  const setState = useCallback(
+    (newState: T) => {
+      if (isApplyingHistoryRef.current) {
+        return;
+      }
 
-    setHistory(prev => {
-      const truncated = prev.slice(0, currentIndex + 1);
-      const updated = [...truncated, newState];
-      return updated.length > 50 ? updated.slice(-50) : updated;
-    });
+      setHistory(prev => {
+        const truncated = prev.slice(0, currentIndex + 1);
+        const updated = [...truncated, newState];
+        return updated.length > 50 ? updated.slice(-50) : updated;
+      });
 
-    setCurrentIndex(prev => {
-      const newLength = history.slice(0, prev + 1).length + 1;
-      return newLength > 50 ? 49 : prev + 1;
-    });
-  }, [currentIndex, history]);
+      setCurrentIndex(prev => {
+        const newLength = history.slice(0, prev + 1).length + 1;
+        return newLength > 50 ? 49 : prev + 1;
+      });
+    },
+    [currentIndex, history]
+  );
 
   const undo = useCallback(() => {
     if (canUndo) {

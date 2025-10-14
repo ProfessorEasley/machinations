@@ -22,44 +22,46 @@ type GraphElementType =
   | 'Register'
   | 'End Condition'
   | 'Artifical Intelligence';
-  interface GraphElement {
-    id: number;
-    type: GraphElementType;
-    x: number;
-    y: number;
-    text?: string;
-    width?: number;
-    height?: number;
-    color?: string;
-    thickness?: number;
-    activation?: 'passive' | 'interactive' | 'automatic' | 'onstart';
-    pullMode?: 'pull any' | 'pull all' | 'push any' | 'push all';
-    resources?: string;
-    number?: number;
-    max?: number;
-    displayLimit?: number;
-    startX?: number;
-    startY?: number;
-    endX?: number;
-    endY?: number;
-    connectedToStart?: number;
-    connectedToEnd?: number;
-  }
+interface GraphElement {
+  id: number;
+  type: GraphElementType;
+  x: number;
+  y: number;
+  text?: string;
+  width?: number;
+  height?: number;
+  color?: string;
+  thickness?: number;
+  activation?: 'passive' | 'interactive' | 'automatic' | 'onstart';
+  pullMode?: 'pull any' | 'pull all' | 'push any' | 'push all';
+  resources?: string;
+  number?: number;
+  max?: number;
+  displayLimit?: number;
+  startX?: number;
+  startY?: number;
+  endX?: number;
+  endY?: number;
+  connectedToStart?: number;
+  connectedToEnd?: number;
+}
 
-  const Playground: React.FC = () => {
-    const [selectedTool, setSelectedTool] = useState<string>('Select');
-    const [selectedElementIds, setSelectedElementIds] = useState<number[]>([]);
-    const [selectedElement, setSelectedElement] = useState<GraphElement | null>(null);
-    
-    const {
-      state: elements,
-      setState: setElements,
-      undo,
-      redo,
-      canUndo,
-      canRedo,
-    } = useHistory<GraphElement[]>([]);
-  
+const Playground: React.FC = () => {
+  const [selectedTool, setSelectedTool] = useState<string>('Select');
+  const [selectedElementIds, setSelectedElementIds] = useState<number[]>([]);
+  const [selectedElement, setSelectedElement] = useState<GraphElement | null>(
+    null
+  );
+
+  const {
+    state: elements,
+    setState: setElements,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+  } = useHistory<GraphElement[]>([]);
+
   const [toolProperties, setToolProperties] = useState<{
     textLabel: { text: string; color: string };
     group: { text: string; color: string };
@@ -300,22 +302,24 @@ type GraphElementType =
       el.id === elementId ? { ...el, ...updates } : el
     );
     setElements(newElements);
-    
+
     if (selectedElement && selectedElement.id === elementId) {
       setSelectedElement({ ...selectedElement, ...updates });
     }
-    
   };
 
-  const handleSelectionChange = useCallback((newSelectedIds: number[]) => {
-    setSelectedElementIds(newSelectedIds);
-    if (newSelectedIds.length === 1) {
-      const element = elements.find(el => el.id === newSelectedIds[0]);
-      setSelectedElement(element || null);
-    } else {
-      setSelectedElement(null);
-    }
-  }, [elements]);
+  const handleSelectionChange = useCallback(
+    (newSelectedIds: number[]) => {
+      setSelectedElementIds(newSelectedIds);
+      if (newSelectedIds.length === 1) {
+        const element = elements.find(el => el.id === newSelectedIds[0]);
+        setSelectedElement(element || null);
+      } else {
+        setSelectedElement(null);
+      }
+    },
+    [elements]
+  );
 
   const handleElementSelection = (element: GraphElement | null) => {
     setSelectedElement(element);
@@ -337,13 +341,13 @@ type GraphElementType =
 
   // Clear external update after it's been processed
   //React.useEffect(() => {
-    //if (externalElementUpdate) {
-      // Reset after a short delay to allow Canvas to process the update
-      //const timer = setTimeout(() => {
-        //setExternalElementUpdate(null);
-      //}, 0);
-      //return () => clearTimeout(timer);
-    //}
+  //if (externalElementUpdate) {
+  // Reset after a short delay to allow Canvas to process the update
+  //const timer = setTimeout(() => {
+  //setExternalElementUpdate(null);
+  //}, 0);
+  //return () => clearTimeout(timer);
+  //}
   //}, [externalElementUpdate]);
 
   return (
