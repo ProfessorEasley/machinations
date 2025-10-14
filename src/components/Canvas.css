@@ -441,3 +441,7 @@
   stroke-linecap: butt;
   stroke-linejoin: miter;
 }
+
+.clickable-element {
+  pointer-events: auto !important;
+}

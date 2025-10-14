@@ -152,7 +152,7 @@ interface GraphElement {
   max?: number;
   displayLimit?: number;
 
-  actions?: number; 
+  actions?: number;
 
   // For connection elements
   startX?: number;
@@ -220,7 +220,6 @@ const Canvas: React.FC<CanvasProps> = ({
 
   const canvasRef = useRef<HTMLDivElement>(null);
 
-
   const runSimulationTick = (
     elementsToUpdate: GraphElement[],
     activationType: 'automatic' | 'onstart' | 'interactive',
@@ -244,50 +243,91 @@ const Canvas: React.FC<CanvasProps> = ({
 
       const startElement = elementMap.get(connection.connectedToStart);
       const endElement = elementMap.get(connection.connectedToEnd);
-
       if (!startElement || !endElement) continue;
-      
+
       const transferAmount = parseInt(connection.text || '0', 10);
       if (transferAmount === 0) continue;
 
-      // --- Source pushes to Pool ---
+      // Case 1: Source -> Pool (Source is the trigger)
       if (startElement.type === 'Source' && endElement.type === 'Pool') {
         const source = startElement;
         const pool = endElement;
-        const isTarget = !interactiveElementId || source.id === interactiveElementId;
 
-        const isSourceActive =
-          source.activation === activationType ||
-          (source.activation === 'passive' && activationType === 'automatic');
+        // --- THIS IS THE FIX: A clearer, more explicit logic block ---
+        let isTriggerActive = false;
+        if (activationType === 'automatic') {
+          // An automatic tick triggers both 'automatic' and 'passive' sources.
+          if (
+            source.activation === 'automatic' ||
+            source.activation === 'passive'
+          ) {
+            isTriggerActive = true;
+          }
+        } else {
+          // 'interactive' and 'onstart' ticks require an exact match.
+          if (source.activation === activationType) {
+            isTriggerActive = true;
+          }
+        }
 
-        if (isTarget && isSourceActive) {
+        const canFire = activationType !== 'onstart' || !source.hasStarted;
+        const isTarget =
+          !interactiveElementId || source.id === interactiveElementId;
+
+        if (isTarget && isTriggerActive && canFire) {
           const newTotal = (pool.currentPoints || 0) + transferAmount;
           pool.currentPoints = Math.min(newTotal, pool.max || Infinity);
-          
-          if (activationType === 'onstart') source.hasStarted = true;
+          if (activationType === 'onstart') {
+            source.hasStarted = true;
+          }
         }
       }
 
-      // --- Drain pulls from Pool ---
+      // Case 2: Pool -> Drain (Drain is the trigger)
       if (startElement.type === 'Pool' && endElement.type === 'Drain') {
         const pool = startElement;
         const drain = endElement;
-        const isTarget = !interactiveElementId || drain.id === interactiveElementId;
-        
-        // --- THIS IS THE FIX ---
-        // We now treat a 'passive' Drain as 'automatic' during the run.
-        const isDrainActive =
-          drain.activation === activationType ||
-          (drain.activation === 'passive' && activationType === 'automatic');
 
-        if (isTarget && isDrainActive) {
+        // --- THIS IS THE FIX (Applied here as well) ---
+        let isTriggerActive = false;
+        if (activationType === 'automatic') {
+          // An automatic tick triggers both 'automatic' and 'passive' drains.
+          if (
+            drain.activation === 'automatic' ||
+            drain.activation === 'passive'
+          ) {
+            isTriggerActive = true;
+          }
+        } else {
+          // 'interactive' and 'onstart' ticks require an exact match.
+          if (drain.activation === activationType) {
+            isTriggerActive = true;
+          }
+        }
+
+        const canFire = activationType !== 'onstart' || !drain.hasStarted;
+        const isTarget =
+          !interactiveElementId || drain.id === interactiveElementId;
+
+        if (isTarget && isTriggerActive) {
+          console.log('[LOG 3] Simulation tick for Drain:', {
+            isTarget,
+            isTriggerActive,
+            canFire,
+            transferAmount,
+            pointsAvailable: pool.currentPoints,
+          });
+        }
+
+        if (isTarget && isTriggerActive && canFire) {
           const pointsAvailable = pool.currentPoints || 0;
           const pointsToTransfer = Math.min(transferAmount, pointsAvailable);
-
           if (pointsToTransfer > 0) {
             pool.currentPoints! -= pointsToTransfer;
           }
-          if (activationType === 'onstart') drain.hasStarted = true;
+          if (activationType === 'onstart') {
+            drain.hasStarted = true;
+          }
         }
       }
     }
@@ -296,9 +336,7 @@ const Canvas: React.FC<CanvasProps> = ({
   };
 
   const handleInteractiveAction = (elementId: number) => {
-    // Only run interactive actions if the simulation is running
-    if (!isRunning) return;
-
+    // This will only be called by onClick when isRunning is true.
     setElements(currentElements =>
       runSimulationTick(currentElements, 'interactive', elementId)
     );
@@ -307,30 +345,35 @@ const Canvas: React.FC<CanvasProps> = ({
   useEffect(() => {
     let simulationInterval: NodeJS.Timeout | undefined;
 
-    // When the user presses "Run"
+    // A. When "Run" is first clicked for a session:
     if (isRunning && !hasSimulationStarted) {
-      // 1. Perform all "OnStart" actions once.
+      // 1. Run all "OnStart" actions exactly once.
       setElements(currentElements =>
         runSimulationTick(currentElements, 'onstart')
       );
       setHasSimulationStarted(true);
     }
 
-    // After starting, run the "Automatic" interval
+    // B. While the simulation is running:
     if (isRunning) {
+      // 2. Start the timer for all "Automatic" actions.
       simulationInterval = setInterval(() => {
         setElements(currentElements =>
           runSimulationTick(currentElements, 'automatic')
         );
-      }, 1000); // Runs every second
+      }, 1000); // Ticks every 1 second.
     }
 
-    // When the user presses "Stop"
-    if (!isRunning) {
-      setHasSimulationStarted(false); // Reset for the next run
+    // C. When "Stop" is clicked:
+    if (!isRunning && hasSimulationStarted) {
+      // 3. Reset the state for the next run.
+      setHasSimulationStarted(false);
+      setElements(currentElements =>
+        currentElements.map(el => ({ ...el, hasStarted: false }))
+      );
     }
 
-    // Cleanup function to clear the interval
+    // D. Cleanup:
     return () => {
       if (simulationInterval) {
         clearInterval(simulationInterval);
@@ -514,7 +557,9 @@ const Canvas: React.FC<CanvasProps> = ({
           y,
           ...poolProps,
           // Starting points cannot exceed the max value
-          currentPoints: maxPoints ? Math.min(startingPoints, maxPoints) : startingPoints,
+          currentPoints: maxPoints
+            ? Math.min(startingPoints, maxPoints)
+            : startingPoints,
         },
       ]);
     } else if (type === 'Resource Connection' || type === 'State Connection') {
@@ -773,33 +818,53 @@ const Canvas: React.FC<CanvasProps> = ({
   }, [selectedId, elements, onElementSelection, getSelectedElement]);
 
   const handleElementMouseDown = (e: React.MouseEvent, id: number) => {
+    // Stop the event from bubbling up to the canvas immediately.
+    e.stopPropagation();
+
+    const element = elements.find(el => el.id === id);
+    if (!element) return;
+
+    console.log(
+      `[LOG 1] Mousedown on element ID: ${id}, Type: ${element.type}`
+    );
+
+    // --- RUN MODE LOGIC ---
+    // If the simulation is running, we only care about interactive actions.
+    if (isRunning) {
+      if (element.activation === 'interactive') {
+        console.log(
+          '[LOG 2] Interactive element clicked in run mode. Calling action...'
+        );
+
+        handleInteractiveAction(id);
+      }
+      // In run mode, do nothing else (no selecting, no dragging).
+      return;
+    }
+
+    // --- EDIT MODE LOGIC ---
+    // If we get here, it means isRunning is false.
     if (selectedTool === 'Select') {
-      e.stopPropagation();
+      // Handle selection
       if (e.ctrlKey || e.metaKey) {
         setSelectedId(prev =>
           prev.includes(id) ? prev.filter(selId => selId !== id) : [...prev, id]
         );
       } else {
-        // Only re-select if it's not already the only thing selected
         if (!(selectedId.length === 1 && selectedId[0] === id)) {
           setSelectedId([id]);
         }
       }
-    }
 
-    // --- CHANGE: The check is now moved here ---
-    // If the simulation is running, we stop before initiating a drag.
-    if (isRunning) return;
-
-    // This part below will now only run if isRunning is false
-    setDraggingId(id);
-    const el = elements.find(el => el.id === id);
-    if (el && canvasRef.current) {
-      const rect = canvasRef.current.getBoundingClientRect();
-      setDragOffset({
-        x: e.clientX - rect.left - el.x,
-        y: e.clientY - rect.top - el.y,
-      });
+      // Prepare for dragging
+      setDraggingId(id);
+      if (canvasRef.current) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        setDragOffset({
+          x: e.clientX - rect.left - element.x,
+          y: e.clientY - rect.top - element.y,
+        });
+      }
     }
   };
 
@@ -1270,21 +1335,14 @@ const Canvas: React.FC<CanvasProps> = ({
         return (
           <svg
             key={el.id}
-            className={`svg-element source-element ${
+            // Add 'clickable-element' to the className string
+            className={`svg-element source-element clickable-element ${
               selectedTool === 'Select' ? 'selectable' : ''
             } ${isSelected ? 'selected' : ''}`}
             style={{ left: el.x, top: el.y }}
             width={40}
             height={40}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
-            onClick={e => {
-              if (el.activation === 'interactive') {
-                handleInteractiveAction(el.id);
-                e.stopPropagation();
-              } else if (selectedTool === 'Select' && !isRunning) {
-                e.stopPropagation();
-              }
-            }}
           >
             <polygon
               points="20,5 35,35 5,35"
@@ -1296,7 +1354,7 @@ const Canvas: React.FC<CanvasProps> = ({
               x="20"
               y="30"
               className="element-value-text"
-              fill="white" // <-- Add this fill attribute
+              fill="white"
               fontSize="20"
             >
               ∞
@@ -1307,29 +1365,20 @@ const Canvas: React.FC<CanvasProps> = ({
         return (
           <svg
             key={el.id}
-            className={`svg-element drain-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
+            // Add 'clickable-element' to the className string
+            className={`svg-element drain-element clickable-element ${
+              selectedTool === 'Select' ? 'selectable' : ''
+            } ${isSelected ? 'selected' : ''}`}
             style={{ left: el.x, top: el.y }}
             width={40}
             height={40}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
-            onClick={e => {
-              // 1. Always allow interactive actions.
-              if (el.activation === 'interactive') {
-                handleInteractiveAction(el.id);
-                e.stopPropagation();
-              } 
-              // 2. Only allow selection if the simulation is NOT running.
-              else if (selectedTool === 'Select' && !isRunning) {
-                e.stopPropagation();
-              }
-            }}
           >
-            {/* The polygon and text elements remain the same */ }
             <polygon
               points="5,5 35,5 20,35"
               fill={el.color || '#000000'}
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
-              className={`drain-triangle ${isSelected ? 'selected' : ''}`}
+              strokeWidth={el.thickness || 2}
             />
           </svg>
         );
@@ -1693,8 +1742,8 @@ const Canvas: React.FC<CanvasProps> = ({
         const height = Math.abs(ey - sy) + 30;
 
         // Calculate the midpoint for the label, relative to the new bounding box
-        const midX = (sx - left) + (ex - sx) / 2;
-        const midY = (sy - top) + (ey - sy) / 2;
+        const midX = sx - left + (ex - sx) / 2;
+        const midY = sy - top + (ey - sy) / 2;
 
         return (
           <div
@@ -1743,12 +1792,8 @@ const Canvas: React.FC<CanvasProps> = ({
                 x2={ex - left}
                 y2={ey - top}
                 stroke={isSelected ? '#0078d4' : el.color || '#333'}
-                strokeWidth={
-                  isSelected ? 3 : el.thickness || 2
-                }
-                className={`connection-line ${
-                  isSelected ? 'selected' : ''
-                }`}
+                strokeWidth={isSelected ? 3 : el.thickness || 2}
+                className={`connection-line ${isSelected ? 'selected' : ''}`}
                 markerEnd={`url(#arrowhead-${el.id})`}
               />
               {el.text && el.text !== '0' && (
@@ -1765,9 +1810,7 @@ const Canvas: React.FC<CanvasProps> = ({
                     left: sx - left - 4,
                     top: sy - top - 4,
                   }}
-                  onMouseDown={e =>
-                    handleArrowResizeStart(e, el.id, 'start')
-                  }
+                  onMouseDown={e => handleArrowResizeStart(e, el.id, 'start')}
                 />
                 <div
                   className="arrow-handle"
@@ -1953,7 +1996,7 @@ const Canvas: React.FC<CanvasProps> = ({
   return (
     <div
       ref={canvasRef}
-      className={`canvas ${isRunning ? 'is-running' : ''}`} 
+      className={`canvas ${isRunning ? 'is-running' : ''}`}
       onDrop={handleDrop}
       onDragOver={handleDragOver}
       onClick={handleCanvasClick}
