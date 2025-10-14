@@ -250,7 +250,13 @@ const Canvas: React.FC<CanvasProps> = ({
       }
 
       // Handle delete key to remove selected elements
-      if (e.key === 'Delete' && selectedId.length > 0) {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId.length > 0) {
+        const target = e.target as HTMLElement;
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+          return;
+        }
+        
+        e.preventDefault();
         setElements(prev => prev.filter(el => !selectedId.includes(el.id)));
         setSelectedId([]);
       }
@@ -355,7 +361,7 @@ const Canvas: React.FC<CanvasProps> = ({
       document.removeEventListener('canvas-redo', handleRedo);
       document.removeEventListener('canvas-zoom-fit', handleZoomFit);
     };
-  }, [isCreatingConnection, selectedId, elements, setElements, setSelectedId]);
+  }, [isCreatingConnection, selectedId, elements, setElements, setSelectedId, pasteCount]);
 
   useEffect(() => {
     if (onElementSelection) {
