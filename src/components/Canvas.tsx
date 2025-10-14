@@ -293,7 +293,7 @@ const Canvas: React.FC<CanvasProps> = ({
         }));
         
         setElements(prev => [...prev, ...pastedElements]);
-        setSelectedId(pastedElements.map((el: { id: any; }) => el.id));
+        setSelectedId(pastedElements.map((el: { id: GraphElement; }) => el.id));
         setPasteCount(prev => prev + 1);
         console.log('Pasted elements with offset:', offset);
       }
