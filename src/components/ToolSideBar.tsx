@@ -294,15 +294,14 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
       // Prevent shortcuts when typing in input fields
       if (
         event.target instanceof HTMLInputElement ||
-        event.target instanceof HTMLTextAreaElement ||
-        activeTab !== 'Edit'
+        event.target instanceof HTMLTextAreaElement
       ) {
         return;
       }
 
       const isCtrlOrCmd = event.ctrlKey || event.metaKey;
 
-      if (isCtrlOrCmd && activeTab === 'Edit') {
+      if (isCtrlOrCmd) {
         switch (event.key.toLowerCase()) {
           case 'a':
             event.preventDefault();

@@ -791,8 +791,7 @@ const Canvas: React.FC<CanvasProps> = ({
           prev.includes(id) ? prev.filter(selId => selId !== id) : [...prev, id]
         );
       } else {
-        if (selectedId.includes(id)) {
-        } else {
+        if (!selectedId.includes(id)) {
           setSelectedId([id]);
         }
       }
@@ -1956,7 +1955,6 @@ const Canvas: React.FC<CanvasProps> = ({
       onMouseUp={handleMouseUp}
     >
       {displayElements.map(renderElement)}
-      {elements.map(renderElement)}
       {renderConnectionPreview()}
       {renderSelectionBox()}
     </div>
