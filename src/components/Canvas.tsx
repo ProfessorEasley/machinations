@@ -1495,9 +1495,9 @@ const Canvas: React.FC<CanvasProps> = ({
             width={40}
             height={40}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
-            onClick={e => {
-              /* Add interactive logic here if Pools can be interactive */
-            }}
+            // onClick={e => {
+            //   /* Add interactive logic here if Pools can be interactive */
+            // }}
           >
             <circle
               cx={20}
