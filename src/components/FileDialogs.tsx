@@ -26,12 +26,13 @@ const FileDialogs: React.FC<FileDialogProps> = ({
     setError('');
 
     switch (type) {
-      case 'new':
+      case 'new': { // FIX: Added braces
         const newFile = fileService.createNewFile(fileName || undefined);
         onFileOperation(newFile);
         break;
+      }
 
-      case 'save':
+      case 'save': { // FIX: Added braces
         const saveResult = fileService.saveCurrentFile();
         if (saveResult.success) {
           onFileOperation(saveResult.data || null);
@@ -40,8 +41,9 @@ const FileDialogs: React.FC<FileDialogProps> = ({
           return;
         }
         break;
+      }
 
-      case 'saveAs':
+      case 'saveAs': { // FIX: Added braces
         if (!fileName.trim()) {
           setError('Please enter a file name');
           return;
@@ -54,8 +56,9 @@ const FileDialogs: React.FC<FileDialogProps> = ({
           return;
         }
         break;
+      }
 
-      case 'import':
+      case 'import': { // FIX: Added braces
         if (!fileContent.trim()) {
           setError('Please enter file content or select a file');
           return;
@@ -68,8 +71,9 @@ const FileDialogs: React.FC<FileDialogProps> = ({
           return;
         }
         break;
+      }
 
-      case 'export':
+      case 'export': { // FIX: Added braces
         const currentFile = fileService.getCurrentFile();
         if (currentFile) {
           const exportResult = fileService.exportFile(currentFile.id);
@@ -90,8 +94,9 @@ const FileDialogs: React.FC<FileDialogProps> = ({
           }
         }
         break;
+      }
 
-      case 'exportSelection':
+      case 'exportSelection': { // FIX: Added braces
         if (selectedElements.length === 0) {
           setError('No elements selected');
           return;
@@ -106,6 +111,7 @@ const FileDialogs: React.FC<FileDialogProps> = ({
         URL.revokeObjectURL(selectionUrl);
         onFileOperation(null);
         break;
+      }
     }
 
     handleClose();

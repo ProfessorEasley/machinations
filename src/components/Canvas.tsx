@@ -274,7 +274,7 @@ const Canvas: React.FC<CanvasProps> = ({
     activationType: 'automatic' | 'onstart' | 'interactive',
     interactiveElementId?: number
   ) => {
-    let nextElements = JSON.parse(
+    const nextElements = JSON.parse(
       JSON.stringify(elementsToUpdate)
     ) as GraphElement[];
     const elementMap = new Map<number, GraphElement>(

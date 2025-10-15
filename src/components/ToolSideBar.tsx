@@ -208,7 +208,7 @@ const fileTools = [
   'Save as SVG (G)',
 ];
 
-const runTools = ['Quick Run', 'Multiple Runs'];
+// const runTools = ['Quick Run', 'Multiple Runs'];
 
 const ToolSideBar: React.FC<ToolSideBarProps> = ({
   selectedTool,

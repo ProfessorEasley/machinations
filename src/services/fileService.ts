@@ -194,7 +194,7 @@ class FileService {
 
       return { success: true, data: importedFile };
     } catch (error) {
-      return { success: false, error: 'Failed to parse file' };
+      return { success: false, error: `Failed to parse file ${error}` };
     }
   }
 
