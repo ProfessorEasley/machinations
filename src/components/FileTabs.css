@@ -132,11 +132,11 @@
     max-width: 150px;
     padding: 6px 8px;
   }
-  
+
   .file-name {
     font-size: 12px;
   }
-  
+
   .new-file-button {
     min-width: 28px;
     height: 28px;
@@ -150,40 +150,40 @@
     background-color: #343a40;
     border-bottom-color: #495057;
   }
-  
+
   .file-tab {
     background-color: #495057;
     border-color: #6c757d;
     color: #f8f9fa;
   }
-  
+
   .file-tab:hover {
     background-color: #6c757d;
   }
-  
+
   .file-tab.active {
     background-color: #212529;
     border-bottom-color: #212529;
   }
-  
+
   .file-name {
     color: #f8f9fa;
   }
-  
+
   .close-tab-button {
     color: #adb5bd;
   }
-  
+
   .close-tab-button:hover {
     background-color: #dc3545;
     color: white;
   }
-  
+
   .new-file-button {
     border-color: #adb5bd;
     color: #adb5bd;
   }
-  
+
   .new-file-button:hover {
     border-color: #007bff;
     color: #007bff;

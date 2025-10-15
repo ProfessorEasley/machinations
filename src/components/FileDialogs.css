@@ -200,7 +200,7 @@
 }
 
 /* File upload styling */
-input[type="file"] {
+input[type='file'] {
   padding: 6px;
   border: 2px dashed #ddd;
   border-radius: 4px;
@@ -209,7 +209,7 @@ input[type="file"] {
   transition: border-color 0.2s;
 }
 
-input[type="file"]:hover {
+input[type='file']:hover {
   border-color: #007bff;
 }
 
@@ -219,13 +219,13 @@ input[type="file"]:hover {
     width: 95%;
     margin: 10px;
   }
-  
+
   .file-dialog-header,
   .file-dialog-content,
   .file-dialog-footer {
     padding: 12px 16px;
   }
-  
+
   .export-options {
     flex-direction: column;
   }

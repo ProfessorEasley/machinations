@@ -26,7 +26,7 @@ const FileTabs: React.FC<FileTabsProps> = ({
 
   const handleFileClose = (fileId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    
+
     // Check if file has unsaved changes
     const file = fileService.getFileById(fileId);
     if (file && file.isModified) {
@@ -50,7 +50,7 @@ const FileTabs: React.FC<FileTabsProps> = ({
     return (
       <div className="file-tabs-container">
         <div className="file-tabs">
-          <button 
+          <button
             className="new-file-button"
             onClick={handleNewFile}
             title="New File (Ctrl+N)"
@@ -65,7 +65,7 @@ const FileTabs: React.FC<FileTabsProps> = ({
   return (
     <div className="file-tabs-container">
       <div className="file-tabs">
-        {files.map((file) => (
+        {files.map(file => (
           <div
             key={file.id}
             className={`file-tab ${currentFileId === file.id ? 'active' : ''} ${file.isModified ? 'modified' : ''}`}
@@ -73,19 +73,17 @@ const FileTabs: React.FC<FileTabsProps> = ({
             title={file.isModified ? `${file.name} (modified)` : file.name}
           >
             <span className="file-name">{file.name}</span>
-            <span className="file-status">
-              {file.isModified && '●'}
-            </span>
+            <span className="file-status">{file.isModified && '●'}</span>
             <button
               className="close-tab-button"
-              onClick={(e) => handleFileClose(file.id, e)}
+              onClick={e => handleFileClose(file.id, e)}
               title="Close file"
             >
               ×
             </button>
           </div>
         ))}
-        <button 
+        <button
           className="new-file-button"
           onClick={handleNewFile}
           title="New File (Ctrl+N)"

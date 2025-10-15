@@ -6,7 +6,14 @@ interface FileDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onFileOperation: (result: FileData | null) => void;
-  type: 'new' | 'open' | 'save' | 'saveAs' | 'import' | 'export' | 'exportSelection';
+  type:
+    | 'new'
+    | 'open'
+    | 'save'
+    | 'saveAs'
+    | 'import'
+    | 'export'
+    | 'exportSelection';
   selectedElements?: GraphElement[];
 }
 
@@ -26,13 +33,15 @@ const FileDialogs: React.FC<FileDialogProps> = ({
     setError('');
 
     switch (type) {
-      case 'new': { // FIX: Added braces
+      case 'new': {
+        // FIX: Added braces
         const newFile = fileService.createNewFile(fileName || undefined);
         onFileOperation(newFile);
         break;
       }
 
-      case 'save': { // FIX: Added braces
+      case 'save': {
+        // FIX: Added braces
         const saveResult = fileService.saveCurrentFile();
         if (saveResult.success) {
           onFileOperation(saveResult.data || null);
@@ -43,7 +52,8 @@ const FileDialogs: React.FC<FileDialogProps> = ({
         break;
       }
 
-      case 'saveAs': { // FIX: Added braces
+      case 'saveAs': {
+        // FIX: Added braces
         if (!fileName.trim()) {
           setError('Please enter a file name');
           return;
@@ -58,12 +68,16 @@ const FileDialogs: React.FC<FileDialogProps> = ({
         break;
       }
 
-      case 'import': { // FIX: Added braces
+      case 'import': {
+        // FIX: Added braces
         if (!fileContent.trim()) {
           setError('Please enter file content or select a file');
           return;
         }
-        const importResult = fileService.importFile(fileContent, fileName || 'Imported File');
+        const importResult = fileService.importFile(
+          fileContent,
+          fileName || 'Imported File'
+        );
         if (importResult.success) {
           onFileOperation(importResult.data || null);
         } else {
@@ -73,7 +87,8 @@ const FileDialogs: React.FC<FileDialogProps> = ({
         break;
       }
 
-      case 'export': { // FIX: Added braces
+      case 'export': {
+        // FIX: Added braces
         const currentFile = fileService.getCurrentFile();
         if (currentFile) {
           const exportResult = fileService.exportFile(currentFile.id);
@@ -96,13 +111,16 @@ const FileDialogs: React.FC<FileDialogProps> = ({
         break;
       }
 
-      case 'exportSelection': { // FIX: Added braces
+      case 'exportSelection': {
+        // FIX: Added braces
         if (selectedElements.length === 0) {
           setError('No elements selected');
           return;
         }
         const selectionData = fileService.exportSelection(selectedElements);
-        const selectionBlob = new Blob([selectionData], { type: 'application/json' });
+        const selectionBlob = new Blob([selectionData], {
+          type: 'application/json',
+        });
         const selectionUrl = URL.createObjectURL(selectionBlob);
         const selectionLink = document.createElement('a');
         selectionLink.href = selectionUrl;
@@ -128,9 +146,9 @@ const FileDialogs: React.FC<FileDialogProps> = ({
     const file = event.target.files?.[0];
     if (file) {
       setFileName(file.name.replace(/\.[^/.]+$/, '')); // Remove extension
-      
+
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = e => {
         setFileContent(e.target?.result as string);
       };
       reader.readAsText(file);
@@ -141,8 +159,14 @@ const FileDialogs: React.FC<FileDialogProps> = ({
     const currentFile = fileService.getCurrentFile();
     if (currentFile) {
       const svgResult = fileService.exportAsSVG(currentFile.id);
-      if (svgResult.success && svgResult.data && 'svgContent' in svgResult.data) {
-        const svgBlob = new Blob([svgResult.data.svgContent as string], { type: 'image/svg+xml' });
+      if (
+        svgResult.success &&
+        svgResult.data &&
+        'svgContent' in svgResult.data
+      ) {
+        const svgBlob = new Blob([svgResult.data.svgContent as string], {
+          type: 'image/svg+xml',
+        });
         const svgUrl = URL.createObjectURL(svgBlob);
         const svgLink = document.createElement('a');
         svgLink.href = svgUrl;
@@ -158,26 +182,41 @@ const FileDialogs: React.FC<FileDialogProps> = ({
 
   const getTitle = () => {
     switch (type) {
-      case 'new': return 'New File';
-      case 'open': return 'Open File';
-      case 'save': return 'Save File';
-      case 'saveAs': return 'Save As';
-      case 'import': return 'Import File';
-      case 'export': return 'Export File';
-      case 'exportSelection': return 'Export Selection';
-      default: return 'File Operation';
+      case 'new':
+        return 'New File';
+      case 'open':
+        return 'Open File';
+      case 'save':
+        return 'Save File';
+      case 'saveAs':
+        return 'Save As';
+      case 'import':
+        return 'Import File';
+      case 'export':
+        return 'Export File';
+      case 'exportSelection':
+        return 'Export Selection';
+      default:
+        return 'File Operation';
     }
   };
 
   const getDescription = () => {
     switch (type) {
-      case 'new': return 'Create a new graph file';
-      case 'save': return 'Save the current file';
-      case 'saveAs': return 'Save the current file with a new name';
-      case 'import': return 'Import a graph from a JSON file';
-      case 'export': return 'Export the current file as JSON';
-      case 'exportSelection': return `Export ${selectedElements.length} selected elements`;
-      default: return '';
+      case 'new':
+        return 'Create a new graph file';
+      case 'save':
+        return 'Save the current file';
+      case 'saveAs':
+        return 'Save the current file with a new name';
+      case 'import':
+        return 'Import a graph from a JSON file';
+      case 'export':
+        return 'Export the current file as JSON';
+      case 'exportSelection':
+        return `Export ${selectedElements.length} selected elements`;
+      default:
+        return '';
     }
   };
 
@@ -186,17 +225,15 @@ const FileDialogs: React.FC<FileDialogProps> = ({
       <div className="file-dialog">
         <div className="file-dialog-header">
           <h3>{getTitle()}</h3>
-          <button className="close-button" onClick={handleClose}>×</button>
+          <button className="close-button" onClick={handleClose}>
+            ×
+          </button>
         </div>
-        
+
         <div className="file-dialog-content">
           <p className="dialog-description">{getDescription()}</p>
-          
-          {error && (
-            <div className="error-message">
-              {error}
-            </div>
-          )}
+
+          {error && <div className="error-message">{error}</div>}
 
           {(type === 'new' || type === 'saveAs') && (
             <div className="form-group">
@@ -205,7 +242,7 @@ const FileDialogs: React.FC<FileDialogProps> = ({
                 id="fileName"
                 type="text"
                 value={fileName}
-                onChange={(e) => setFileName(e.target.value)}
+                onChange={e => setFileName(e.target.value)}
                 placeholder="Enter file name"
                 autoFocus
               />
@@ -229,7 +266,7 @@ const FileDialogs: React.FC<FileDialogProps> = ({
                 <textarea
                   id="fileContent"
                   value={fileContent}
-                  onChange={(e) => setFileContent(e.target.value)}
+                  onChange={e => setFileContent(e.target.value)}
                   placeholder="Paste JSON content here..."
                   rows={8}
                 />
@@ -270,9 +307,13 @@ const FileDialogs: React.FC<FileDialogProps> = ({
           </button>
           {type !== 'export' && type !== 'exportSelection' && (
             <button onClick={handleSubmit} className="confirm-button">
-              {type === 'new' ? 'Create' : 
-               type === 'saveAs' ? 'Save As' : 
-               type === 'import' ? 'Import' : 'Save'}
+              {type === 'new'
+                ? 'Create'
+                : type === 'saveAs'
+                  ? 'Save As'
+                  : type === 'import'
+                    ? 'Import'
+                    : 'Save'}
             </button>
           )}
         </div>

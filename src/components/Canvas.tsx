@@ -452,7 +452,7 @@ const Canvas: React.FC<CanvasProps> = ({
           return;
         }
         e.preventDefault();
-        
+
         setElements(prev => prev.filter(el => !selectedId.includes(el.id)));
         setSelectedId([]);
       }
@@ -1047,8 +1047,8 @@ const Canvas: React.FC<CanvasProps> = ({
       } else {
         if (!selectedId.includes(id)) {
           if (!(selectedId.length === 1 && selectedId[0] === id)) {
-          setSelectedId([id]);
-        }
+            setSelectedId([id]);
+          }
         }
       }
 

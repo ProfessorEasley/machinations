@@ -35,7 +35,7 @@ class FileService {
   createNewFile(name?: string): FileData {
     const fileName = name || `Untitled ${this.fileCounter++}`;
     const fileId = `file_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+
     const newFile: FileData = {
       id: fileId,
       name: fileName,
@@ -52,13 +52,15 @@ class FileService {
 
     this.files.set(fileId, newFile);
     this.currentFileId = fileId;
-    
+
     return newFile;
   }
 
   // Get current file
   getCurrentFile(): FileData | null {
-    return this.currentFileId ? this.files.get(this.currentFileId) || null : null;
+    return this.currentFileId
+      ? this.files.get(this.currentFileId) || null
+      : null;
   }
 
   // Get all files
@@ -71,7 +73,7 @@ class FileService {
     if (!this.files.has(fileId)) {
       return { success: false, error: 'File not found' };
     }
-    
+
     this.currentFileId = fileId;
     return { success: true, data: this.files.get(fileId)! };
   }
@@ -93,7 +95,7 @@ class FileService {
 
     // In a real app, this would save to backend/storage
     console.log('Saving file:', file.name, file.content);
-    
+
     return { success: true, data: file };
   }
 
@@ -135,10 +137,12 @@ class FileService {
     if (!this.files.has(fileId)) {
       return { success: false, error: 'File not found' };
     }
-    
+
     // If closing current file, switch to another file or create new one
     if (this.currentFileId === fileId) {
-      const remainingFiles = Array.from(this.files.keys()).filter(id => id !== fileId);
+      const remainingFiles = Array.from(this.files.keys()).filter(
+        id => id !== fileId
+      );
       if (remainingFiles.length > 0) {
         this.currentFileId = remainingFiles[0];
       } else {
@@ -152,7 +156,10 @@ class FileService {
   }
 
   // Update file content
-  updateFileContent(fileId: string, elements: GraphElement[]): FileOperationResult {
+  updateFileContent(
+    fileId: string,
+    elements: GraphElement[]
+  ): FileOperationResult {
     const file = this.files.get(fileId);
     if (!file) {
       return { success: false, error: 'File not found' };
@@ -169,7 +176,7 @@ class FileService {
   importFile(fileContent: string, fileName: string): FileOperationResult {
     try {
       const parsed = JSON.parse(fileContent);
-      
+
       if (!parsed.elements || !Array.isArray(parsed.elements)) {
         return { success: false, error: 'Invalid file format' };
       }
@@ -210,16 +217,23 @@ class FileService {
       exportedAt: new Date().toISOString(),
     };
 
-    return { success: true, data: { ...file, content: exportData } as FileData };
+    return {
+      success: true,
+      data: { ...file, content: exportData } as FileData,
+    };
   }
 
   // Export selection to JSON
   exportSelection(elements: GraphElement[]): string {
-    return JSON.stringify({
-      elements,
-      exportedAt: new Date().toISOString(),
-      type: 'selection',
-    }, null, 2);
+    return JSON.stringify(
+      {
+        elements,
+        exportedAt: new Date().toISOString(),
+        type: 'selection',
+      },
+      null,
+      2
+    );
   }
 
   // Export as SVG (placeholder - would need canvas to SVG conversion)
@@ -236,7 +250,10 @@ class FileService {
       <text x="400" y="320" text-anchor="middle">Elements: ${file.content.elements.length}</text>
     </svg>`;
 
-    return { success: true, data: { ...file, svgContent } as FileData & { svgContent: string } };
+    return {
+      success: true,
+      data: { ...file, svgContent } as FileData & { svgContent: string },
+    };
   }
 
   // Check if current file is modified
