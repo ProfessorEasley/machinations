@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import './Canvas.css';
 
 interface CanvasProps {
+  isRunning: boolean;
   selectedTool: string;
   elements?: GraphElement[];
   selectedElementIds?: number[];
@@ -155,6 +156,9 @@ interface GraphElement {
   number?: number;
   max?: number;
   displayLimit?: number;
+
+  actions?: number;
+
   // For connection elements
   startX?: number;
   startY?: number;
@@ -163,9 +167,12 @@ interface GraphElement {
   // Connection tracking
   connectedToStart?: number; // ID of element this connection starts from
   connectedToEnd?: number; // ID of element this connection ends at
+  currentPoints?: number;
+  hasStarted?: boolean;
 }
 
 const Canvas: React.FC<CanvasProps> = ({
+  isRunning,
   selectedTool,
   elements: externalElements,
   selectedElementIds: externalSelectedIds,
@@ -214,6 +221,7 @@ const Canvas: React.FC<CanvasProps> = ({
     [selectedId, onSelectionChange]
   );
 
+  const [hasSimulationStarted, setHasSimulationStarted] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [dragOffset, setDragOffset] = useState<{ x: number; y: number } | null>(
     null
@@ -261,6 +269,167 @@ const Canvas: React.FC<CanvasProps> = ({
 
   const canvasRef = useRef<HTMLDivElement>(null);
 
+  const runSimulationTick = (
+    elementsToUpdate: GraphElement[],
+    activationType: 'automatic' | 'onstart' | 'interactive',
+    interactiveElementId?: number
+  ) => {
+    const nextElements = JSON.parse(
+      JSON.stringify(elementsToUpdate)
+    ) as GraphElement[];
+    const elementMap = new Map<number, GraphElement>(
+      nextElements.map(el => [el.id, el])
+    );
+
+    for (const connection of nextElements) {
+      if (
+        connection.type !== 'Resource Connection' ||
+        !connection.connectedToStart ||
+        !connection.connectedToEnd
+      ) {
+        continue;
+      }
+
+      const startElement = elementMap.get(connection.connectedToStart);
+      const endElement = elementMap.get(connection.connectedToEnd);
+      if (!startElement || !endElement) continue;
+
+      const transferAmount = parseInt(connection.text || '0', 10);
+      if (transferAmount === 0) continue;
+
+      // Case 1: Source -> Pool (Source is the trigger)
+      if (startElement.type === 'Source' && endElement.type === 'Pool') {
+        const source = startElement;
+        const pool = endElement;
+
+        // --- THIS IS THE FIX: A clearer, more explicit logic block ---
+        let isTriggerActive = false;
+        if (activationType === 'automatic') {
+          // An automatic tick triggers both 'automatic' and 'passive' sources.
+          if (
+            source.activation === 'automatic' ||
+            source.activation === 'passive'
+          ) {
+            isTriggerActive = true;
+          }
+        } else {
+          // 'interactive' and 'onstart' ticks require an exact match.
+          if (source.activation === activationType) {
+            isTriggerActive = true;
+          }
+        }
+
+        const canFire = activationType !== 'onstart' || !source.hasStarted;
+        const isTarget =
+          !interactiveElementId || source.id === interactiveElementId;
+
+        if (isTarget && isTriggerActive && canFire) {
+          const newTotal = (pool.currentPoints || 0) + transferAmount;
+          pool.currentPoints = Math.min(newTotal, pool.max || Infinity);
+          if (activationType === 'onstart') {
+            source.hasStarted = true;
+          }
+        }
+      }
+
+      // Case 2: Pool -> Drain (Drain is the trigger)
+      if (startElement.type === 'Pool' && endElement.type === 'Drain') {
+        const pool = startElement;
+        const drain = endElement;
+
+        // --- THIS IS THE FIX (Applied here as well) ---
+        let isTriggerActive = false;
+        if (activationType === 'automatic') {
+          // An automatic tick triggers both 'automatic' and 'passive' drains.
+          if (
+            drain.activation === 'automatic' ||
+            drain.activation === 'passive'
+          ) {
+            isTriggerActive = true;
+          }
+        } else {
+          // 'interactive' and 'onstart' ticks require an exact match.
+          if (drain.activation === activationType) {
+            isTriggerActive = true;
+          }
+        }
+
+        const canFire = activationType !== 'onstart' || !drain.hasStarted;
+        const isTarget =
+          !interactiveElementId || drain.id === interactiveElementId;
+
+        if (isTarget && isTriggerActive) {
+          console.log('[LOG 3] Simulation tick for Drain:', {
+            isTarget,
+            isTriggerActive,
+            canFire,
+            transferAmount,
+            pointsAvailable: pool.currentPoints,
+          });
+        }
+
+        if (isTarget && isTriggerActive && canFire) {
+          const pointsAvailable = pool.currentPoints || 0;
+          const pointsToTransfer = Math.min(transferAmount, pointsAvailable);
+          if (pointsToTransfer > 0) {
+            pool.currentPoints! -= pointsToTransfer;
+          }
+          if (activationType === 'onstart') {
+            drain.hasStarted = true;
+          }
+        }
+      }
+    }
+
+    return nextElements;
+  };
+
+  const handleInteractiveAction = (elementId: number) => {
+    // This will only be called by onClick when isRunning is true.
+    setElements(currentElements =>
+      runSimulationTick(currentElements, 'interactive', elementId)
+    );
+  };
+
+  useEffect(() => {
+    let simulationInterval: NodeJS.Timeout | undefined;
+
+    // A. When "Run" is first clicked for a session:
+    if (isRunning && !hasSimulationStarted) {
+      // 1. Run all "OnStart" actions exactly once.
+      setElements(currentElements =>
+        runSimulationTick(currentElements, 'onstart')
+      );
+      setHasSimulationStarted(true);
+    }
+
+    // B. While the simulation is running:
+    if (isRunning) {
+      // 2. Start the timer for all "Automatic" actions.
+      simulationInterval = setInterval(() => {
+        setElements(currentElements =>
+          runSimulationTick(currentElements, 'automatic')
+        );
+      }, 1000); // Ticks every 1 second.
+    }
+
+    // C. When "Stop" is clicked:
+    if (!isRunning && hasSimulationStarted) {
+      // 3. Reset the state for the next run.
+      setHasSimulationStarted(false);
+      setElements(currentElements =>
+        currentElements.map(el => ({ ...el, hasStarted: false }))
+      );
+    }
+
+    // D. Cleanup:
+    return () => {
+      if (simulationInterval) {
+        clearInterval(simulationInterval);
+      }
+    };
+  }, [isRunning, hasSimulationStarted]);
+
   // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -277,12 +446,13 @@ const Canvas: React.FC<CanvasProps> = ({
         (e.key === 'Delete' || e.key === 'Backspace') &&
         selectedId.length > 0
       ) {
+        if (isRunning) return;
         const target = e.target as HTMLElement;
         if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
           return;
         }
-
         e.preventDefault();
+
         setElements(prev => prev.filter(el => !selectedId.includes(el.id)));
         setSelectedId([]);
       }
@@ -568,6 +738,10 @@ const Canvas: React.FC<CanvasProps> = ({
         },
       ]);
     } else if (type === 'Pool') {
+      const poolProps = toolProperties?.pool;
+      const startingPoints = poolProps?.number || 0;
+      const maxPoints = poolProps?.max;
+
       setElements(prev => [
         ...prev,
         {
@@ -575,7 +749,11 @@ const Canvas: React.FC<CanvasProps> = ({
           type,
           x,
           y,
-          ...toolProperties?.pool,
+          ...poolProps,
+          // Starting points cannot exceed the max value
+          currentPoints: maxPoints
+            ? Math.min(startingPoints, maxPoints)
+            : startingPoints,
         },
       ]);
     } else if (type === 'Resource Connection' || type === 'State Connection') {
@@ -591,15 +769,9 @@ const Canvas: React.FC<CanvasProps> = ({
           type,
           x,
           y,
-
           ...toolProperties?.source,
-          // color: toolProperties?.source?.color,
-          // thickness: toolProperties?.source?.thickness,
-          // text: toolProperties?.source?.text,
-          // activation: toolProperties?.source?.activation,
-          // actions: toolProperties?.source?.actions,
-          // pullMode: toolProperties?.source?.pullMode,
-          // resources: toolProperties?.source?.resources,
+          // Use the 'text' (Label) field for starting points
+          currentPoints: parseInt(toolProperties?.source?.text || '0', 10),
         },
       ]);
     } else if (type === 'Gate') {
@@ -741,6 +913,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
   // Handle dropping a tool onto the canvas
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    if (isRunning) return;
     e.preventDefault();
     const tool = e.dataTransfer.getData('tool') as GraphElementType;
     if (tool) {
@@ -772,6 +945,7 @@ const Canvas: React.FC<CanvasProps> = ({
       setSelectedId([]);
     }
     if (selectedTool && selectedTool !== 'Select') {
+      if (isRunning) return;
       placeElement(
         selectedTool as GraphElementType,
         e.clientX,
@@ -838,24 +1012,53 @@ const Canvas: React.FC<CanvasProps> = ({
   }, [selectedId, elements, onElementSelection]);
 
   const handleElementMouseDown = (e: React.MouseEvent, id: number) => {
+    // Stop the event from bubbling up to the canvas immediately.
+    e.stopPropagation();
+
+    const element = elements.find(el => el.id === id);
+    if (!element) return;
+
+    console.log(
+      `[LOG 1] Mousedown on element ID: ${id}, Type: ${element.type}`
+    );
+
+    // --- RUN MODE LOGIC ---
+    // If the simulation is running, we only care about interactive actions.
+    if (isRunning) {
+      if (element.activation === 'interactive') {
+        console.log(
+          '[LOG 2] Interactive element clicked in run mode. Calling action...'
+        );
+
+        handleInteractiveAction(id);
+      }
+      // In run mode, do nothing else (no selecting, no dragging).
+      return;
+    }
+
+    // --- EDIT MODE LOGIC ---
+    // If we get here, it means isRunning is false.
     if (selectedTool === 'Select') {
-      e.stopPropagation();
+      // Handle selection
       if (e.ctrlKey || e.metaKey) {
         setSelectedId(prev =>
           prev.includes(id) ? prev.filter(selId => selId !== id) : [...prev, id]
         );
       } else {
         if (!selectedId.includes(id)) {
-          setSelectedId([id]);
+          if (!(selectedId.length === 1 && selectedId[0] === id)) {
+            setSelectedId([id]);
+          }
         }
       }
+
+      // Prepare for dragging
       setDraggingId(id);
-      const el = elements.find(el => el.id === id);
-      if (el && canvasRef.current) {
+      if (canvasRef.current) {
         const rect = canvasRef.current.getBoundingClientRect();
         setDragOffset({
-          x: e.clientX - rect.left - el.x,
-          y: e.clientY - rect.top - el.y,
+          x: e.clientX - rect.left - element.x,
+          y: e.clientY - rect.top - element.y,
         });
       }
     }
@@ -863,6 +1066,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
   // Mouse move to drag selected element(s) or update bounding box or resize or create connection
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isRunning) return;
     if (selectedTool === 'Select' && mouseDownOnCanvas && boxStart) {
       setIsSelectingBox(true);
       const rect = canvasRef.current!.getBoundingClientRect();
@@ -1085,6 +1289,7 @@ const Canvas: React.FC<CanvasProps> = ({
     id: number,
     handle: string
   ) => {
+    if (isRunning) return;
     e.stopPropagation();
     setIsResizing(true);
     setResizingId(id);
@@ -1167,6 +1372,7 @@ const Canvas: React.FC<CanvasProps> = ({
     id: number,
     handle: 'start' | 'end'
   ) => {
+    if (isRunning) return;
     e.stopPropagation();
     setIsResizing(true);
     setResizingId(id);
@@ -1255,6 +1461,7 @@ const Canvas: React.FC<CanvasProps> = ({
               color: el.color || '#000000',
             }}
             onClick={e => {
+              if (isRunning) return;
               if (selectedTool === 'Select') {
                 e.stopPropagation();
                 // Multi-select with Ctrl/Cmd
@@ -1281,107 +1488,84 @@ const Canvas: React.FC<CanvasProps> = ({
         return (
           <svg
             key={el.id}
-            className={`svg-element pool-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
-            style={{
-              left: el.x,
-              top: el.y,
-            }}
+            className={`svg-element pool-element ${
+              selectedTool === 'Select' ? 'selectable' : ''
+            } ${isSelected ? 'selected' : ''}`}
+            style={{ left: el.x, top: el.y }}
             width={40}
             height={40}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
-            onClick={e => {
-              if (selectedTool === 'Select') {
-                e.stopPropagation();
-                if (e.ctrlKey || e.metaKey) {
-                  setSelectedId(prev =>
-                    prev.includes(el.id)
-                      ? prev.filter(selId => selId !== el.id)
-                      : [...prev, el.id]
-                  );
-                } else {
-                  setSelectedId([el.id]);
-                }
-              }
-            }}
+            // onClick={e => {
+            //   /* Add interactive logic here if Pools can be interactive */
+            // }}
           >
             <circle
               cx={20}
               cy={20}
               r={18}
               className={`pool-circle ${isSelected ? 'selected' : ''}`}
-              fill="none"
+              fill="white"
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
-              strokeWidth="2"
+              strokeWidth={el.thickness || 2}
             />
+            <text
+              x="20"
+              y="25"
+              className="element-value-text"
+              fill="black" // <-- The fix is here! Black text for the white pool.
+            >
+              {el.currentPoints || 0}
+            </text>
           </svg>
         );
       case 'Source':
         return (
           <svg
             key={el.id}
-            className={`svg-element source-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
-            style={{
-              left: el.x,
-              top: el.y,
-            }}
+            // Add 'clickable-element' to the className string
+            className={`svg-element source-element clickable-element ${
+              selectedTool === 'Select' ? 'selectable' : ''
+            } ${isSelected ? 'selected' : ''}`}
+            style={{ left: el.x, top: el.y }}
             width={40}
             height={40}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
-            onClick={e => {
-              if (selectedTool === 'Select') {
-                e.stopPropagation();
-                if (e.ctrlKey || e.metaKey) {
-                  setSelectedId(prev =>
-                    prev.includes(el.id)
-                      ? prev.filter(selId => selId !== el.id)
-                      : [...prev, el.id]
-                  );
-                } else {
-                  setSelectedId([el.id]);
-                }
-              }
-            }}
           >
             <polygon
               points="20,5 35,35 5,35"
               fill={el.color || '#000000'}
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
-              className={`source-triangle ${isSelected ? 'selected' : ''}`}
+              strokeWidth={el.thickness || 2}
             />
+            <text
+              x="20"
+              y="30"
+              className="element-value-text"
+              fill="white"
+              fontSize="20"
+            >
+              ∞
+            </text>
           </svg>
         );
       case 'Drain':
         return (
           <svg
             key={el.id}
-            className={`svg-element drain-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
-            style={{
-              left: el.x,
-              top: el.y,
-            }}
+            // Add 'clickable-element' to the className string
+            className={`svg-element drain-element clickable-element ${
+              selectedTool === 'Select' ? 'selectable' : ''
+            } ${isSelected ? 'selected' : ''}`}
+            style={{ left: el.x, top: el.y }}
             width={40}
             height={40}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
-            onClick={e => {
-              if (selectedTool === 'Select') {
-                e.stopPropagation();
-                if (e.ctrlKey || e.metaKey) {
-                  setSelectedId(prev =>
-                    prev.includes(el.id)
-                      ? prev.filter(selId => selId !== el.id)
-                      : [...prev, el.id]
-                  );
-                } else {
-                  setSelectedId([el.id]);
-                }
-              }
-            }}
           >
             <polygon
               points="5,5 35,5 20,35"
-              fill={el.color || '#000000'} // Add this
-              stroke={isSelected ? '#0078d4' : el.color || '#000000'} // Add this
-              className={`drain-triangle ${isSelected ? 'selected' : ''}`}
+              fill={el.color || '#000000'}
+              stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+              strokeWidth={el.thickness || 2}
             />
           </svg>
         );
@@ -1732,17 +1916,29 @@ const Canvas: React.FC<CanvasProps> = ({
             />
           </svg>
         );
-      case 'Resource Connection':
+      case 'Resource Connection': {
+        const sx = el.startX || el.x;
+        const sy = el.startY || el.y;
+        const ex = el.endX || el.x;
+        const ey = el.endY || el.y;
+
+        // Calculate bounding box with padding for the label and selection handles
+        const left = Math.min(sx, ex) - 15;
+        const top = Math.min(sy, ey) - 15;
+        const width = Math.abs(ex - sx) + 30;
+        const height = Math.abs(ey - sy) + 30;
+
+        // Calculate the midpoint for the label, relative to the new bounding box
+        const midX = sx - left + (ex - sx) / 2;
+        const midY = sy - top + (ey - sy) / 2;
+
         return (
           <div
             key={el.id}
-            className={`connection-container ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
-            style={{
-              left: Math.min(el.startX || el.x, el.endX || el.x) - 5,
-              top: Math.min(el.startY || el.y, el.endY || el.y) - 5,
-              width: Math.abs((el.endX || el.x) - (el.startX || el.x)) + 10,
-              height: Math.abs((el.endY || el.y) - (el.startY || el.y)) + 10,
-            }}
+            className={`connection-container ${
+              selectedTool === 'Select' ? 'selectable' : ''
+            } ${isSelected ? 'selected' : ''}`}
+            style={{ left, top, width, height }}
             onMouseDown={e => {
               e.stopPropagation();
               if (selectedTool === 'Select') {
@@ -1760,71 +1956,54 @@ const Canvas: React.FC<CanvasProps> = ({
           >
             <svg className="connection-svg">
               <defs>
-                <marker id={`arrowhead-${el.id}`} className="arrow-marker">
+                <marker
+                  id={`arrowhead-${el.id}`}
+                  className="arrow-marker"
+                  viewBox="0 0 10 7"
+                  refX="10"
+                  refY="3.5"
+                  markerWidth="10"
+                  markerHeight="7"
+                  orient="auto-start-reverse"
+                >
                   <polygon
                     points="0 0, 10 3.5, 0 7"
-                    fill={el.color || '#000000'}
+                    fill={el.color || '#333'}
                     className="arrow-polygon"
                   />
                 </marker>
               </defs>
               <line
-                x1={
-                  (el.startX || el.x) -
-                  Math.min(el.startX || el.x, el.endX || el.x) +
-                  5
-                }
-                y1={
-                  (el.startY || el.y) -
-                  Math.min(el.startY || el.y, el.endY || el.y) +
-                  5
-                }
-                x2={
-                  (el.endX || el.x) -
-                  Math.min(el.startX || el.x, el.endX || el.x) +
-                  5
-                }
-                y2={
-                  (el.endY || el.y) -
-                  Math.min(el.startY || el.y, el.endY || el.y) +
-                  5
-                }
+                x1={sx - left}
+                y1={sy - top}
+                x2={ex - left}
+                y2={ey - top}
                 stroke={isSelected ? '#0078d4' : el.color || '#333'}
-                strokeWidth={isSelected ? 3 : 2}
+                strokeWidth={isSelected ? 3 : el.thickness || 2}
                 className={`connection-line ${isSelected ? 'selected' : ''}`}
                 markerEnd={`url(#arrowhead-${el.id})`}
               />
+              {el.text && el.text !== '0' && (
+                <text x={midX} y={midY} className="connection-label-text">
+                  {el.text}
+                </text>
+              )}
             </svg>
-            {/* Resize handles for arrows */}
             {isSelected && (
               <>
-                {/* Start point handle */}
                 <div
                   className="arrow-handle"
                   style={{
-                    left:
-                      (el.startX || el.x) -
-                      Math.min(el.startX || el.x, el.endX || el.x) +
-                      1,
-                    top:
-                      (el.startY || el.y) -
-                      Math.min(el.startY || el.y, el.endY || el.y) +
-                      1,
+                    left: sx - left - 4,
+                    top: sy - top - 4,
                   }}
                   onMouseDown={e => handleArrowResizeStart(e, el.id, 'start')}
                 />
-                {/* End point handle */}
                 <div
                   className="arrow-handle"
                   style={{
-                    left:
-                      (el.endX || el.x) -
-                      Math.min(el.startX || el.x, el.endX || el.x) +
-                      1,
-                    top:
-                      (el.endY || el.y) -
-                      Math.min(el.startY || el.y, el.endY || el.y) +
-                      1,
+                    left: ex - left - 4,
+                    top: ey - top - 4,
                   }}
                   onMouseDown={e => handleArrowResizeStart(e, el.id, 'end')}
                 />
@@ -1832,6 +2011,7 @@ const Canvas: React.FC<CanvasProps> = ({
             )}
           </div>
         );
+      }
       case 'State Connection':
         return (
           <div
@@ -2005,7 +2185,7 @@ const Canvas: React.FC<CanvasProps> = ({
   return (
     <div
       ref={canvasRef}
-      className="canvas"
+      className={`canvas ${isRunning ? 'is-running' : ''}`}
       onDrop={handleDrop}
       onDragOver={handleDragOver}
       onClick={handleCanvasClick}

@@ -172,6 +172,8 @@ interface ToolSideBarProps {
       script: string;
     };
   };
+  isRunning: boolean;
+  onRunClick: () => void;
   onToolPropertiesChange?: (
     toolType: string,
     properties: Record<string, unknown>
@@ -206,7 +208,7 @@ const fileTools = [
   'Save as SVG (G)',
 ];
 
-const runTools = ['Quick Run', 'Multiple Runs'];
+// const runTools = ['Quick Run', 'Multiple Runs'];
 
 const ToolSideBar: React.FC<ToolSideBarProps> = ({
   selectedTool,
@@ -219,6 +221,8 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
   canRedo = false,
   toolProperties,
   onToolPropertiesChange,
+  isRunning,
+  onRunClick,
 }) => {
   const [activeTab, setActiveTab] = useState<'Graph' | 'Edit' | 'File' | 'Run'>(
     'Graph'
@@ -472,15 +476,17 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
       case 'Run':
         return (
           <>
-            {runTools.map(tool => (
-              <button
-                key={tool}
-                className={selectedTool === tool ? 'selected' : ''}
-                onClick={() => setSelectedTool(tool)}
-              >
-                {tool}
-              </button>
-            ))}
+            {/* The "Quick Run" button is now a toggle */}
+            <button onClick={onRunClick}>
+              {isRunning ? 'Stop' : 'Quick Run'}
+            </button>
+            <button
+              onClick={() => {
+                /* Logic for multiple runs if needed */
+              }}
+            >
+              Multiple Runs
+            </button>
             <label>
               Runs <input type="number" defaultValue={100} />
             </label>

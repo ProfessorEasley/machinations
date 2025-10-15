@@ -414,3 +414,33 @@
   ref-y: 3.5;
   orient: auto;
 }
+
+.element-value-text {
+  font-family: Arial, sans-serif;
+  font-size: 14px;
+  font-weight: bold;
+  stroke: black;
+  stroke-width: 0.5px;
+  text-anchor: middle;
+  pointer-events: none; /* Make sure the text isn't clickable */
+}
+
+.canvas.is-running {
+  cursor: not-allowed;
+}
+
+.connection-label-text {
+  font-family: Arial, sans-serif;
+  font-size: 12px;
+  fill: #333;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: white;
+  stroke-width: 3px;
+  stroke-linecap: butt;
+  stroke-linejoin: miter;
+}
+
+.clickable-element {
+  pointer-events: auto !important;
+}
