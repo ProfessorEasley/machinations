@@ -1,9 +1,10 @@
 import React from 'react';
-import { useState } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import TopBar from '../components/TopBar';
 import ToolSideBar from '../components/ToolSideBar';
 import './Playground.css';
 import Canvas from '../components/Canvas';
+import { useHistory } from '../hooks/useHistory';
 
 type GraphElementType =
   | 'Text Label'
@@ -21,7 +22,6 @@ type GraphElementType =
   | 'Register'
   | 'End Condition'
   | 'Artifical Intelligence';
-
 interface GraphElement {
   id: number;
   type: GraphElementType;
@@ -31,7 +31,6 @@ interface GraphElement {
   width?: number;
   height?: number;
   color?: string;
-  // Pool-specific properties
   thickness?: number;
   activation?: 'passive' | 'interactive' | 'automatic' | 'onstart';
   pullMode?: 'pull any' | 'pull all' | 'push any' | 'push all';
@@ -39,7 +38,6 @@ interface GraphElement {
   number?: number;
   max?: number;
   displayLimit?: number;
-  // Connection properties
   startX?: number;
   startY?: number;
   endX?: number;
@@ -51,13 +49,20 @@ interface GraphElement {
 const Playground: React.FC = () => {
   const [isRunning, setIsRunning] = useState(false);
   const [selectedTool, setSelectedTool] = useState<string>('Select');
+  const [selectedElementIds, setSelectedElementIds] = useState<number[]>([]);
   const [selectedElement, setSelectedElement] = useState<GraphElement | null>(
     null
   );
-  const [externalElementUpdate, setExternalElementUpdate] = useState<{
-    elementId: number;
-    updates: Partial<GraphElement>;
-  } | null>(null);
+
+  const {
+    state: elements,
+    setState: setElements,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+  } = useHistory<GraphElement[]>([]);
+
   const [toolProperties, setToolProperties] = useState<{
     textLabel: { text: string; color: string };
     group: { text: string; color: string };
@@ -270,6 +275,26 @@ const Playground: React.FC = () => {
     },
   });
 
+  useEffect(() => {
+    const handleUndo = () => {
+      console.log('Undo triggered from event');
+      undo();
+    };
+
+    const handleRedo = () => {
+      console.log('Redo triggered from event');
+      redo();
+    };
+
+    document.addEventListener('canvas-undo', handleUndo);
+    document.addEventListener('canvas-redo', handleRedo);
+
+    return () => {
+      document.removeEventListener('canvas-undo', handleUndo);
+      document.removeEventListener('canvas-redo', handleRedo);
+    };
+  }, [undo, redo]);
+
   const handleRunClick = () => {
     setIsRunning(prevIsRunning => !prevIsRunning);
   };
@@ -278,16 +303,35 @@ const Playground: React.FC = () => {
     elementId: number,
     updates: Partial<GraphElement>
   ) => {
-    // Update the selected element state
+    const newElements = elements.map(el =>
+      el.id === elementId ? { ...el, ...updates } : el
+    );
+    setElements(newElements);
+
     if (selectedElement && selectedElement.id === elementId) {
       setSelectedElement({ ...selectedElement, ...updates });
     }
-    // Trigger external update in Canvas
-    setExternalElementUpdate({ elementId, updates });
   };
+
+  const handleSelectionChange = useCallback(
+    (newSelectedIds: number[]) => {
+      setSelectedElementIds(newSelectedIds);
+      if (newSelectedIds.length === 1) {
+        const element = elements.find(el => el.id === newSelectedIds[0]);
+        setSelectedElement(element || null);
+      } else {
+        setSelectedElement(null);
+      }
+    },
+    [elements]
+  );
 
   const handleElementSelection = (element: GraphElement | null) => {
     setSelectedElement(element);
+  };
+
+  const getSelectedElements = (): GraphElement[] => {
+    return elements.filter(el => selectedElementIds.includes(el.id));
   };
 
   const handleToolPropertiesChange = (
@@ -301,15 +345,15 @@ const Playground: React.FC = () => {
   };
 
   // Clear external update after it's been processed
-  React.useEffect(() => {
-    if (externalElementUpdate) {
-      // Reset after a short delay to allow Canvas to process the update
-      const timer = setTimeout(() => {
-        setExternalElementUpdate(null);
-      }, 0);
-      return () => clearTimeout(timer);
-    }
-  }, [externalElementUpdate]);
+  //React.useEffect(() => {
+  //if (externalElementUpdate) {
+  // Reset after a short delay to allow Canvas to process the update
+  //const timer = setTimeout(() => {
+  //setExternalElementUpdate(null);
+  //}, 0);
+  //return () => clearTimeout(timer);
+  //}
+  //}, [externalElementUpdate]);
 
   return (
     <div className="playground-wrapper">
@@ -320,9 +364,13 @@ const Playground: React.FC = () => {
             <Canvas
               isRunning={isRunning}
               selectedTool={selectedTool}
+              elements={elements}
+              selectedElementIds={selectedElementIds}
+              onElementsChange={setElements}
+              onSelectionChange={handleSelectionChange}
               onElementUpdate={handleElementUpdate}
               onElementSelection={handleElementSelection}
-              externalElementUpdate={externalElementUpdate}
+              //externalElementUpdate={externalElementUpdate}
               toolProperties={toolProperties}
             />
           </div>
@@ -332,11 +380,15 @@ const Playground: React.FC = () => {
             selectedTool={selectedTool}
             setSelectedTool={setSelectedTool}
             selectedElement={selectedElement}
+            selectedElements={getSelectedElements()}
+            allElements={elements}
             isRunning={isRunning}
             onRunClick={handleRunClick}
             onElementUpdate={handleElementUpdate}
             toolProperties={toolProperties}
             onToolPropertiesChange={handleToolPropertiesChange}
+            canUndo={canUndo}
+            canRedo={canRedo}
           />
         </div>
       </div>
