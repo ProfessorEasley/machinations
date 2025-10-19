@@ -321,7 +321,10 @@ const Canvas: React.FC<CanvasProps> = ({
         let isTriggerActive = false;
         if (activationType === 'automatic') {
           // Automatic ticks activate 'automatic' and 'passive' sources.
-          if (source.activation === 'automatic' || source.activation === 'passive') {
+          if (
+            source.activation === 'automatic' ||
+            source.activation === 'passive'
+          ) {
             isTriggerActive = true;
           }
         } else {
@@ -334,7 +337,8 @@ const Canvas: React.FC<CanvasProps> = ({
         // Check if the source can fire (not 'onstart' that already fired).
         const canFire = activationType !== 'onstart' || !source.hasStarted;
         // Check if this source is the specific one targeted by an interactive click.
-        const isTarget = !interactiveElementId || source.id === interactiveElementId;
+        const isTarget =
+          !interactiveElementId || source.id === interactiveElementId;
 
         // If all conditions met, perform the transfer.
         if (isTarget && isTriggerActive && canFire) {
@@ -358,7 +362,10 @@ const Canvas: React.FC<CanvasProps> = ({
         let isTriggerActive = false;
         if (activationType === 'automatic') {
           // Automatic ticks activate 'automatic' and 'passive' drains.
-          if (drain.activation === 'automatic' || drain.activation === 'passive') {
+          if (
+            drain.activation === 'automatic' ||
+            drain.activation === 'passive'
+          ) {
             isTriggerActive = true;
           }
         } else {
@@ -370,8 +377,9 @@ const Canvas: React.FC<CanvasProps> = ({
 
         // Check if the drain can fire (not 'onstart' that already fired).
         const canFire = activationType !== 'onstart' || !drain.hasStarted;
-         // Check if this drain is the specific one targeted by an interactive click.
-        const isTarget = !interactiveElementId || drain.id === interactiveElementId;
+        // Check if this drain is the specific one targeted by an interactive click.
+        const isTarget =
+          !interactiveElementId || drain.id === interactiveElementId;
 
         // If all conditions met, perform the transfer.
         if (isTarget && isTriggerActive && canFire) {
@@ -407,12 +415,13 @@ const Canvas: React.FC<CanvasProps> = ({
     // A. When "Run" is first clicked for a session:
     if (isRunning && !hasSimulationStarted) {
       console.log('--- Running OnStart ---'); // LOG
-      try { // Add try...catch
+      try {
+        // Add try...catch
         setElements(currentElements =>
           runSimulationTick(currentElements, 'onstart')
         );
       } catch (error) {
-        console.error("⛔️ Error during OnStart tick:", error); // Log the error
+        console.error('⛔️ Error during OnStart tick:', error); // Log the error
         // Optionally stop simulation on error:
         // setIsRunning(false); // You'd need setIsRunning from props or context
       }
@@ -424,20 +433,21 @@ const Canvas: React.FC<CanvasProps> = ({
       // 2. Start the timer for all "Automatic" actions.
       simulationInterval = setInterval(() => {
         console.log('--- Running Automatic Tick ---'); // LOG
-        try { // Add try...catch
+        try {
+          // Add try...catch
           setElements(currentElements => {
-             // Optional: Log state before if needed for complex bugs
-             // console.log('Elements BEFORE tick:', JSON.stringify(currentElements));
+            // Optional: Log state before if needed for complex bugs
+            // console.log('Elements BEFORE tick:', JSON.stringify(currentElements));
             const nextState = runSimulationTick(currentElements, 'automatic');
-             // Optional: Log state after if needed
-             // console.log('Elements AFTER tick:', JSON.stringify(nextState));
+            // Optional: Log state after if needed
+            // console.log('Elements AFTER tick:', JSON.stringify(nextState));
             return nextState;
           });
         } catch (error) {
-           console.error("⛔️ Error during Automatic tick:", error); // Log the error
-           if (simulationInterval) clearInterval(simulationInterval); // Stop interval on error
-           // Optionally stop simulation on error:
-           // setIsRunning(false); // Needs setIsRunning from props/context
+          console.error('⛔️ Error during Automatic tick:', error); // Log the error
+          if (simulationInterval) clearInterval(simulationInterval); // Stop interval on error
+          // Optionally stop simulation on error:
+          // setIsRunning(false); // Needs setIsRunning from props/context
         }
       }, 1000); // Ticks every 1 second.
     }
