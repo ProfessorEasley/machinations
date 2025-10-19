@@ -1969,13 +1969,10 @@ const Canvas: React.FC<CanvasProps> = ({
         return (
           <div
             key={el.id}
-            className={`connection-container ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
-            style={{
-              left: Math.min(el.startX || el.x, el.endX || el.x) - 5,
-              top: Math.min(el.startY || el.y, el.endY || el.y) - 5,
-              width: Math.abs((el.endX || el.x) - (el.startX || el.x)) + 10,
-              height: Math.abs((el.endY || el.y) - (el.startY || el.y)) + 10,
-            }}
+            className={`connection-container ${
+              selectedTool === 'Select' ? 'selectable' : ''
+            } ${isSelected ? 'selected' : ''}`}
+            style={{ left, top, width, height }}
             onMouseDown={e => {
               e.stopPropagation();
               if (selectedTool === 'Select') {
@@ -2034,34 +2031,27 @@ const Canvas: React.FC<CanvasProps> = ({
                 className={`connection-line ${isSelected ? 'selected' : ''}`}
                 markerEnd={`url(#arrowhead-${el.id})`}
               />
+              {el.text && el.text !== '0' && (
+                <text x={midX} y={midY} className="connection-label-text">
+                  {el.text}
+                </text>
+              )}
             </svg>
             {isSelected && (
               <>
                 <div
                   className="arrow-handle"
                   style={{
-                    left:
-                      (el.startX || el.x) -
-                      Math.min(el.startX || el.x, el.endX || el.x) +
-                      1,
-                    top:
-                      (el.startY || el.y) -
-                      Math.min(el.startY || el.y, el.endY || el.y) +
-                      1,
+                    left: sx - left - 4,
+                    top: sy - top - 4,
                   }}
                   onMouseDown={e => handleArrowResizeStart(e, el.id, 'start')}
                 />
                 <div
                   className="arrow-handle"
                   style={{
-                    left:
-                      (el.endX || el.x) -
-                      Math.min(el.startX || el.x, el.endX || el.x) +
-                      1,
-                    top:
-                      (el.endY || el.y) -
-                      Math.min(el.startY || el.y, el.endY || el.y) +
-                      1,
+                    left: ex - left - 4,
+                    top: ey - top - 4,
                   }}
                   onMouseDown={e => handleArrowResizeStart(e, el.id, 'end')}
                 />
