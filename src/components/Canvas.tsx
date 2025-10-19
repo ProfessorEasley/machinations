@@ -8,13 +8,16 @@ interface CanvasProps {
   selectedElementIds?: number[];
   onElementsChange?: (elements: GraphElement[]) => void;
   onSelectionChange?: (selectedIds: number[]) => void;
-
-  onElementUpdate?: (elementId: number, updates: Partial<GraphElement>) => void;
-  onElementSelection?: (element: GraphElement | null) => void;
   //externalElementUpdate?: {
   //elementId: number;
   //updates: Partial<GraphElement>;
   //} | null;
+  onElementUpdate?: (elementId: number, updates: Partial<GraphElement>) => void;
+  onElementSelection?: (element: GraphElement | null) => void;
+  externalElementUpdate?: {
+    elementId: number;
+    updates: Partial<GraphElement>;
+  } | null;
   toolProperties?: {
     textLabel: { text: string; color: string };
     group: { text: string; color: string };
@@ -782,6 +785,7 @@ const Canvas: React.FC<CanvasProps> = ({
           currentPoints: maxPoints
             ? Math.min(startingPoints, maxPoints)
             : startingPoints,
+          ...toolProperties?.pool,
         },
       ]);
     } else if (type === 'Resource Connection' || type === 'State Connection') {
@@ -1019,17 +1023,17 @@ const Canvas: React.FC<CanvasProps> = ({
   };
 
   // Handle external updates from parent component
-  //React.useEffect(() => {
-  //if (externalElementUpdate) {
-  //setElements(prevElements =>
-  //prevElements.map(el =>
-  //el.id === externalElementUpdate.elementId
-  //? { ...el, ...externalElementUpdate.updates }
-  //: el
-  //)
-  //);
-  //}
-  //}, [externalElementUpdate]);
+  // React.useEffect(() => {
+  //   if (externalElementUpdate) {
+  //     setElements(prevElements =>
+  //       prevElements.map(el =>
+  //         el.id === externalElementUpdate.elementId
+  //           ? { ...el, ...externalElementUpdate.updates }
+  //           : el
+  //       )
+  //     );
+  //   }
+  // }, [externalElementUpdate]);
 
   // Expose selected element to parent
   React.useEffect(() => {
@@ -1037,7 +1041,7 @@ const Canvas: React.FC<CanvasProps> = ({
     if (onElementSelection) {
       onElementSelection(selectedEl);
     }
-  }, [selectedId, elements, onElementSelection]);
+  }, [selectedId, elements, onElementSelection, getSelectedElement]);
 
   const handleElementMouseDown = (e: React.MouseEvent, id: number) => {
     // Stop the event from bubbling up to the canvas immediately.
@@ -1564,6 +1568,7 @@ const Canvas: React.FC<CanvasProps> = ({
               fill={el.color || '#000000'}
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
               strokeWidth={el.thickness || 2}
+              className={`source-triangle ${isSelected ? 'selected' : ''}`}
             />
             <text
               x="20"
@@ -1594,6 +1599,7 @@ const Canvas: React.FC<CanvasProps> = ({
               fill={el.color || '#000000'}
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
               strokeWidth={el.thickness || 2}
+              className={`drain-triangle ${isSelected ? 'selected' : ''}`}
             />
           </svg>
         );
@@ -1963,10 +1969,13 @@ const Canvas: React.FC<CanvasProps> = ({
         return (
           <div
             key={el.id}
-            className={`connection-container ${
-              selectedTool === 'Select' ? 'selectable' : ''
-            } ${isSelected ? 'selected' : ''}`}
-            style={{ left, top, width, height }}
+            className={`connection-container ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
+            style={{
+              left: Math.min(el.startX || el.x, el.endX || el.x) - 5,
+              top: Math.min(el.startY || el.y, el.endY || el.y) - 5,
+              width: Math.abs((el.endX || el.x) - (el.startX || el.x)) + 10,
+              height: Math.abs((el.endY || el.y) - (el.startY || el.y)) + 10,
+            }}
             onMouseDown={e => {
               e.stopPropagation();
               if (selectedTool === 'Select') {
@@ -2002,36 +2011,57 @@ const Canvas: React.FC<CanvasProps> = ({
                 </marker>
               </defs>
               <line
-                x1={sx - left}
-                y1={sy - top}
-                x2={ex - left}
-                y2={ey - top}
-                stroke={isSelected ? '#0078d4' : el.color || '#333'}
-                strokeWidth={isSelected ? 3 : el.thickness || 2}
+                x1={
+                  (el.startX || el.x) -
+                  Math.min(el.startX || el.x, el.endX || el.x) +
+                  5
+                }
+                y1={
+                  (el.startY || el.y) -
+                  Math.min(el.startY || el.y, el.endY || el.y) +
+                  5
+                }
+                x2={
+                  (el.endX || el.x) -
+                  Math.min(el.startX || el.x, el.endX || el.x) +
+                  5
+                }
+                y2={
+                  (el.endY || el.y) -
+                  Math.min(el.startY || el.y, el.endY || el.y) +
+                  5
+                }
                 className={`connection-line ${isSelected ? 'selected' : ''}`}
                 markerEnd={`url(#arrowhead-${el.id})`}
               />
-              {el.text && el.text !== '0' && (
-                <text x={midX} y={midY} className="connection-label-text">
-                  {el.text}
-                </text>
-              )}
             </svg>
             {isSelected && (
               <>
                 <div
                   className="arrow-handle"
                   style={{
-                    left: sx - left - 4,
-                    top: sy - top - 4,
+                    left:
+                      (el.startX || el.x) -
+                      Math.min(el.startX || el.x, el.endX || el.x) +
+                      1,
+                    top:
+                      (el.startY || el.y) -
+                      Math.min(el.startY || el.y, el.endY || el.y) +
+                      1,
                   }}
                   onMouseDown={e => handleArrowResizeStart(e, el.id, 'start')}
                 />
                 <div
                   className="arrow-handle"
                   style={{
-                    left: ex - left - 4,
-                    top: ey - top - 4,
+                    left:
+                      (el.endX || el.x) -
+                      Math.min(el.startX || el.x, el.endX || el.x) +
+                      1,
+                    top:
+                      (el.endY || el.y) -
+                      Math.min(el.startY || el.y, el.endY || el.y) +
+                      1,
                   }}
                   onMouseDown={e => handleArrowResizeStart(e, el.id, 'end')}
                 />
