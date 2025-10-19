@@ -278,7 +278,7 @@ const Canvas: React.FC<CanvasProps> = ({
     interactiveElementId?: number
   ): GraphElement[] => {
     // Create a deep copy to prevent mutating the original state directly.
-    let nextElements = JSON.parse(
+    const nextElements = JSON.parse(
       JSON.stringify(elementsToUpdate)
     ) as GraphElement[];
     // Create a Map for quick lookups of elements by their ID.
