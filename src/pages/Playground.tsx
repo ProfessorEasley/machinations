@@ -46,53 +46,9 @@ interface GraphElement {
   connectedToEnd?: number;
 }
 
-type GraphElementType =
-  | 'Text Label'
-  | 'Group'
-  | 'Chart'
-  | 'Pool'
-  | 'Gate'
-  | 'Resource Connection'
-  | 'State Connection'
-  | 'Source'
-  | 'Drain'
-  | 'Convertor'
-  | 'Trader'
-  | 'Delay'
-  | 'Register'
-  | 'End Condition'
-  | 'Artifical Intelligence';
-
-interface GraphElement {
-  id: number;
-  type: GraphElementType;
-  x: number;
-  y: number;
-  text?: string;
-  width?: number;
-  height?: number;
-  color?: string;
-  // Pool-specific properties
-  thickness?: number;
-  activation?: 'passive' | 'interactive' | 'automatic' | 'onstart';
-  pullMode?: 'pull any' | 'pull all' | 'push any' | 'push all';
-  resources?: string;
-  number?: number;
-  max?: number;
-  displayLimit?: number;
-  // Connection properties
-  startX?: number;
-  startY?: number;
-  endX?: number;
-  endY?: number;
-  connectedToStart?: number;
-  connectedToEnd?: number;
-}
-
 const Playground: React.FC = () => {
   const [isRunning, setIsRunning] = useState(false);
   const [selectedTool, setSelectedTool] = useState<string>('Select');
-<<<<<<< HEAD
   const [selectedElementIds, setSelectedElementIds] = useState<number[]>([]);
   const [selectedElement, setSelectedElement] = useState<GraphElement | null>(
     null
@@ -107,15 +63,6 @@ const Playground: React.FC = () => {
     canRedo,
   } = useHistory<GraphElement[]>([]);
 
-=======
-  const [selectedElement, setSelectedElement] = useState<GraphElement | null>(
-    null
-  );
-  const [externalElementUpdate, setExternalElementUpdate] = useState<{
-    elementId: number;
-    updates: Partial<GraphElement>;
-  } | null>(null);
->>>>>>> development
   const [toolProperties, setToolProperties] = useState<{
     textLabel: { text: string; color: string };
     group: { text: string; color: string };
@@ -130,7 +77,6 @@ const Playground: React.FC = () => {
       max: number;
       displayLimit: number;
     };
-<<<<<<< HEAD
     gate: {
       color: string;
       thickness: number;
@@ -222,8 +168,6 @@ const Playground: React.FC = () => {
       actions: number;
       script: string;
     };
-=======
->>>>>>> development
   }>({
     textLabel: { text: '', color: '#000000' },
     group: { text: '', color: '#000000' },
@@ -238,7 +182,6 @@ const Playground: React.FC = () => {
       max: 100,
       displayLimit: 10,
     },
-<<<<<<< HEAD
     gate: {
       color: '#000000',
       thickness: 2,
@@ -356,15 +299,10 @@ const Playground: React.FC = () => {
     setIsRunning(prevIsRunning => !prevIsRunning);
   };
 
-=======
-  });
-
->>>>>>> development
   const handleElementUpdate = (
     elementId: number,
     updates: Partial<GraphElement>
   ) => {
-<<<<<<< HEAD
     const newElements = elements.map(el =>
       el.id === elementId ? { ...el, ...updates } : el
     );
@@ -388,27 +326,14 @@ const Playground: React.FC = () => {
     [elements]
   );
 
-=======
-    // Update the selected element state
-    if (selectedElement && selectedElement.id === elementId) {
-      setSelectedElement({ ...selectedElement, ...updates });
-    }
-    // Trigger external update in Canvas
-    setExternalElementUpdate({ elementId, updates });
-  };
-
->>>>>>> development
   const handleElementSelection = (element: GraphElement | null) => {
     setSelectedElement(element);
   };
 
-<<<<<<< HEAD
   const getSelectedElements = (): GraphElement[] => {
     return elements.filter(el => selectedElementIds.includes(el.id));
   };
 
-=======
->>>>>>> development
   const handleToolPropertiesChange = (
     toolType: string,
     properties: Record<string, unknown>
@@ -420,7 +345,6 @@ const Playground: React.FC = () => {
   };
 
   // Clear external update after it's been processed
-<<<<<<< HEAD
   //React.useEffect(() => {
   //if (externalElementUpdate) {
   // Reset after a short delay to allow Canvas to process the update
@@ -430,17 +354,6 @@ const Playground: React.FC = () => {
   //return () => clearTimeout(timer);
   //}
   //}, [externalElementUpdate]);
-=======
-  React.useEffect(() => {
-    if (externalElementUpdate) {
-      // Reset after a short delay to allow Canvas to process the update
-      const timer = setTimeout(() => {
-        setExternalElementUpdate(null);
-      }, 0);
-      return () => clearTimeout(timer);
-    }
-  }, [externalElementUpdate]);
->>>>>>> development
 
   return (
     <div className="playground-wrapper">
@@ -449,7 +362,6 @@ const Playground: React.FC = () => {
         <div className="canvas-section">
           <div className="grid-canvas">
             <Canvas
-<<<<<<< HEAD
               isRunning={isRunning}
               selectedTool={selectedTool}
               elements={elements}
@@ -459,12 +371,6 @@ const Playground: React.FC = () => {
               onElementUpdate={handleElementUpdate}
               onElementSelection={handleElementSelection}
               //externalElementUpdate={externalElementUpdate}
-=======
-              selectedTool={selectedTool}
-              onElementUpdate={handleElementUpdate}
-              onElementSelection={handleElementSelection}
-              externalElementUpdate={externalElementUpdate}
->>>>>>> development
               toolProperties={toolProperties}
             />
           </div>
@@ -474,7 +380,6 @@ const Playground: React.FC = () => {
             selectedTool={selectedTool}
             setSelectedTool={setSelectedTool}
             selectedElement={selectedElement}
-<<<<<<< HEAD
             selectedElements={getSelectedElements()}
             allElements={elements}
             isRunning={isRunning}
@@ -484,11 +389,6 @@ const Playground: React.FC = () => {
             onToolPropertiesChange={handleToolPropertiesChange}
             canUndo={canUndo}
             canRedo={canRedo}
-=======
-            onElementUpdate={handleElementUpdate}
-            toolProperties={toolProperties}
-            onToolPropertiesChange={handleToolPropertiesChange}
->>>>>>> development
           />
         </div>
       </div>
