@@ -8,13 +8,16 @@ interface CanvasProps {
   selectedElementIds?: number[];
   onElementsChange?: (elements: GraphElement[]) => void;
   onSelectionChange?: (selectedIds: number[]) => void;
-
-  onElementUpdate?: (elementId: number, updates: Partial<GraphElement>) => void;
-  onElementSelection?: (element: GraphElement | null) => void;
   //externalElementUpdate?: {
   //elementId: number;
   //updates: Partial<GraphElement>;
   //} | null;
+  onElementUpdate?: (elementId: number, updates: Partial<GraphElement>) => void;
+  onElementSelection?: (element: GraphElement | null) => void;
+  externalElementUpdate?: {
+    elementId: number;
+    updates: Partial<GraphElement>;
+  } | null;
   toolProperties?: {
     textLabel: { text: string; color: string };
     group: { text: string; color: string };
@@ -273,15 +276,19 @@ const Canvas: React.FC<CanvasProps> = ({
     elementsToUpdate: GraphElement[],
     activationType: 'automatic' | 'onstart' | 'interactive',
     interactiveElementId?: number
-  ) => {
+  ): GraphElement[] => {
+    // Create a deep copy to prevent mutating the original state directly.
     const nextElements = JSON.parse(
       JSON.stringify(elementsToUpdate)
     ) as GraphElement[];
+    // Create a Map for quick lookups of elements by their ID.
     const elementMap = new Map<number, GraphElement>(
       nextElements.map(el => [el.id, el])
     );
 
+    // Iterate through all elements to find connections that need processing.
     for (const connection of nextElements) {
+      // Skip elements that are not resource connections or are improperly connected.
       if (
         connection.type !== 'Resource Connection' ||
         !connection.connectedToStart ||
@@ -290,22 +297,30 @@ const Canvas: React.FC<CanvasProps> = ({
         continue;
       }
 
+      // Get the elements connected by this connection.
       const startElement = elementMap.get(connection.connectedToStart);
       const endElement = elementMap.get(connection.connectedToEnd);
+      // Skip if either connected element doesn't exist.
       if (!startElement || !endElement) continue;
 
-      const transferAmount = parseInt(connection.text || '0', 10);
+      // --- Safety Check for Transfer Amount ---
+      let transferAmount = parseInt(connection.text || '0', 10);
+      if (isNaN(transferAmount)) {
+        transferAmount = 0; // Default to 0 to prevent NaN errors.
+      }
+
+      // Skip if the connection's transfer amount is zero.
       if (transferAmount === 0) continue;
 
-      // Case 1: Source -> Pool (Source is the trigger)
+      // --- Case 1: Source -> Pool (Source is the trigger) ---
       if (startElement.type === 'Source' && endElement.type === 'Pool') {
         const source = startElement;
         const pool = endElement;
 
-        // --- THIS IS THE FIX: A clearer, more explicit logic block ---
+        // Determine if the source should be active based on the current tick type.
         let isTriggerActive = false;
         if (activationType === 'automatic') {
-          // An automatic tick triggers both 'automatic' and 'passive' sources.
+          // Automatic ticks activate 'automatic' and 'passive' sources.
           if (
             source.activation === 'automatic' ||
             source.activation === 'passive'
@@ -313,34 +328,40 @@ const Canvas: React.FC<CanvasProps> = ({
             isTriggerActive = true;
           }
         } else {
-          // 'interactive' and 'onstart' ticks require an exact match.
+          // 'interactive' and 'onstart' ticks require an exact activation type match.
           if (source.activation === activationType) {
             isTriggerActive = true;
           }
         }
 
+        // Check if the source can fire (not 'onstart' that already fired).
         const canFire = activationType !== 'onstart' || !source.hasStarted;
+        // Check if this source is the specific one targeted by an interactive click.
         const isTarget =
           !interactiveElementId || source.id === interactiveElementId;
 
+        // If all conditions met, perform the transfer.
         if (isTarget && isTriggerActive && canFire) {
-          const newTotal = (pool.currentPoints || 0) + transferAmount;
+          const currentPoolPoints = pool.currentPoints || 0;
+          const newTotal = currentPoolPoints + transferAmount;
+          // Respect the pool's maximum capacity.
           pool.currentPoints = Math.min(newTotal, pool.max || Infinity);
+          // Mark 'onstart' elements as having fired.
           if (activationType === 'onstart') {
             source.hasStarted = true;
           }
         }
       }
 
-      // Case 2: Pool -> Drain (Drain is the trigger)
+      // --- Case 2: Pool -> Drain (Drain is the trigger) ---
       if (startElement.type === 'Pool' && endElement.type === 'Drain') {
         const pool = startElement;
         const drain = endElement;
 
-        // --- THIS IS THE FIX (Applied here as well) ---
+        // Determine if the drain should be active based on the current tick type.
         let isTriggerActive = false;
         if (activationType === 'automatic') {
-          // An automatic tick triggers both 'automatic' and 'passive' drains.
+          // Automatic ticks activate 'automatic' and 'passive' drains.
           if (
             drain.activation === 'automatic' ||
             drain.activation === 'passive'
@@ -348,39 +369,36 @@ const Canvas: React.FC<CanvasProps> = ({
             isTriggerActive = true;
           }
         } else {
-          // 'interactive' and 'onstart' ticks require an exact match.
+          // 'interactive' and 'onstart' ticks require an exact activation type match.
           if (drain.activation === activationType) {
             isTriggerActive = true;
           }
         }
 
+        // Check if the drain can fire (not 'onstart' that already fired).
         const canFire = activationType !== 'onstart' || !drain.hasStarted;
+        // Check if this drain is the specific one targeted by an interactive click.
         const isTarget =
           !interactiveElementId || drain.id === interactiveElementId;
 
-        if (isTarget && isTriggerActive) {
-          console.log('[LOG 3] Simulation tick for Drain:', {
-            isTarget,
-            isTriggerActive,
-            canFire,
-            transferAmount,
-            pointsAvailable: pool.currentPoints,
-          });
-        }
-
+        // If all conditions met, perform the transfer.
         if (isTarget && isTriggerActive && canFire) {
           const pointsAvailable = pool.currentPoints || 0;
+          // Determine how many points can actually be transferred.
           const pointsToTransfer = Math.min(transferAmount, pointsAvailable);
+          // Subtract points if possible.
           if (pointsToTransfer > 0) {
-            pool.currentPoints! -= pointsToTransfer;
+            pool.currentPoints = (pool.currentPoints || 0) - pointsToTransfer; // Safer subtraction
           }
+          // Mark 'onstart' elements as having fired.
           if (activationType === 'onstart') {
             drain.hasStarted = true;
           }
         }
       }
-    }
+    } // End of connection loop
 
+    // Return the modified array of elements.
     return nextElements;
   };
 
@@ -396,10 +414,17 @@ const Canvas: React.FC<CanvasProps> = ({
 
     // A. When "Run" is first clicked for a session:
     if (isRunning && !hasSimulationStarted) {
-      // 1. Run all "OnStart" actions exactly once.
-      setElements(currentElements =>
-        runSimulationTick(currentElements, 'onstart')
-      );
+      console.log('--- Running OnStart ---'); // LOG
+      try {
+        // Add try...catch
+        setElements(currentElements =>
+          runSimulationTick(currentElements, 'onstart')
+        );
+      } catch (error) {
+        console.error('⛔️ Error during OnStart tick:', error); // Log the error
+        // Optionally stop simulation on error:
+        // setIsRunning(false); // You'd need setIsRunning from props or context
+      }
       setHasSimulationStarted(true);
     }
 
@@ -407,9 +432,23 @@ const Canvas: React.FC<CanvasProps> = ({
     if (isRunning) {
       // 2. Start the timer for all "Automatic" actions.
       simulationInterval = setInterval(() => {
-        setElements(currentElements =>
-          runSimulationTick(currentElements, 'automatic')
-        );
+        console.log('--- Running Automatic Tick ---'); // LOG
+        try {
+          // Add try...catch
+          setElements(currentElements => {
+            // Optional: Log state before if needed for complex bugs
+            // console.log('Elements BEFORE tick:', JSON.stringify(currentElements));
+            const nextState = runSimulationTick(currentElements, 'automatic');
+            // Optional: Log state after if needed
+            // console.log('Elements AFTER tick:', JSON.stringify(nextState));
+            return nextState;
+          });
+        } catch (error) {
+          console.error('⛔️ Error during Automatic tick:', error); // Log the error
+          if (simulationInterval) clearInterval(simulationInterval); // Stop interval on error
+          // Optionally stop simulation on error:
+          // setIsRunning(false); // Needs setIsRunning from props/context
+        }
       }, 1000); // Ticks every 1 second.
     }
 
@@ -428,7 +467,9 @@ const Canvas: React.FC<CanvasProps> = ({
         clearInterval(simulationInterval);
       }
     };
-  }, [isRunning, hasSimulationStarted]);
+    // Ensure ALL dependencies used inside are listed.
+    // If setIsRunning comes from props/context, add it too.
+  }, [isRunning, hasSimulationStarted, setElements]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -754,6 +795,7 @@ const Canvas: React.FC<CanvasProps> = ({
           currentPoints: maxPoints
             ? Math.min(startingPoints, maxPoints)
             : startingPoints,
+          ...toolProperties?.pool,
         },
       ]);
     } else if (type === 'Resource Connection' || type === 'State Connection') {
@@ -991,17 +1033,17 @@ const Canvas: React.FC<CanvasProps> = ({
   };
 
   // Handle external updates from parent component
-  //React.useEffect(() => {
-  //if (externalElementUpdate) {
-  //setElements(prevElements =>
-  //prevElements.map(el =>
-  //el.id === externalElementUpdate.elementId
-  //? { ...el, ...externalElementUpdate.updates }
-  //: el
-  //)
-  //);
-  //}
-  //}, [externalElementUpdate]);
+  // React.useEffect(() => {
+  //   if (externalElementUpdate) {
+  //     setElements(prevElements =>
+  //       prevElements.map(el =>
+  //         el.id === externalElementUpdate.elementId
+  //           ? { ...el, ...externalElementUpdate.updates }
+  //           : el
+  //       )
+  //     );
+  //   }
+  // }, [externalElementUpdate]);
 
   // Expose selected element to parent
   React.useEffect(() => {
@@ -1009,7 +1051,7 @@ const Canvas: React.FC<CanvasProps> = ({
     if (onElementSelection) {
       onElementSelection(selectedEl);
     }
-  }, [selectedId, elements, onElementSelection]);
+  }, [selectedId, elements, onElementSelection, getSelectedElement]);
 
   const handleElementMouseDown = (e: React.MouseEvent, id: number) => {
     // Stop the event from bubbling up to the canvas immediately.
@@ -1536,6 +1578,7 @@ const Canvas: React.FC<CanvasProps> = ({
               fill={el.color || '#000000'}
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
               strokeWidth={el.thickness || 2}
+              className={`source-triangle ${isSelected ? 'selected' : ''}`}
             />
             <text
               x="20"
@@ -1566,6 +1609,7 @@ const Canvas: React.FC<CanvasProps> = ({
               fill={el.color || '#000000'}
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
               strokeWidth={el.thickness || 2}
+              className={`drain-triangle ${isSelected ? 'selected' : ''}`}
             />
           </svg>
         );
@@ -1974,12 +2018,26 @@ const Canvas: React.FC<CanvasProps> = ({
                 </marker>
               </defs>
               <line
-                x1={sx - left}
-                y1={sy - top}
-                x2={ex - left}
-                y2={ey - top}
-                stroke={isSelected ? '#0078d4' : el.color || '#333'}
-                strokeWidth={isSelected ? 3 : el.thickness || 2}
+                x1={
+                  (el.startX || el.x) -
+                  Math.min(el.startX || el.x, el.endX || el.x) +
+                  5
+                }
+                y1={
+                  (el.startY || el.y) -
+                  Math.min(el.startY || el.y, el.endY || el.y) +
+                  5
+                }
+                x2={
+                  (el.endX || el.x) -
+                  Math.min(el.startX || el.x, el.endX || el.x) +
+                  5
+                }
+                y2={
+                  (el.endY || el.y) -
+                  Math.min(el.startY || el.y, el.endY || el.y) +
+                  5
+                }
                 className={`connection-line ${isSelected ? 'selected' : ''}`}
                 markerEnd={`url(#arrowhead-${el.id})`}
               />
