@@ -2580,18 +2580,14 @@ const Canvas: React.FC<CanvasProps> = ({
               }
             }}
           >
-            {/* Trader shape - square with diagonal lines */}
-            <rect
-              x="5"
-              y="5"
-              width="30"
-              height="30"
-              fill={el.color || '#000000'}
+            {/* Trader shape - parallelogram outline with no fill */}
+            <polygon
+              points="8,5 35,5 32,35 5,35"
+              fill="none"
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+              strokeWidth="2"
               className={`trader-shape ${isSelected ? 'selected' : ''}`}
             />
-            <line x1="5" y1="5" x2="35" y2="35" className="trader-line" />
-            <line x1="35" y1="5" x2="5" y2="35" className="trader-line" />
 
             {/* Show stored resources for pull any mode */}
             {el.pullMode === 'pull any' &&
@@ -2601,7 +2597,7 @@ const Canvas: React.FC<CanvasProps> = ({
                   x="20"
                   y="15"
                   fontSize="8"
-                  fill="white"
+                  fill={el.color || '#000000'}
                   textAnchor="middle"
                   className="trader-storage"
                 >
@@ -2617,7 +2613,7 @@ const Canvas: React.FC<CanvasProps> = ({
                 x="20"
                 y="30"
                 fontSize="6"
-                fill="white"
+                fill={el.color || '#000000'}
                 textAnchor="middle"
                 className="trader-label"
               >
