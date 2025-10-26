@@ -155,6 +155,9 @@ interface GraphElement {
   thickness?: number;
   activation?: 'passive' | 'interactive' | 'automatic' | 'onstart';
   pullMode?: 'pull any' | 'pull all' | 'push any' | 'push all';
+  gateType?: 'deterministic' | 'dice' | 'skill' | 'multiplayer' | 'strategy';
+  triggerCount?: number;
+  lastGateValue?: number;
   resources?: string;
   number?: number;
   max?: number;
@@ -272,23 +275,178 @@ const Canvas: React.FC<CanvasProps> = ({
 
   const canvasRef = useRef<HTMLDivElement>(null);
 
+  // ---------- Gate helpers ----------
+  const randInt = (min: number, max: number) =>
+    Math.floor(Math.random() * (max - min + 1)) + min;
+
+  type LabelKind = 'prob' | 'cond' | 'interval' | 'else' | 'empty' | 'invalid';
+
+  function classifyLabel(raw?: string): LabelKind {
+    const s = (raw ?? '').trim();
+    if (!s) return 'empty';
+    if (s.toLowerCase() === 'else') return 'else';
+    if (/^\d+\s*%$/.test(s)) return 'prob'; // "70%"
+    if (/^\d+(\.\d+)?$/.test(s)) return 'prob'; // weight "4"
+    if (/^(==|!=|>=|<=|>|<)\s*-?\d+(\.\d+)?$/.test(s)) return 'cond';
+    if (/^-?\d+(\.\d+)?\s*-\s*-?\d+(\.\d+)?$/.test(s)) return 'interval';
+    return 'invalid';
+  }
+
+  function parseInterval(raw: string): [number, number] | null {
+    const m = raw
+      .trim()
+      .match(/^\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\s*$/);
+    if (!m) return null;
+    const a = parseFloat(m[1]),
+      b = parseFloat(m[2]);
+    return a <= b ? [a, b] : [b, a];
+  }
+
+  function parseCond(raw: string): ((v: number) => boolean) | null {
+    const m = raw.trim().match(/^(==|!=|>=|<=|>|<)\s*(-?\d+(?:\.\d+)?)$/);
+    if (!m) return null;
+    const op = m[1],
+      rhs = parseFloat(m[2]);
+    return (v: number) => {
+      switch (op) {
+        case '==':
+          return v === rhs;
+        case '!=':
+          return v !== rhs;
+        case '>=':
+          return v >= rhs;
+        case '<=':
+          return v <= rhs;
+        case '>':
+          return v > rhs;
+        case '<':
+          return v < rhs;
+        default:
+          return false;
+      }
+    };
+  }
+
+  // Decide a gate "value" for condition/interval labels.
+  function generateGateValue(g: GraphElement): number {
+    const sides = Math.max(2, g.actions ?? 6);
+    if (g.gateType === 'dice') {
+      return randInt(1, sides);
+    }
+    // deterministic cycle
+    const prev = g.lastGateValue ?? 0;
+    return (prev % sides) + 1;
+  }
+
+  /**
+   * Choose one output connection given labels.
+   * Condition-mode if there is ANY cond/interval label (ELSE ALONE does NOT trigger cond-mode).
+   * Otherwise probability-mode:
+   *  - If any '%' are present, '%'-labels are used and 'else' gets (100 - sum%).
+   *  - If no '%', numeric weights & empty labels (weight 1) are used. 'else' has weight 0 by default.
+   */
+  function chooseGateOutput(
+    gate: GraphElement,
+    outputs: GraphElement[]
+  ): GraphElement | null {
+    if (outputs.length === 0) return null;
+
+    const kinds = outputs.map(o => classifyLabel(o.text));
+
+    // ---- condition mode (ignore 'else' when deciding to enter this mode)
+    const hasRealCondition = kinds.some(k => k === 'cond' || k === 'interval');
+    if (hasRealCondition) {
+      const v = generateGateValue(gate);
+      gate.lastGateValue = v;
+
+      // try conds and intervals in order
+      for (let i = 0; i < outputs.length; i++) {
+        const o = outputs[i];
+        const kind = kinds[i];
+        if (kind === 'cond') {
+          const fn = parseCond(o.text!);
+          if (fn && fn(v)) return o;
+        } else if (kind === 'interval') {
+          const pair = parseInterval(o.text!);
+          if (pair && v >= pair[0] && v <= pair[1]) return o;
+        }
+      }
+      // else fallback
+      const elseIdx = kinds.findIndex(k => k === 'else');
+      return elseIdx >= 0 ? outputs[elseIdx] : null;
+    }
+
+    // ---- probability mode
+    const isPercent = outputs.some(
+      (o, i) => kinds[i] === 'prob' && /%$/.test((o.text ?? '').trim())
+    );
+    const weights = new Array(outputs.length).fill(0);
+    const elseIdx = kinds.findIndex(k => k === 'else');
+
+    if (isPercent) {
+      // use only % labels; else gets remainder to 100
+      let sumPercent = 0;
+      for (let i = 0; i < outputs.length; i++) {
+        const o = outputs[i];
+        const s = (o.text ?? '').trim();
+        if (kinds[i] === 'prob' && /%$/.test(s)) {
+          const w = Math.max(0, parseInt(s, 10) || 0);
+          weights[i] = w;
+          sumPercent += w;
+        }
+      }
+      if (elseIdx >= 0) {
+        const rem = Math.max(0, 100 - sumPercent);
+        weights[elseIdx] = rem;
+        sumPercent += rem;
+      }
+      if (sumPercent <= 0) return elseIdx >= 0 ? outputs[elseIdx] : null;
+
+      let r = Math.random() * sumPercent;
+      for (let i = 0; i < outputs.length; i++) {
+        r -= weights[i];
+        if (r <= 0 && weights[i] > 0) return outputs[i];
+      }
+      return outputs[outputs.length - 1];
+    } else {
+      // plain weights: number => weight; empty => 1; else => 0 (unless you want to assign a weight)
+      for (let i = 0; i < outputs.length; i++) {
+        const kind = kinds[i];
+        const s = (outputs[i].text ?? '').trim();
+        if (kind === 'prob' && !/%$/.test(s)) {
+          weights[i] = Math.max(0, parseFloat(s) || 0);
+        } else if (kind === 'empty') {
+          weights[i] = 1;
+        } else {
+          weights[i] = 0; // else/invalid default 0 in weight-mode
+        }
+      }
+      const total = weights.reduce((a, b) => a + b, 0);
+      if (total <= 0) return elseIdx >= 0 ? outputs[elseIdx] : null;
+
+      let r = Math.random() * total;
+      for (let i = 0; i < outputs.length; i++) {
+        r -= weights[i];
+        if (r <= 0 && weights[i] > 0) return outputs[i];
+      }
+      return outputs[outputs.length - 1];
+    }
+  }
+
   const runSimulationTick = (
     elementsToUpdate: GraphElement[],
     activationType: 'automatic' | 'onstart' | 'interactive',
     interactiveElementId?: number
   ): GraphElement[] => {
-    // Create a deep copy to prevent mutating the original state directly.
     const nextElements = JSON.parse(
       JSON.stringify(elementsToUpdate)
     ) as GraphElement[];
-    // Create a Map for quick lookups of elements by their ID.
     const elementMap = new Map<number, GraphElement>(
       nextElements.map(el => [el.id, el])
     );
 
-    // Iterate through all elements to find connections that need processing.
+    // --------- PASS 1: generic connections (but SKIP Gate outputs) ---------
     for (const connection of nextElements) {
-      // Skip elements that are not resource connections or are improperly connected.
       if (
         connection.type !== 'Resource Connection' ||
         !connection.connectedToStart ||
@@ -296,109 +454,195 @@ const Canvas: React.FC<CanvasProps> = ({
       ) {
         continue;
       }
-
-      // Get the elements connected by this connection.
       const startElement = elementMap.get(connection.connectedToStart);
       const endElement = elementMap.get(connection.connectedToEnd);
-      // Skip if either connected element doesn't exist.
       if (!startElement || !endElement) continue;
+
+      // NEW: do not let generic logic touch Gate outputs; Gate handles its own routing.
+      if (startElement.type === 'Gate') continue;
 
       // --- Safety Check for Transfer Amount ---
       let transferAmount = parseInt(connection.text || '0', 10);
-      if (isNaN(transferAmount)) {
-        transferAmount = 0; // Default to 0 to prevent NaN errors.
-      }
-
-      // Skip if the connection's transfer amount is zero.
+      if (isNaN(transferAmount)) transferAmount = 0;
       if (transferAmount === 0) continue;
 
-      // --- Case 1: Source -> Pool (Source is the trigger) ---
+      // Case 1: Source -> Pool
       if (startElement.type === 'Source' && endElement.type === 'Pool') {
-        const source = startElement;
-        const pool = endElement;
-
-        // Determine if the source should be active based on the current tick type.
         let isTriggerActive = false;
         if (activationType === 'automatic') {
-          // Automatic ticks activate 'automatic' and 'passive' sources.
           if (
-            source.activation === 'automatic' ||
-            source.activation === 'passive'
-          ) {
+            startElement.activation === 'automatic' ||
+            startElement.activation === 'passive'
+          )
             isTriggerActive = true;
-          }
         } else {
-          // 'interactive' and 'onstart' ticks require an exact activation type match.
-          if (source.activation === activationType) {
+          if (startElement.activation === activationType)
             isTriggerActive = true;
-          }
         }
-
-        // Check if the source can fire (not 'onstart' that already fired).
-        const canFire = activationType !== 'onstart' || !source.hasStarted;
-        // Check if this source is the specific one targeted by an interactive click.
+        const canFire =
+          activationType !== 'onstart' || !startElement.hasStarted;
         const isTarget =
-          !interactiveElementId || source.id === interactiveElementId;
+          !interactiveElementId || startElement.id === interactiveElementId;
 
-        // If all conditions met, perform the transfer.
         if (isTarget && isTriggerActive && canFire) {
-          const currentPoolPoints = pool.currentPoints || 0;
+          const currentPoolPoints = endElement.currentPoints || 0;
           const newTotal = currentPoolPoints + transferAmount;
-          // Respect the pool's maximum capacity.
-          pool.currentPoints = Math.min(newTotal, pool.max || Infinity);
-          // Mark 'onstart' elements as having fired.
-          if (activationType === 'onstart') {
-            source.hasStarted = true;
-          }
+          endElement.currentPoints = Math.min(
+            newTotal,
+            endElement.max ?? Infinity
+          );
+          if (activationType === 'onstart') startElement.hasStarted = true;
         }
       }
 
-      // --- Case 2: Pool -> Drain (Drain is the trigger) ---
+      // Case 2: Pool -> Drain
       if (startElement.type === 'Pool' && endElement.type === 'Drain') {
-        const pool = startElement;
-        const drain = endElement;
-
-        // Determine if the drain should be active based on the current tick type.
         let isTriggerActive = false;
         if (activationType === 'automatic') {
-          // Automatic ticks activate 'automatic' and 'passive' drains.
           if (
-            drain.activation === 'automatic' ||
-            drain.activation === 'passive'
-          ) {
+            endElement.activation === 'automatic' ||
+            endElement.activation === 'passive'
+          )
             isTriggerActive = true;
-          }
         } else {
-          // 'interactive' and 'onstart' ticks require an exact activation type match.
-          if (drain.activation === activationType) {
-            isTriggerActive = true;
-          }
+          if (endElement.activation === activationType) isTriggerActive = true;
         }
-
-        // Check if the drain can fire (not 'onstart' that already fired).
-        const canFire = activationType !== 'onstart' || !drain.hasStarted;
-        // Check if this drain is the specific one targeted by an interactive click.
+        const canFire = activationType !== 'onstart' || !endElement.hasStarted;
         const isTarget =
-          !interactiveElementId || drain.id === interactiveElementId;
+          !interactiveElementId || endElement.id === interactiveElementId;
 
-        // If all conditions met, perform the transfer.
         if (isTarget && isTriggerActive && canFire) {
-          const pointsAvailable = pool.currentPoints || 0;
-          // Determine how many points can actually be transferred.
-          const pointsToTransfer = Math.min(transferAmount, pointsAvailable);
-          // Subtract points if possible.
-          if (pointsToTransfer > 0) {
-            pool.currentPoints = (pool.currentPoints || 0) - pointsToTransfer; // Safer subtraction
-          }
-          // Mark 'onstart' elements as having fired.
-          if (activationType === 'onstart') {
-            drain.hasStarted = true;
-          }
+          const pointsAvailable = startElement.currentPoints || 0;
+          const toTransfer = Math.min(transferAmount, pointsAvailable);
+          if (toTransfer > 0)
+            startElement.currentPoints = pointsAvailable - toTransfer;
+          if (activationType === 'onstart') endElement.hasStarted = true;
         }
       }
-    } // End of connection loop
+    }
 
-    // Return the modified array of elements.
+    // --------- PASS 2: process Gates ----------
+    for (const gate of nextElements) {
+      if (gate.type !== 'Gate') continue;
+
+      // Activation gate check
+      let isTriggerActive = false;
+      if (activationType === 'automatic') {
+        if (gate.activation === 'automatic' || gate.activation === 'passive')
+          isTriggerActive = true;
+      } else {
+        if (gate.activation === activationType) isTriggerActive = true;
+      }
+      const canFire = activationType !== 'onstart' || !gate.hasStarted;
+      const isTarget =
+        !interactiveElementId || gate.id === interactiveElementId;
+
+      if (!(isTriggerActive && canFire && isTarget)) continue;
+
+      // Collect inputs (resource connections ending at this gate)
+      const inputConns = nextElements.filter(
+        c => c.type === 'Resource Connection' && c.connectedToEnd === gate.id
+      );
+
+      // Collect outputs (both resource and state connections starting at this gate)
+      const outputConns = nextElements.filter(
+        c =>
+          (c.type === 'Resource Connection' || c.type === 'State Connection') &&
+          c.connectedToStart === gate.id
+      );
+
+      if (outputConns.length === 0) {
+        if (activationType === 'onstart') gate.hasStarted = true;
+        continue;
+      }
+
+      // Determine actions this tick
+      const actions = Math.max(1, gate.actions ?? 1);
+
+      // Helper: can we take 1 unit from a start element?
+      const canTakeOne = (start: GraphElement): boolean => {
+        if (start.type === 'Source') return true; // infinite
+        if (start.type === 'Pool') return (start.currentPoints ?? 0) > 0;
+        return false; // not supported as input (yet)
+      };
+
+      const takeOne = (start: GraphElement): boolean => {
+        if (start.type === 'Source') return true;
+        if (start.type === 'Pool') {
+          const have = start.currentPoints ?? 0;
+          if (have > 0) {
+            start.currentPoints = have - 1;
+            return true;
+          }
+        }
+        return false;
+      };
+
+      const deliverOne = (outConn: GraphElement) => {
+        const end = elementMap.get(outConn.connectedToEnd!);
+        if (!end) return;
+
+        if (outConn.type === 'State Connection') {
+          // Trigger-only: discard resource, bump instrumentation
+          end.triggerCount = (end.triggerCount ?? 0) + 1;
+          // You can also flip flags or enqueue effects here if needed.
+          return;
+        }
+
+        // Resource delivery
+        if (end.type === 'Pool') {
+          const cur = end.currentPoints ?? 0;
+          const cap = end.max ?? Infinity;
+          if (cur < cap) end.currentPoints = cur + 1;
+          return;
+        }
+
+        // If Drain (via resource path) => "lost", do nothing.
+        // If other types later need resource, add handling here.
+      };
+
+      // Run actions
+      for (let a = 0; a < actions; a++) {
+        // Build a list of inputs to consume from based on pullMode
+        let inputsToUse: GraphElement[] = [];
+
+        if ((gate.pullMode ?? 'pull any') === 'pull all') {
+          for (const ic of inputConns) {
+            const startEl = elementMap.get(ic.connectedToStart!);
+            if (startEl && canTakeOne(startEl)) inputsToUse.push(startEl);
+          }
+          if (inputsToUse.length === 0) break; // nothing available this action
+        } else {
+          // pull any
+          const best = inputConns.find(ic => {
+            const se = elementMap.get(ic.connectedToStart!);
+            return !!se && canTakeOne(se);
+          });
+          if (!best) break;
+          const se = elementMap.get(best.connectedToStart!)!;
+          inputsToUse = [se];
+        }
+
+        // Choose output once per resource taken
+        for (const startEl of inputsToUse) {
+          // Consume one unit
+          if (!takeOne(startEl)) continue;
+
+          // Decide which output gets it
+          // NOTE: we give chooseGateOutput the *full* output list so labels compete
+          const chosen = chooseGateOutput(gate, outputConns);
+          if (chosen) {
+            // lastGateValue is set inside chooseGateOutput in condition-mode.
+            deliverOne(chosen);
+          }
+
+          // else: dropped on the floor (no match and no 'else')
+        }
+      }
+
+      if (activationType === 'onstart') gate.hasStarted = true;
+    }
+
     return nextElements;
   };
 
@@ -629,15 +873,15 @@ const Canvas: React.FC<CanvasProps> = ({
   ]);
 
   useEffect(() => {
-    if (onElementSelection) {
-      if (selectedId.length === 1) {
-        const element = elements.find(el => el.id === selectedId[0]);
-        onElementSelection(element || null);
-      } else if (selectedId.length === 0) {
-        onElementSelection(null);
-      }
+    if (!onElementSelection) return;
+
+    if (selectedId.length === 1) {
+      const el = elements.find(e => e.id === selectedId[0]) || null;
+      onElementSelection(el);
+    } else if (selectedId.length === 0) {
+      onElementSelection(null);
     }
-  }, [selectedId.length, selectedId[0]]);
+  }, [selectedId, elements, onElementSelection]);
 
   // Helper function to find the closest element to a point
   const findClosestElement = (
@@ -1023,35 +1267,6 @@ const Canvas: React.FC<CanvasProps> = ({
       onElementUpdate(id, { text: value });
     }
   };
-
-  // Get currently selected element
-  const getSelectedElement = (): GraphElement | null => {
-    if (selectedId.length === 1) {
-      return elements.find(el => el.id === selectedId[0]) || null;
-    }
-    return null;
-  };
-
-  // Handle external updates from parent component
-  // React.useEffect(() => {
-  //   if (externalElementUpdate) {
-  //     setElements(prevElements =>
-  //       prevElements.map(el =>
-  //         el.id === externalElementUpdate.elementId
-  //           ? { ...el, ...externalElementUpdate.updates }
-  //           : el
-  //       )
-  //     );
-  //   }
-  // }, [externalElementUpdate]);
-
-  // Expose selected element to parent
-  React.useEffect(() => {
-    const selectedEl = getSelectedElement();
-    if (onElementSelection) {
-      onElementSelection(selectedEl);
-    }
-  }, [selectedId, elements, onElementSelection, getSelectedElement]);
 
   const handleElementMouseDown = (e: React.MouseEvent, id: number) => {
     // Stop the event from bubbling up to the canvas immediately.
