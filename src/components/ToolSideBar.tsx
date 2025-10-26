@@ -41,6 +41,16 @@ interface GraphElement {
   maxValue?: number;
   gateType?: 'deterministic' | 'dice' | 'skill' | 'multiplayer' | 'strategy';
 
+  // Convertor-specific properties
+  inputResources?: Record<string, number>; // Resource type -> amount stored
+  outputResources?: Record<string, number>; // Resource type -> amount to produce
+  conversionRate?: Record<string, number>; // Input resource -> output resource conversion rate
+
+  // Trader-specific properties
+  traderInputs?: Record<string, number>; // Resource type -> amount required for trade
+  traderOutputs?: Record<string, number>; // Resource type -> amount provided in trade
+  isIncompleteTrader?: boolean; // True if trader has < 2 inputs or < 2 outputs
+
   queue?: boolean;
   formula?: string;
   interactive?: boolean;
