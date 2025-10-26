@@ -105,6 +105,24 @@
   height: 40px;
 }
 
+.convertor-shape {
+  stroke-width: 2;
+}
+
+.convertor-line {
+  stroke-width: 1;
+}
+
+.convertor-storage {
+  font-family: monospace;
+  font-weight: bold;
+}
+
+.convertor-label {
+  font-family: Arial, sans-serif;
+  font-weight: bold;
+}
+
 /* End Condition Element */
 .end-condition-element {
   left: -20px;
@@ -143,6 +161,30 @@
   top: -20px;
   width: 40px;
   height: 40px;
+}
+
+.trader-shape {
+  stroke-width: 2;
+}
+
+.trader-line {
+  stroke: white;
+  stroke-width: 1;
+}
+
+.trader-storage {
+  font-family: monospace;
+  font-weight: bold;
+}
+
+.trader-label {
+  font-family: Arial, sans-serif;
+  font-weight: bold;
+}
+
+.trader-incomplete {
+  font-family: Arial, sans-serif;
+  font-weight: bold;
 }
 
 /* Group Element */
@@ -261,8 +303,7 @@
 }
 
 .source-triangle {
-  fill: #43a047;
-  stroke: #1b5e20;
+  fill: none;
   stroke-width: 2;
 }
 
@@ -273,8 +314,7 @@
 }
 
 .drain-triangle {
-  fill: #e53935;
-  stroke: #b71c1c;
+  fill: none;
   stroke-width: 2;
 }
 
@@ -285,25 +325,21 @@
 }
 
 .gate-diamond {
-  fill: #ff9800;
-  stroke: #e65100;
+  fill: none;
   stroke-width: 2;
 }
 
 .gate-diamond.selected {
   fill: none;
-  stroke: #0078d4;
   stroke-width: 2;
 }
 
 .convertor-shape {
-  fill: #9c27b0;
-  stroke: #4a148c;
+  fill: none;
   stroke-width: 2;
 }
 
 .convertor-line {
-  stroke: #4a148c;
   stroke-width: 2;
 }
 
@@ -314,13 +350,8 @@
 }
 
 .end-condition-rect {
-  fill: #f44336;
-  stroke: #b71c1c;
+  fill: none;
   stroke-width: 2;
-}
-
-.end-condition-inner-rect {
-  fill: #b71c1c;
 }
 
 .end-condition-rect.selected {
@@ -330,16 +361,14 @@
 }
 
 .ai-rect {
-  fill: #4caf50;
-  stroke: #2e7d32;
+  fill: none;
   stroke-width: 2;
 }
 
 .ai-text {
   text-anchor: middle;
   dominant-baseline: middle;
-  fill: white;
-  font-size: 10px;
+  font-size: 14px;
   font-weight: bold;
 }
 
@@ -350,8 +379,6 @@
 }
 
 .register-rect {
-  fill: #607d8b;
-  stroke: #37474f;
   stroke-width: 2;
 }
 
@@ -370,15 +397,13 @@
 }
 
 .delay-circle {
-  fill: #ff5722;
-  stroke: #d84315;
+  fill: none;
   stroke-width: 2;
 }
 
 .delay-text {
   text-anchor: middle;
   dominant-baseline: middle;
-  fill: white;
   font-size: 14px;
   font-weight: bold;
 }
@@ -390,8 +415,7 @@
 }
 
 .trader-polygon {
-  fill: #795548;
-  stroke: #3e2723;
+  fill: none;
   stroke-width: 2;
 }
 
@@ -425,77 +449,10 @@
 }
 
 /* Arrow Marker Styles */
-/* .arrow-marker {
+.arrow-marker {
   marker-width: 10;
   marker-height: 7;
   ref-x: 9;
   ref-y: 3.5;
   orient: auto;
-} */
-
-.element-value-text {
-  font-family: Arial, sans-serif;
-  font-size: 14px;
-  font-weight: bold;
-  stroke: black;
-  stroke-width: 0.5px;
-  text-anchor: middle;
-  pointer-events: none; /* Make sure the text isn't clickable */
-}
-
-.canvas.is-running {
-  cursor: not-allowed;
-}
-
-.connection-label-text {
-  font-family: Arial, sans-serif;
-  font-size: 12px;
-  fill: #333;
-  text-anchor: middle;
-  paint-order: stroke;
-  stroke: white;
-  stroke-width: 3px;
-  stroke-linecap: butt;
-  stroke-linejoin: miter;
-}
-
-.clickable-element {
-  pointer-events: auto !important;
-}
-.arrow-polygon {
-  fill: #333;
-}
-
-.dashed-arrow-polygon {
-  fill: #666;
-}
-
-.element-value-text {
-  font-family: Arial, sans-serif;
-  font-size: 14px;
-  font-weight: bold;
-  stroke: black;
-  stroke-width: 0.5px;
-  text-anchor: middle;
-  pointer-events: none; /* Make sure the text isn't clickable */
-}
-
-.canvas.is-running {
-  cursor: not-allowed;
-}
-
-.connection-label-text {
-  font-family: Arial, sans-serif;
-  font-size: 12px;
-  fill: #333;
-  text-anchor: middle;
-  paint-order: stroke;
-  stroke: white;
-  stroke-width: 3px;
-  stroke-linecap: butt;
-  stroke-linejoin: miter;
-}
-
-.clickable-element {
-  pointer-events: auto !important;
 }

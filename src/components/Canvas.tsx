@@ -165,6 +165,16 @@ interface GraphElement {
 
   actions?: number;
 
+  // Convertor-specific properties
+  inputResources?: Record<string, number>; // Resource type -> amount stored
+  outputResources?: Record<string, number>; // Resource type -> amount to produce
+  conversionRate?: Record<string, number>; // Input resource -> output resource conversion rate
+
+  // Trader-specific properties
+  traderInputs?: Record<string, number>; // Resource type -> amount required for trade
+  traderOutputs?: Record<string, number>; // Resource type -> amount provided in trade
+  isIncompleteTrader?: boolean; // True if trader has < 2 inputs or < 2 outputs
+
   // For connection elements
   startX?: number;
   startY?: number;
@@ -643,7 +653,535 @@ const Canvas: React.FC<CanvasProps> = ({
       if (activationType === 'onstart') gate.hasStarted = true;
     }
 
+    // --------- PASS 3: process Convertors ----------
+    for (const convertor of nextElements) {
+      if (convertor.type !== 'Convertor') continue;
+
+      // Activation check
+      let isTriggerActive = false;
+      if (activationType === 'automatic') {
+        if (
+          convertor.activation === 'automatic' ||
+          convertor.activation === 'passive'
+        )
+          isTriggerActive = true;
+      } else {
+        if (convertor.activation === activationType) isTriggerActive = true;
+      }
+      const canFire = activationType !== 'onstart' || !convertor.hasStarted;
+      const isTarget =
+        !interactiveElementId || convertor.id === interactiveElementId;
+
+      if (!(isTriggerActive && canFire && isTarget)) continue;
+
+      // Initialize convertor storage if not exists
+      if (!convertor.inputResources) {
+        convertor.inputResources = {};
+      }
+      if (!convertor.outputResources) {
+        convertor.outputResources = {};
+      }
+      if (!convertor.conversionRate) {
+        convertor.conversionRate = {};
+      }
+
+      // Collect input connections (resource connections ending at this convertor)
+      const inputConns = nextElements.filter(
+        c =>
+          c.type === 'Resource Connection' && c.connectedToEnd === convertor.id
+      );
+
+      // Collect output connections (resource connections starting at this convertor)
+      const outputConns = nextElements.filter(
+        c =>
+          c.type === 'Resource Connection' &&
+          c.connectedToStart === convertor.id
+      );
+
+      if (inputConns.length === 0 || outputConns.length === 0) {
+        if (activationType === 'onstart') convertor.hasStarted = true;
+        continue;
+      }
+
+      // Determine actions this tick
+      const actions = Math.max(1, convertor.actions ?? 1);
+
+      // Process each action
+      for (let a = 0; a < actions; a++) {
+        // Parse input connection labels to determine required resources
+        const requiredInputs: Record<string, number> = {};
+        for (const inputConn of inputConns) {
+          const amount = parseInt(inputConn.text || '1', 10);
+          if (!isNaN(amount) && amount > 0) {
+            const resourceType = inputConn.text || 'default';
+            requiredInputs[resourceType] = amount;
+          }
+        }
+
+        // Parse output connection labels to determine output resources
+        const outputAmounts: Record<string, number> = {};
+        for (const outputConn of outputConns) {
+          const amount = parseInt(outputConn.text || '1', 10);
+          if (!isNaN(amount) && amount > 0) {
+            const resourceType = outputConn.text || 'default';
+            outputAmounts[resourceType] = amount;
+          }
+        }
+
+        // Check if we can satisfy all input requirements
+        let canConvert = true;
+        if (convertor.pullMode === 'pull all') {
+          // For pull all: need all inputs available simultaneously
+          for (const [resourceType, requiredAmount] of Object.entries(
+            requiredInputs
+          )) {
+            const connection = inputConns.find(c => c.text === resourceType);
+            const inputElement = connection?.connectedToStart
+              ? elementMap.get(connection.connectedToStart)
+              : undefined;
+            if (
+              !inputElement ||
+              (inputElement.currentPoints ?? 0) < requiredAmount
+            ) {
+              canConvert = false;
+              break;
+            }
+          }
+        } else {
+          // For pull any: check if we have stored enough resources
+          for (const [resourceType, requiredAmount] of Object.entries(
+            requiredInputs
+          )) {
+            const stored = convertor.inputResources![resourceType] || 0;
+            if (stored < requiredAmount) {
+              canConvert = false;
+              break;
+            }
+          }
+        }
+
+        if (canConvert) {
+          // Consume input resources
+          if (convertor.pullMode === 'pull all') {
+            // Consume directly from input pools
+            for (const [resourceType, requiredAmount] of Object.entries(
+              requiredInputs
+            )) {
+              const inputConn = inputConns.find(c => c.text === resourceType);
+              if (inputConn) {
+                const inputElement = elementMap.get(
+                  inputConn.connectedToStart!
+                );
+                if (inputElement) {
+                  inputElement.currentPoints = Math.max(
+                    0,
+                    (inputElement.currentPoints ?? 0) - requiredAmount
+                  );
+                }
+              }
+            }
+          } else {
+            // Consume from stored resources
+            for (const [resourceType, requiredAmount] of Object.entries(
+              requiredInputs
+            )) {
+              const current = convertor.inputResources![resourceType] || 0;
+              convertor.inputResources![resourceType] =
+                current - requiredAmount;
+            }
+          }
+
+          // Produce output resources
+          for (const [resourceType, outputAmount] of Object.entries(
+            outputAmounts
+          )) {
+            const outputConn = outputConns.find(c => c.text === resourceType);
+            if (outputConn) {
+              const outputElement = elementMap.get(outputConn.connectedToEnd!);
+              if (outputElement && outputElement.type === 'Pool') {
+                const current = outputElement.currentPoints ?? 0;
+                const max = outputElement.max ?? Infinity;
+                outputElement.currentPoints = Math.min(
+                  current + outputAmount,
+                  max
+                );
+              }
+            }
+          }
+        } else {
+          // For pull any mode, try to pull and store resources
+          if (convertor.pullMode === 'pull any') {
+            for (const inputConn of inputConns) {
+              const inputElement = elementMap.get(inputConn.connectedToStart!);
+              if (
+                inputElement &&
+                inputElement.type === 'Pool' &&
+                (inputElement.currentPoints ?? 0) > 0
+              ) {
+                const amount = parseInt(inputConn.text || '1', 10);
+                const available = Math.min(
+                  amount,
+                  inputElement.currentPoints ?? 0
+                );
+
+                if (available > 0) {
+                  inputElement.currentPoints =
+                    (inputElement.currentPoints ?? 0) - available;
+                  const resourceType = inputConn.text || 'default';
+                  const current = convertor.inputResources![resourceType] || 0;
+                  convertor.inputResources![resourceType] = current + available;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      if (activationType === 'onstart') convertor.hasStarted = true;
+    }
+
+    // --------- PASS 4: process Traders ----------
+    for (const trader of nextElements) {
+      if (trader.type !== 'Trader') continue;
+
+      // Activation check
+      let isTriggerActive = false;
+      if (activationType === 'automatic') {
+        if (
+          trader.activation === 'automatic' ||
+          trader.activation === 'passive'
+        )
+          isTriggerActive = true;
+      } else {
+        if (trader.activation === activationType) isTriggerActive = true;
+      }
+      const canFire = activationType !== 'onstart' || !trader.hasStarted;
+      const isTarget =
+        !interactiveElementId || trader.id === interactiveElementId;
+
+      if (!(isTriggerActive && canFire && isTarget)) continue;
+
+      // Initialize trader storage if not exists
+      if (!trader.traderInputs) {
+        trader.traderInputs = {};
+      }
+      if (!trader.traderOutputs) {
+        trader.traderOutputs = {};
+      }
+
+      // Collect input connections (resource connections ending at this trader)
+      const inputConns = nextElements.filter(
+        c => c.type === 'Resource Connection' && c.connectedToEnd === trader.id
+      );
+
+      // Collect output connections (resource connections starting at this trader)
+      const outputConns = nextElements.filter(
+        c =>
+          c.type === 'Resource Connection' && c.connectedToStart === trader.id
+      );
+
+      if (inputConns.length === 0 || outputConns.length === 0) {
+        if (activationType === 'onstart') trader.hasStarted = true;
+        continue;
+      }
+
+      // Check if trader is incomplete (< 2 inputs or < 2 outputs)
+      const isIncomplete = inputConns.length < 2 || outputConns.length < 2;
+      trader.isIncompleteTrader = isIncomplete;
+
+      // Determine actions this tick
+      const actions = Math.max(1, trader.actions ?? 1);
+
+      // Process each action
+      for (let a = 0; a < actions; a++) {
+        if (isIncomplete) {
+          // Incomplete trader behaves like a convertor
+          processIncompleteTrader(trader, inputConns, outputConns, elementMap);
+        } else {
+          // Complete trader - ensure resource conservation
+          processCompleteTrader(trader, inputConns, outputConns, elementMap);
+        }
+      }
+
+      if (activationType === 'onstart') trader.hasStarted = true;
+    }
+
     return nextElements;
+  };
+
+  // Helper function for incomplete trader (behaves like convertor)
+  const processIncompleteTrader = (
+    trader: GraphElement,
+    inputConns: GraphElement[],
+    outputConns: GraphElement[],
+    elementMap: Map<number, GraphElement>
+  ) => {
+    // Parse input connection labels to determine required resources
+    const requiredInputs: Record<string, number> = {};
+    for (const inputConn of inputConns) {
+      const amount = parseInt(inputConn.text || '1', 10);
+      if (!isNaN(amount) && amount > 0) {
+        const resourceType = inputConn.text || 'default';
+        requiredInputs[resourceType] = amount;
+      }
+    }
+
+    // Parse output connection labels to determine output resources
+    const outputAmounts: Record<string, number> = {};
+    for (const outputConn of outputConns) {
+      const amount = parseInt(outputConn.text || '1', 10);
+      if (!isNaN(amount) && amount > 0) {
+        const resourceType = outputConn.text || 'default';
+        outputAmounts[resourceType] = amount;
+      }
+    }
+
+    // Check if we can satisfy all input requirements
+    let canTrade = true;
+    if (trader.pullMode === 'pull all') {
+      // For pull all: need all inputs available simultaneously
+      for (const [resourceType, requiredAmount] of Object.entries(
+        requiredInputs
+      )) {
+        const connection = inputConns.find(c => c.text === resourceType);
+        const inputElement = connection?.connectedToStart
+          ? elementMap.get(connection.connectedToStart)
+          : undefined;
+        if (
+          !inputElement ||
+          (inputElement.currentPoints ?? 0) < requiredAmount
+        ) {
+          canTrade = false;
+          break;
+        }
+      }
+    } else {
+      // For pull any: check if we have stored enough resources
+      for (const [resourceType, requiredAmount] of Object.entries(
+        requiredInputs
+      )) {
+        const stored = trader.traderInputs![resourceType] || 0;
+        if (stored < requiredAmount) {
+          canTrade = false;
+          break;
+        }
+      }
+    }
+
+    if (canTrade) {
+      // Consume input resources
+      if (trader.pullMode === 'pull all') {
+        // Consume directly from input pools
+        for (const [resourceType, requiredAmount] of Object.entries(
+          requiredInputs
+        )) {
+          const inputConn = inputConns.find(c => c.text === resourceType);
+          if (inputConn) {
+            const inputElement = elementMap.get(inputConn.connectedToStart!);
+            if (inputElement) {
+              inputElement.currentPoints = Math.max(
+                0,
+                (inputElement.currentPoints ?? 0) - requiredAmount
+              );
+            }
+          }
+        }
+      } else {
+        // Consume from stored resources
+        for (const [resourceType, requiredAmount] of Object.entries(
+          requiredInputs
+        )) {
+          const current = trader.traderInputs![resourceType] || 0;
+          trader.traderInputs![resourceType] = current - requiredAmount;
+        }
+      }
+
+      // Produce output resources
+      for (const [resourceType, outputAmount] of Object.entries(
+        outputAmounts
+      )) {
+        const outputConn = outputConns.find(c => c.text === resourceType);
+        if (outputConn) {
+          const outputElement = elementMap.get(outputConn.connectedToEnd!);
+          if (outputElement && outputElement.type === 'Pool') {
+            const current = outputElement.currentPoints ?? 0;
+            const max = outputElement.max ?? Infinity;
+            outputElement.currentPoints = Math.min(current + outputAmount, max);
+          }
+        }
+      }
+    } else {
+      // For pull any mode, try to pull and store resources
+      if (trader.pullMode === 'pull any') {
+        for (const inputConn of inputConns) {
+          const inputElement = elementMap.get(inputConn.connectedToStart!);
+          if (
+            inputElement &&
+            inputElement.type === 'Pool' &&
+            (inputElement.currentPoints ?? 0) > 0
+          ) {
+            const amount = parseInt(inputConn.text || '1', 10);
+            const available = Math.min(amount, inputElement.currentPoints ?? 0);
+
+            if (available > 0) {
+              inputElement.currentPoints =
+                (inputElement.currentPoints ?? 0) - available;
+              const resourceType = inputConn.text || 'default';
+              const current = trader.traderInputs![resourceType] || 0;
+              trader.traderInputs![resourceType] = current + available;
+            }
+          }
+        }
+      }
+    }
+  };
+
+  // Helper function for complete trader (ensures resource conservation)
+  const processCompleteTrader = (
+    trader: GraphElement,
+    inputConns: GraphElement[],
+    outputConns: GraphElement[],
+    elementMap: Map<number, GraphElement>
+  ) => {
+    // Parse input connection labels to determine required resources
+    const requiredInputs: Record<string, number> = {};
+    for (const inputConn of inputConns) {
+      const amount = parseInt(inputConn.text || '1', 10);
+      if (!isNaN(amount) && amount > 0) {
+        const resourceType = inputConn.text || 'default';
+        requiredInputs[resourceType] = amount;
+      }
+    }
+
+    // Parse output connection labels to determine output resources
+    const outputAmounts: Record<string, number> = {};
+    for (const outputConn of outputConns) {
+      const amount = parseInt(outputConn.text || '1', 10);
+      if (!isNaN(amount) && amount > 0) {
+        const resourceType = outputConn.text || 'default';
+        outputAmounts[resourceType] = amount;
+      }
+    }
+
+    // Calculate total input and output amounts for conservation check
+    const totalInputAmount = Object.values(requiredInputs).reduce(
+      (sum, amount) => sum + amount,
+      0
+    );
+    const totalOutputAmount = Object.values(outputAmounts).reduce(
+      (sum, amount) => sum + amount,
+      0
+    );
+
+    // For complete traders, ensure resource conservation (total input = total output)
+    if (totalInputAmount !== totalOutputAmount) {
+      // Scale output amounts to match input amounts for conservation
+      const scaleFactor = totalInputAmount / totalOutputAmount;
+      for (const resourceType in outputAmounts) {
+        outputAmounts[resourceType] = Math.floor(
+          outputAmounts[resourceType] * scaleFactor
+        );
+      }
+    }
+
+    // Check if we can satisfy all input requirements
+    let canTrade = true;
+    if (trader.pullMode === 'pull all') {
+      // For pull all: need all inputs available simultaneously
+      for (const [resourceType, requiredAmount] of Object.entries(
+        requiredInputs
+      )) {
+        const connection = inputConns.find(c => c.text === resourceType);
+        const inputElement = connection?.connectedToStart
+          ? elementMap.get(connection.connectedToStart)
+          : undefined;
+        if (
+          !inputElement ||
+          (inputElement.currentPoints ?? 0) < requiredAmount
+        ) {
+          canTrade = false;
+          break;
+        }
+      }
+    } else {
+      // For pull any: check if we have stored enough resources
+      for (const [resourceType, requiredAmount] of Object.entries(
+        requiredInputs
+      )) {
+        const stored = trader.traderInputs![resourceType] || 0;
+        if (stored < requiredAmount) {
+          canTrade = false;
+          break;
+        }
+      }
+    }
+
+    if (canTrade) {
+      // Consume input resources
+      if (trader.pullMode === 'pull all') {
+        // Consume directly from input pools
+        for (const [resourceType, requiredAmount] of Object.entries(
+          requiredInputs
+        )) {
+          const inputConn = inputConns.find(c => c.text === resourceType);
+          if (inputConn) {
+            const inputElement = elementMap.get(inputConn.connectedToStart!);
+            if (inputElement) {
+              inputElement.currentPoints = Math.max(
+                0,
+                (inputElement.currentPoints ?? 0) - requiredAmount
+              );
+            }
+          }
+        }
+      } else {
+        // Consume from stored resources
+        for (const [resourceType, requiredAmount] of Object.entries(
+          requiredInputs
+        )) {
+          const current = trader.traderInputs![resourceType] || 0;
+          trader.traderInputs![resourceType] = current - requiredAmount;
+        }
+      }
+
+      // Produce output resources
+      for (const [resourceType, outputAmount] of Object.entries(
+        outputAmounts
+      )) {
+        const outputConn = outputConns.find(c => c.text === resourceType);
+        if (outputConn) {
+          const outputElement = elementMap.get(outputConn.connectedToEnd!);
+          if (outputElement && outputElement.type === 'Pool') {
+            const current = outputElement.currentPoints ?? 0;
+            const max = outputElement.max ?? Infinity;
+            outputElement.currentPoints = Math.min(current + outputAmount, max);
+          }
+        }
+      }
+    } else {
+      // For pull any mode, try to pull and store resources
+      if (trader.pullMode === 'pull any') {
+        for (const inputConn of inputConns) {
+          const inputElement = elementMap.get(inputConn.connectedToStart!);
+          if (
+            inputElement &&
+            inputElement.type === 'Pool' &&
+            (inputElement.currentPoints ?? 0) > 0
+          ) {
+            const amount = parseInt(inputConn.text || '1', 10);
+            const available = Math.min(amount, inputElement.currentPoints ?? 0);
+
+            if (available > 0) {
+              inputElement.currentPoints =
+                (inputElement.currentPoints ?? 0) - available;
+              const resourceType = inputConn.text || 'default';
+              const current = trader.traderInputs![resourceType] || 0;
+              trader.traderInputs![resourceType] = current + available;
+            }
+          }
+        }
+      }
+    }
   };
 
   const handleInteractiveAction = (elementId: number) => {
@@ -713,7 +1251,7 @@ const Canvas: React.FC<CanvasProps> = ({
     };
     // Ensure ALL dependencies used inside are listed.
     // If setIsRunning comes from props/context, add it too.
-  }, [isRunning, hasSimulationStarted, setElements]);
+  }, [isRunning, hasSimulationStarted, setElements, runSimulationTick]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -870,6 +1408,7 @@ const Canvas: React.FC<CanvasProps> = ({
     setElements,
     setSelectedId,
     pasteCount,
+    isRunning,
   ]);
 
   useEffect(() => {
@@ -1949,6 +2488,11 @@ const Canvas: React.FC<CanvasProps> = ({
             height={40}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
             onClick={e => {
+              if (isRunning && el.activation === 'interactive') {
+                e.stopPropagation();
+                handleInteractiveAction(el.id);
+                return;
+              }
               if (selectedTool === 'Select') {
                 e.stopPropagation();
                 if (e.ctrlKey || e.metaKey) {
@@ -1970,6 +2514,126 @@ const Canvas: React.FC<CanvasProps> = ({
               className={`convertor-shape ${isSelected ? 'selected' : ''}`}
             />
             <line x1="5" y1="5" x2="5" y2="35" className="convertor-line" />
+
+            {/* Show stored resources for pull any mode */}
+            {el.pullMode === 'pull any' &&
+              el.inputResources &&
+              Object.keys(el.inputResources).length > 0 && (
+                <text
+                  x="20"
+                  y="15"
+                  fontSize="8"
+                  fill="white"
+                  textAnchor="middle"
+                  className="convertor-storage"
+                >
+                  {Object.entries(el.inputResources)
+                    .map(([type, amount]) => `${type}:${amount}`)
+                    .join(',')}
+                </text>
+              )}
+
+            {/* Show conversion status */}
+            {el.text && (
+              <text
+                x="20"
+                y="30"
+                fontSize="6"
+                fill="white"
+                textAnchor="middle"
+                className="convertor-label"
+              >
+                {el.text}
+              </text>
+            )}
+          </svg>
+        );
+      case 'Trader':
+        return (
+          <svg
+            key={el.id}
+            className={`svg-element trader-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
+            style={{
+              left: el.x,
+              top: el.y,
+            }}
+            width={40}
+            height={40}
+            onMouseDown={e => handleElementMouseDown(e, el.id)}
+            onClick={e => {
+              if (isRunning && el.activation === 'interactive') {
+                e.stopPropagation();
+                handleInteractiveAction(el.id);
+                return;
+              }
+              if (selectedTool === 'Select') {
+                e.stopPropagation();
+                if (e.ctrlKey || e.metaKey) {
+                  setSelectedId(prev =>
+                    prev.includes(el.id)
+                      ? prev.filter(selId => selId !== el.id)
+                      : [...prev, el.id]
+                  );
+                } else {
+                  setSelectedId([el.id]);
+                }
+              }
+            }}
+          >
+            {/* Trader shape - parallelogram outline with no fill */}
+            <polygon
+              points="8,5 35,5 32,35 5,35"
+              fill="none"
+              stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+              strokeWidth="2"
+              className={`trader-shape ${isSelected ? 'selected' : ''}`}
+            />
+
+            {/* Show stored resources for pull any mode */}
+            {el.pullMode === 'pull any' &&
+              el.traderInputs &&
+              Object.keys(el.traderInputs).length > 0 && (
+                <text
+                  x="20"
+                  y="15"
+                  fontSize="8"
+                  fill={el.color || '#000000'}
+                  textAnchor="middle"
+                  className="trader-storage"
+                >
+                  {Object.entries(el.traderInputs)
+                    .map(([type, amount]) => `${type}:${amount}`)
+                    .join(',')}
+                </text>
+              )}
+
+            {/* Show trader status */}
+            {el.text && (
+              <text
+                x="20"
+                y="30"
+                fontSize="6"
+                fill={el.color || '#000000'}
+                textAnchor="middle"
+                className="trader-label"
+              >
+                {el.text}
+              </text>
+            )}
+
+            {/* Show incomplete trader indicator */}
+            {el.isIncompleteTrader && (
+              <text
+                x="20"
+                y="25"
+                fontSize="8"
+                fill="yellow"
+                textAnchor="middle"
+                className="trader-incomplete"
+              >
+                INC
+              </text>
+            )}
           </svg>
         );
       case 'End Condition':
@@ -2138,41 +2802,6 @@ const Canvas: React.FC<CanvasProps> = ({
             <text x="20" y="22" className="delay-text">
               8
             </text>
-          </svg>
-        );
-      case 'Trader':
-        return (
-          <svg
-            key={el.id}
-            className={`svg-element trader-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
-            style={{
-              left: el.x,
-              top: el.y,
-            }}
-            width={40}
-            height={40}
-            onMouseDown={e => handleElementMouseDown(e, el.id)}
-            onClick={e => {
-              if (selectedTool === 'Select') {
-                e.stopPropagation();
-                if (e.ctrlKey || e.metaKey) {
-                  setSelectedId(prev =>
-                    prev.includes(el.id)
-                      ? prev.filter(selId => selId !== el.id)
-                      : [...prev, el.id]
-                  );
-                } else {
-                  setSelectedId([el.id]);
-                }
-              }
-            }}
-          >
-            <polygon
-              points="8,5 32,5 28,35 4,35"
-              fill={el.color || '#000000'}
-              stroke={isSelected ? '#0078d4' : el.color || '#000000'}
-              className={`trader-polygon ${isSelected ? 'selected' : ''}`}
-            />
           </svg>
         );
       case 'Resource Connection': {
