@@ -39,6 +39,14 @@ export interface GraphElement {
   endY?: number;
   connectedToStart?: number;
   connectedToEnd?: number;
+  // Resister properties
+  formula?: string; 
+  minValue?: number;
+  maxValue?: number;
+  interactive?: boolean | string;
+  startingValue?: number;
+  step?: number;
+  currentValue?: number;
 }
 
 export interface GraphMetadata {

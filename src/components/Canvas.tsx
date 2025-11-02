@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { RegisterExpression } from '../utils/RegisterExpression';
 import './Canvas.css';
 
 interface CanvasProps {
@@ -174,6 +175,15 @@ interface GraphElement {
   traderInputs?: Record<string, number>; // Resource type -> amount required for trade
   traderOutputs?: Record<string, number>; // Resource type -> amount provided in trade
   isIncompleteTrader?: boolean; // True if trader has < 2 inputs or < 2 outputs
+
+  // Register-specific properties
+  formula?: string;
+  minValue?: number;
+  maxValue?: number;
+  interactive?: boolean | string;
+  startingValue?: number;
+  step?: number;
+  currentValue?: number;
 
   // For connection elements
   startX?: number;
@@ -443,6 +453,45 @@ const Canvas: React.FC<CanvasProps> = ({
     }
   }
 
+/**
+ * get current value of an element
+ */
+const getElementValue = (element: GraphElement | undefined): number => {
+  if (!element) {
+    // console.log('⚠️ [getElementValue] Element is undefined');
+    return 0;
+  }
+
+  //console.log('📈 [getElementValue] Getting value from:', {
+    // type: element.type,
+    // id: element.id,
+    // currentPoints: element.currentPoints,
+    // currentValue: element.currentValue,
+    // number: element.number,
+  // });
+
+  switch (element.type) {
+    case 'Pool':
+      if (element.currentPoints !== undefined && element.currentPoints !== null) {
+        return element.currentPoints;
+      }
+      return typeof element.number === 'string'
+        ? parseInt(element.number, 10) || 0
+        : element.number || 0;
+      
+    case 'Register':
+      return element.currentValue || 0;
+      
+    case 'Source':
+      return typeof element.number === 'string'
+        ? parseInt(element.number, 10) || 0
+        : element.number || 0;
+      
+    default:
+      return 0;
+  }
+};
+
   const runSimulationTick = (
     elementsToUpdate: GraphElement[],
     activationType: 'automatic' | 'onstart' | 'interactive',
@@ -454,6 +503,25 @@ const Canvas: React.FC<CanvasProps> = ({
     const elementMap = new Map<number, GraphElement>(
       nextElements.map(el => [el.id, el])
     );
+
+    // PASS 0: initialize check
+    if (activationType === 'onstart') {
+      // console.log('🔄 [PASS 0] Initializing elements...');
+      for (const element of nextElements) {
+        if (element.type === 'Pool') {
+          if (element.currentPoints === undefined || element.currentPoints === null) {
+            const startingPoints = typeof element.number === 'string'
+              ? parseInt(element.number, 10) || 0
+              : element.number || 0;
+            element.currentPoints = startingPoints;
+            // console.log('  ✓ Pool initialized:', {
+              // id: element.id,
+              // currentPoints: element.currentPoints,
+            // });
+          }
+        }
+      }
+    }
 
     // --------- PASS 1: generic connections (but SKIP Gate outputs) ---------
     for (const connection of nextElements) {
@@ -905,6 +973,138 @@ const Canvas: React.FC<CanvasProps> = ({
 
       if (activationType === 'onstart') trader.hasStarted = true;
     }
+
+    // --------- PASS 5: Calculate Registers ----------
+    // console.log('🔧 [PASS 5] Starting Register calculation...');
+    for (const register of nextElements) {
+      if (register.type !== 'Register') continue;
+
+      // console.log('📊 [Register] Found register:', {
+        // id: register.id,
+        // formula: register.formula,
+        // interactive: register.interactive,
+        // currentValue: register.currentValue,
+      // });
+
+      if (register.interactive === true || register.interactive === 'true') {
+        if (register.currentValue === undefined || register.currentValue === null) {
+          register.currentValue = register.startingValue || 0;
+          // console.log('🎮 Interactive Register initialized:', {
+            // id: register.id,
+            // startingValue: register.startingValue,
+            // currentValue: register.currentValue,
+          // });
+        }
+        continue;
+      }
+      // Collect input state connections ending at this register
+      const inputConns = nextElements.filter(
+        c => c.type === 'State Connection' && c.connectedToEnd === register.id
+      );
+
+      // console.log('📊 [Register] Input connections:', {
+        // count: inputConns.length,
+        // connections: inputConns.map(c => ({
+          // id: c.id,
+          // text: c.text,
+          // from: c.connectedToStart,
+          // to: c.connectedToEnd,
+        // })),
+      // });
+
+      const formula = register.formula || register.text || '';
+      if (!formula && inputConns.length === 0) {
+        register.currentValue = 0;
+        // console.log('📊 [Register] No inputs, value = 0');
+        continue;
+      }
+      // console.log('📊 [Register] Formula:', formula);
+
+      // max
+      if (formula.toLowerCase() === 'max') {
+        if (inputConns.length === 0) {
+          register.currentValue = 0;
+          continue;
+        }
+        let maxVal = -Infinity;
+        for (const conn of inputConns) {
+          const sourceEl = elementMap.get(conn.connectedToStart!);
+          const sourceValue = getElementValue(sourceEl);
+          // console.log('📊 [Register] Max - checking:', sourceValue);
+          if (sourceValue > maxVal) maxVal = sourceValue;
+        }
+        register.currentValue = maxVal === -Infinity ? 0 : maxVal;
+        // console.log('📊 [Register] Max result:', register.currentValue);
+        continue;
+      }
+
+      // min
+      if (formula.toLowerCase() === 'min') {
+        if (inputConns.length === 0) {
+          register.currentValue = 0;
+          continue;
+        }
+        let minVal = Infinity;
+        for (const conn of inputConns) {
+          const sourceEl = elementMap.get(conn.connectedToStart!);
+          const sourceValue = getElementValue(sourceEl);
+          // console.log('📊 [Register] Min - checking:', sourceValue);
+          if (sourceValue < minVal) minVal = sourceValue;
+        }
+        register.currentValue = minVal === Infinity ? 0 : minVal;
+        // console.log('📊 [Register] Min result:', register.currentValue);
+        continue;
+      }
+
+      // calculate expression
+      try {
+        const variables = new Array(23).fill(0);
+        // console.log('📊 [Register] Building variables...');
+
+        for (const conn of inputConns) {
+          const label = (conn.text || '').trim().toLowerCase();
+
+          // console.log('📊 [Register] Processing connection:', {
+            // label,
+            // isVariable: label.length === 1 && RegisterExpression.isVariable(label),
+          // });
+
+          if (label.length === 1 && RegisterExpression.isVariable(label)) {
+            const varIndex = label.charCodeAt(0) - 97; // a=0, b=1, ...
+            const sourceEl = elementMap.get(conn.connectedToStart!);
+            const sourceValue = getElementValue(sourceEl);
+
+            variables[varIndex] = sourceValue;
+
+            // console.log('📊 [Register] Variable set:', {
+              // variable: label,
+              // index: varIndex,
+              // value: sourceValue,
+              // sourceElement: sourceEl?.type,
+              // sourceId: sourceEl?.id,
+            // });
+          }
+        }
+
+        // console.log('📊 [Register] Variables array:', variables.slice(0, 5));
+
+        const postfix = RegisterExpression.toPostfix(formula);
+        // console.log('📊 [Register] Postfix:', postfix);
+        let calculatedValue = RegisterExpression.evaluate(postfix, variables);
+        // console.log('📊 [Register] Calculated value (raw):', calculatedValue);
+
+        const min = register.minValue ?? -9999;
+        const max = register.maxValue ?? 9999;
+        calculatedValue = Math.min(Math.max(calculatedValue, min), max);
+
+        register.currentValue = Math.floor(calculatedValue);
+        // console.log('📊 [Register] Final value:', register.currentValue);
+      } catch (error) {
+        console.error('Register expression error:', error);
+        register.currentValue = 0;
+      }
+    }
+    // console.log('✅ [PASS 5] Register calculation complete');
 
     return nextElements;
   };
@@ -1563,7 +1763,7 @@ const Canvas: React.FC<CanvasProps> = ({
       ]);
     } else if (type === 'Pool') {
       const poolProps = toolProperties?.pool;
-      const startingPoints = poolProps?.number || 0;
+      const startingPoints = typeof poolProps?.number === 'string' ? parseInt(poolProps.number, 10) || 0 : poolProps?.number || 0;
       const maxPoints = poolProps?.max;
 
       setElements(prev => [
@@ -1573,12 +1773,18 @@ const Canvas: React.FC<CanvasProps> = ({
           type,
           x,
           y,
-          ...poolProps,
-          // Starting points cannot exceed the max value
+          color: poolProps?.color,
+          thickness: poolProps?.thickness,
+          text: poolProps?.text,
+          activation: poolProps?.activation,
+          pullMode: poolProps?.pullMode,
+          resources: poolProps?.resources,
+          displayLimit: poolProps?.displayLimit,
+          max: maxPoints,
+          number: startingPoints,
           currentPoints: maxPoints
             ? Math.min(startingPoints, maxPoints)
             : startingPoints,
-          ...toolProperties?.pool,
         },
       ]);
     } else if (type === 'Resource Connection' || type === 'State Connection') {
@@ -1683,6 +1889,9 @@ const Canvas: React.FC<CanvasProps> = ({
         },
       ]);
     } else if (type === 'Register') {
+      const interactive = toolProperties?.register?.interactive ?? false;
+      const startingValue = toolProperties?.register?.startingValue ?? 0;
+    
       setElements(prev => [
         ...prev,
         {
@@ -1692,12 +1901,13 @@ const Canvas: React.FC<CanvasProps> = ({
           y,
           color: toolProperties?.register?.color,
           thickness: toolProperties?.register?.thickness,
-          formula: toolProperties?.register?.formula,
-          minValue: toolProperties?.register?.minValue,
-          maxValue: toolProperties?.register?.maxValue,
-          interactive: toolProperties?.register?.interactive,
-          startingValue: toolProperties?.register?.startingValue,
-          step: toolProperties?.register?.step,
+          formula: toolProperties?.register?.formula || '',
+          minValue: toolProperties?.register?.minValue ?? -9999,
+          maxValue: toolProperties?.register?.maxValue ?? 9999,
+          interactive: interactive,
+          startingValue: startingValue,
+          step: toolProperties?.register?.step ?? 1,
+          currentValue: interactive ? startingValue : 0,
         },
       ]);
     } else if (type === 'End Condition') {
@@ -1821,14 +2031,46 @@ const Canvas: React.FC<CanvasProps> = ({
     // --- RUN MODE LOGIC ---
     // If the simulation is running, we only care about interactive actions.
     if (isRunning) {
-      if (element.activation === 'interactive') {
-        console.log(
-          '[LOG 2] Interactive element clicked in run mode. Calling action...'
-        );
+      if (element.type === 'Register' && 
+        (element.interactive === true || element.interactive === 'true')) {
+        // console.log('🖱️ Interactive Register clicked:', {
+          // id: element.id,
+          // currentValue: element.currentValue,
+          // step: element.step,
+        // });
 
+        const step = typeof element.step === 'string' 
+          ? parseInt(element.step, 10) || 1 
+          : element.step || 1;
+        const currentVal = element.currentValue || 0;
+        const newValue = currentVal + step;
+        const min = typeof element.minValue === 'string'
+          ? parseInt(element.minValue, 10) || 0
+          : element.minValue ?? -9999;
+        const max = typeof element.maxValue === 'string'
+          ? parseInt(element.maxValue, 10) || 50
+          : element.maxValue ?? 9999;
+        const clampedValue = Math.min(Math.max(newValue, min), max);
+
+        // console.log('🖱️ Register value update:', {
+          // from: currentVal,
+          // to: clampedValue,
+          // step: step,
+          // min: min,
+          // max: max,
+        // });
+    
+        setElements(prev =>
+          prev.map(el =>
+            el.id === id ? { ...el, currentValue: clampedValue } : el
+          )
+        );
+        return;
+      }
+    
+      if (element.activation === 'interactive') {
         handleInteractiveAction(id);
       }
-      // In run mode, do nothing else (no selecting, no dragging).
       return;
     }
 
@@ -2723,47 +2965,60 @@ const Canvas: React.FC<CanvasProps> = ({
             </text>
           </svg>
         );
-      case 'Register':
-        return (
-          <svg
-            key={el.id}
-            className={`svg-element register-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
-            style={{
-              left: el.x,
-              top: el.y,
-            }}
-            width={40}
-            height={40}
-            onMouseDown={e => handleElementMouseDown(e, el.id)}
-            onClick={e => {
-              if (selectedTool === 'Select') {
-                e.stopPropagation();
-                if (e.ctrlKey || e.metaKey) {
-                  setSelectedId(prev =>
-                    prev.includes(el.id)
-                      ? prev.filter(selId => selId !== el.id)
-                      : [...prev, el.id]
-                  );
-                } else {
-                  setSelectedId([el.id]);
+        case 'Register':
+          return (
+            <svg
+              key={el.id}
+              className={`svg-element register-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
+              style={{
+                left: el.x,
+                top: el.y,
+              }}
+              width={40}
+              height={40}
+              onMouseDown={e => handleElementMouseDown(e, el.id)}
+              onClick={e => {
+                if (selectedTool === 'Select') {
+                  e.stopPropagation();
+                  if (e.ctrlKey || e.metaKey) {
+                    setSelectedId(prev =>
+                      prev.includes(el.id)
+                        ? prev.filter(selId => selId !== el.id)
+                        : [...prev, el.id]
+                    );
+                  } else {
+                    setSelectedId([el.id]);
+                  }
                 }
-              }
-            }}
-          >
-            <rect
-              x="5"
-              y="5"
-              width="30"
-              height="30"
-              fill={el.color || '#000000'}
-              stroke={isSelected ? '#0078d4' : el.color || '#000000'}
-              className={`register-rect ${isSelected ? 'selected' : ''}`}
-            />
-            <text x="20" y="22" className="register-text">
-              x
-            </text>
-          </svg>
-        );
+              }}
+            >
+              {/* 白色背景方块 */}
+              <rect
+                x="5"
+                y="5"
+                width="30"
+                height="30"
+                fill="white"
+                stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+                strokeWidth={el.thickness || 2}
+                className={`register-rect ${isSelected ? 'selected' : ''}`}
+              />
+              {/* 显示当前值 */}
+              <text
+                x="20"
+                y="26"
+                className="register-text"
+                fill="black"
+                fontSize="14"
+                textAnchor="middle"
+                fontWeight="bold"
+              >
+                {el.currentValue !== undefined && el.currentValue !== null
+                  ? el.currentValue
+                  : 0}
+              </text>
+            </svg>
+          );
       case 'Delay':
         return (
           <svg
