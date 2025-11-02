@@ -453,44 +453,47 @@ const Canvas: React.FC<CanvasProps> = ({
     }
   }
 
-/**
- * get current value of an element
- */
-const getElementValue = (element: GraphElement | undefined): number => {
-  if (!element) {
-    // console.log('⚠️ [getElementValue] Element is undefined');
-    return 0;
-  }
+  /**
+   * get current value of an element
+   */
+  const getElementValue = (element: GraphElement | undefined): number => {
+    if (!element) {
+      // console.log('⚠️ [getElementValue] Element is undefined');
+      return 0;
+    }
 
-  //console.log('📈 [getElementValue] Getting value from:', {
+    //console.log('📈 [getElementValue] Getting value from:', {
     // type: element.type,
     // id: element.id,
     // currentPoints: element.currentPoints,
     // currentValue: element.currentValue,
     // number: element.number,
-  // });
+    // });
 
-  switch (element.type) {
-    case 'Pool':
-      if (element.currentPoints !== undefined && element.currentPoints !== null) {
-        return element.currentPoints;
-      }
-      return typeof element.number === 'string'
-        ? parseInt(element.number, 10) || 0
-        : element.number || 0;
-      
-    case 'Register':
-      return element.currentValue || 0;
-      
-    case 'Source':
-      return typeof element.number === 'string'
-        ? parseInt(element.number, 10) || 0
-        : element.number || 0;
-      
-    default:
-      return 0;
-  }
-};
+    switch (element.type) {
+      case 'Pool':
+        if (
+          element.currentPoints !== undefined &&
+          element.currentPoints !== null
+        ) {
+          return element.currentPoints;
+        }
+        return typeof element.number === 'string'
+          ? parseInt(element.number, 10) || 0
+          : element.number || 0;
+
+      case 'Register':
+        return element.currentValue || 0;
+
+      case 'Source':
+        return typeof element.number === 'string'
+          ? parseInt(element.number, 10) || 0
+          : element.number || 0;
+
+      default:
+        return 0;
+    }
+  };
 
   const runSimulationTick = (
     elementsToUpdate: GraphElement[],
@@ -509,14 +512,18 @@ const getElementValue = (element: GraphElement | undefined): number => {
       // console.log('🔄 [PASS 0] Initializing elements...');
       for (const element of nextElements) {
         if (element.type === 'Pool') {
-          if (element.currentPoints === undefined || element.currentPoints === null) {
-            const startingPoints = typeof element.number === 'string'
-              ? parseInt(element.number, 10) || 0
-              : element.number || 0;
+          if (
+            element.currentPoints === undefined ||
+            element.currentPoints === null
+          ) {
+            const startingPoints =
+              typeof element.number === 'string'
+                ? parseInt(element.number, 10) || 0
+                : element.number || 0;
             element.currentPoints = startingPoints;
             // console.log('  ✓ Pool initialized:', {
-              // id: element.id,
-              // currentPoints: element.currentPoints,
+            // id: element.id,
+            // currentPoints: element.currentPoints,
             // });
           }
         }
@@ -980,19 +987,22 @@ const getElementValue = (element: GraphElement | undefined): number => {
       if (register.type !== 'Register') continue;
 
       // console.log('📊 [Register] Found register:', {
-        // id: register.id,
-        // formula: register.formula,
-        // interactive: register.interactive,
-        // currentValue: register.currentValue,
+      // id: register.id,
+      // formula: register.formula,
+      // interactive: register.interactive,
+      // currentValue: register.currentValue,
       // });
 
       if (register.interactive === true || register.interactive === 'true') {
-        if (register.currentValue === undefined || register.currentValue === null) {
+        if (
+          register.currentValue === undefined ||
+          register.currentValue === null
+        ) {
           register.currentValue = register.startingValue || 0;
           // console.log('🎮 Interactive Register initialized:', {
-            // id: register.id,
-            // startingValue: register.startingValue,
-            // currentValue: register.currentValue,
+          // id: register.id,
+          // startingValue: register.startingValue,
+          // currentValue: register.currentValue,
           // });
         }
         continue;
@@ -1003,13 +1013,13 @@ const getElementValue = (element: GraphElement | undefined): number => {
       );
 
       // console.log('📊 [Register] Input connections:', {
-        // count: inputConns.length,
-        // connections: inputConns.map(c => ({
-          // id: c.id,
-          // text: c.text,
-          // from: c.connectedToStart,
-          // to: c.connectedToEnd,
-        // })),
+      // count: inputConns.length,
+      // connections: inputConns.map(c => ({
+      // id: c.id,
+      // text: c.text,
+      // from: c.connectedToStart,
+      // to: c.connectedToEnd,
+      // })),
       // });
 
       const formula = register.formula || register.text || '';
@@ -1065,8 +1075,8 @@ const getElementValue = (element: GraphElement | undefined): number => {
           const label = (conn.text || '').trim().toLowerCase();
 
           // console.log('📊 [Register] Processing connection:', {
-            // label,
-            // isVariable: label.length === 1 && RegisterExpression.isVariable(label),
+          // label,
+          // isVariable: label.length === 1 && RegisterExpression.isVariable(label),
           // });
 
           if (label.length === 1 && RegisterExpression.isVariable(label)) {
@@ -1077,11 +1087,11 @@ const getElementValue = (element: GraphElement | undefined): number => {
             variables[varIndex] = sourceValue;
 
             // console.log('📊 [Register] Variable set:', {
-              // variable: label,
-              // index: varIndex,
-              // value: sourceValue,
-              // sourceElement: sourceEl?.type,
-              // sourceId: sourceEl?.id,
+            // variable: label,
+            // index: varIndex,
+            // value: sourceValue,
+            // sourceElement: sourceEl?.type,
+            // sourceId: sourceEl?.id,
             // });
           }
         }
@@ -1763,7 +1773,10 @@ const getElementValue = (element: GraphElement | undefined): number => {
       ]);
     } else if (type === 'Pool') {
       const poolProps = toolProperties?.pool;
-      const startingPoints = typeof poolProps?.number === 'string' ? parseInt(poolProps.number, 10) || 0 : poolProps?.number || 0;
+      const startingPoints =
+        typeof poolProps?.number === 'string'
+          ? parseInt(poolProps.number, 10) || 0
+          : poolProps?.number || 0;
       const maxPoints = poolProps?.max;
 
       setElements(prev => [
@@ -1891,7 +1904,7 @@ const getElementValue = (element: GraphElement | undefined): number => {
     } else if (type === 'Register') {
       const interactive = toolProperties?.register?.interactive ?? false;
       const startingValue = toolProperties?.register?.startingValue ?? 0;
-    
+
       setElements(prev => [
         ...prev,
         {
@@ -2031,35 +2044,40 @@ const getElementValue = (element: GraphElement | undefined): number => {
     // --- RUN MODE LOGIC ---
     // If the simulation is running, we only care about interactive actions.
     if (isRunning) {
-      if (element.type === 'Register' && 
-        (element.interactive === true || element.interactive === 'true')) {
+      if (
+        element.type === 'Register' &&
+        (element.interactive === true || element.interactive === 'true')
+      ) {
         // console.log('🖱️ Interactive Register clicked:', {
-          // id: element.id,
-          // currentValue: element.currentValue,
-          // step: element.step,
+        // id: element.id,
+        // currentValue: element.currentValue,
+        // step: element.step,
         // });
 
-        const step = typeof element.step === 'string' 
-          ? parseInt(element.step, 10) || 1 
-          : element.step || 1;
+        const step =
+          typeof element.step === 'string'
+            ? parseInt(element.step, 10) || 1
+            : element.step || 1;
         const currentVal = element.currentValue || 0;
         const newValue = currentVal + step;
-        const min = typeof element.minValue === 'string'
-          ? parseInt(element.minValue, 10) || 0
-          : element.minValue ?? -9999;
-        const max = typeof element.maxValue === 'string'
-          ? parseInt(element.maxValue, 10) || 50
-          : element.maxValue ?? 9999;
+        const min =
+          typeof element.minValue === 'string'
+            ? parseInt(element.minValue, 10) || 0
+            : (element.minValue ?? -9999);
+        const max =
+          typeof element.maxValue === 'string'
+            ? parseInt(element.maxValue, 10) || 50
+            : (element.maxValue ?? 9999);
         const clampedValue = Math.min(Math.max(newValue, min), max);
 
         // console.log('🖱️ Register value update:', {
-          // from: currentVal,
-          // to: clampedValue,
-          // step: step,
-          // min: min,
-          // max: max,
+        // from: currentVal,
+        // to: clampedValue,
+        // step: step,
+        // min: min,
+        // max: max,
         // });
-    
+
         setElements(prev =>
           prev.map(el =>
             el.id === id ? { ...el, currentValue: clampedValue } : el
@@ -2067,7 +2085,7 @@ const getElementValue = (element: GraphElement | undefined): number => {
         );
         return;
       }
-    
+
       if (element.activation === 'interactive') {
         handleInteractiveAction(id);
       }
@@ -2965,60 +2983,60 @@ const getElementValue = (element: GraphElement | undefined): number => {
             </text>
           </svg>
         );
-        case 'Register':
-          return (
-            <svg
-              key={el.id}
-              className={`svg-element register-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
-              style={{
-                left: el.x,
-                top: el.y,
-              }}
-              width={40}
-              height={40}
-              onMouseDown={e => handleElementMouseDown(e, el.id)}
-              onClick={e => {
-                if (selectedTool === 'Select') {
-                  e.stopPropagation();
-                  if (e.ctrlKey || e.metaKey) {
-                    setSelectedId(prev =>
-                      prev.includes(el.id)
-                        ? prev.filter(selId => selId !== el.id)
-                        : [...prev, el.id]
-                    );
-                  } else {
-                    setSelectedId([el.id]);
-                  }
+      case 'Register':
+        return (
+          <svg
+            key={el.id}
+            className={`svg-element register-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
+            style={{
+              left: el.x,
+              top: el.y,
+            }}
+            width={40}
+            height={40}
+            onMouseDown={e => handleElementMouseDown(e, el.id)}
+            onClick={e => {
+              if (selectedTool === 'Select') {
+                e.stopPropagation();
+                if (e.ctrlKey || e.metaKey) {
+                  setSelectedId(prev =>
+                    prev.includes(el.id)
+                      ? prev.filter(selId => selId !== el.id)
+                      : [...prev, el.id]
+                  );
+                } else {
+                  setSelectedId([el.id]);
                 }
-              }}
+              }
+            }}
+          >
+            {/* white background */}
+            <rect
+              x="5"
+              y="5"
+              width="30"
+              height="30"
+              fill="white"
+              stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+              strokeWidth={el.thickness || 2}
+              className={`register-rect ${isSelected ? 'selected' : ''}`}
+            />
+            {/* show current value */}
+            <text
+              x="20"
+              y="26"
+              className="register-text"
+              fill="black"
+              fontSize="14"
+              textAnchor="middle"
+              fontWeight="bold"
             >
-              {/* white background */}
-              <rect
-                x="5"
-                y="5"
-                width="30"
-                height="30"
-                fill="white"
-                stroke={isSelected ? '#0078d4' : el.color || '#000000'}
-                strokeWidth={el.thickness || 2}
-                className={`register-rect ${isSelected ? 'selected' : ''}`}
-              />
-              {/* show current value */}
-              <text
-                x="20"
-                y="26"
-                className="register-text"
-                fill="black"
-                fontSize="14"
-                textAnchor="middle"
-                fontWeight="bold"
-              >
-                {el.currentValue !== undefined && el.currentValue !== null
-                  ? el.currentValue
-                  : 0}
-              </text>
-            </svg>
-          );
+              {el.currentValue !== undefined && el.currentValue !== null
+                ? el.currentValue
+                : 0}
+            </text>
+          </svg>
+        );
       case 'Delay':
         return (
           <svg

@@ -1291,11 +1291,14 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <label>
             <input
               type="checkbox"
-              checked={selectedElement.interactive === true || selectedElement.interactive === 'true'}
+              checked={
+                selectedElement.interactive === true ||
+                selectedElement.interactive === 'true'
+              }
               onChange={e => {
                 if (onElementUpdate) {
-                  onElementUpdate(selectedElement.id, { 
-                    interactive: e.target.checked
+                  onElementUpdate(selectedElement.id, {
+                    interactive: e.target.checked,
                   });
                 }
               }}

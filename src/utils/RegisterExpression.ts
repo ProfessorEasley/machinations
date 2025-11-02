@@ -60,8 +60,7 @@ export class RegisterExpression {
 
       if (this.isOperator(char)) {
         tokens.push(char);
-      }
-      else if (this.isVariable(char)) {
+      } else if (this.isVariable(char)) {
         if (
           tokens.length > 0 &&
           !this.isOperator(tokens[tokens.length - 1] as string)

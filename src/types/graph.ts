@@ -40,7 +40,7 @@ export interface GraphElement {
   connectedToStart?: number;
   connectedToEnd?: number;
   // Resister properties
-  formula?: string; 
+  formula?: string;
   minValue?: number;
   maxValue?: number;
   interactive?: boolean | string;
