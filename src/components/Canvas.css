@@ -385,7 +385,7 @@
 .register-text {
   text-anchor: middle;
   dominant-baseline: middle;
-  fill: white;
+  fill: black !important;
   font-size: 14px;
   font-weight: bold;
 }

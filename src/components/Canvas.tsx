@@ -2992,7 +2992,7 @@ const getElementValue = (element: GraphElement | undefined): number => {
                 }
               }}
             >
-              {/* 白色背景方块 */}
+              {/* white background */}
               <rect
                 x="5"
                 y="5"
@@ -3003,7 +3003,7 @@ const getElementValue = (element: GraphElement | undefined): number => {
                 strokeWidth={el.thickness || 2}
                 className={`register-rect ${isSelected ? 'selected' : ''}`}
               />
-              {/* 显示当前值 */}
+              {/* show current value */}
               <text
                 x="20"
                 y="26"
