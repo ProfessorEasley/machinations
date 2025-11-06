@@ -38,6 +38,15 @@ interface GraphElement {
   number?: number;
   max?: number;
   displayLimit?: number;
+
+  formula?: string;
+  minValue?: number;
+  maxValue?: number;
+  interactive?: boolean | string;
+  startingValue?: number;
+  step?: number;
+  currentValue?: number;
+
   startX?: number;
   startY?: number;
   endX?: number;
