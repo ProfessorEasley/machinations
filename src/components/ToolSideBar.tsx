@@ -76,6 +76,9 @@ interface ToolSideBarProps {
   canUndo?: boolean;
   canRedo?: boolean;
 
+  runType?: 'quick' | 'multiple' | null;
+  onMultipleRunClick?: () => void;
+  onReset?: () => void;
   toolProperties?: {
     textLabel: { text: string; color: string };
     group: { text: string; color: string };
@@ -232,7 +235,10 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
   toolProperties,
   onToolPropertiesChange,
   isRunning,
+  runType,
   onRunClick,
+  onMultipleRunClick,
+  onReset,
 }) => {
   const [activeTab, setActiveTab] = useState<'Graph' | 'Edit' | 'File' | 'Run'>(
     'Graph'
@@ -486,23 +492,41 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
       case 'Run':
         return (
           <>
-            {/* The "Quick Run" button is now a toggle */}
-            <button onClick={onRunClick}>
-              {isRunning ? 'Stop' : 'Quick Run'}
-            </button>
-            <button
-              onClick={() => {
-                /* Logic for multiple runs if needed */
-              }}
-            >
-              Multiple Runs
-            </button>
-            <label>
-              Runs <input type="number" defaultValue={100} />
-            </label>
-            <label>
-              Visible Runs <input type="number" defaultValue={25} />
-            </label>
+            {isRunning ? (
+              // When running, show Reset button in place of the button that was clicked
+              <>
+                {runType === 'quick' ? (
+                  <button onClick={onReset} className="reset-button">
+                    Reset
+                  </button>
+                ) : (
+                  <button onClick={onRunClick}>Quick Run</button>
+                )}
+                {runType === 'multiple' ? (
+                  <button onClick={onReset} className="reset-button">
+                    Reset
+                  </button>
+                ) : (
+                  <button onClick={onMultipleRunClick}>Multiple Runs</button>
+                )}
+              </>
+            ) : (
+              // When not running, show normal buttons
+              <>
+                <button onClick={onRunClick}>Quick Run</button>
+                <button onClick={onMultipleRunClick}>Multiple Runs</button>
+              </>
+            )}
+            {!isRunning && (
+              <>
+                <label>
+                  Runs <input type="number" defaultValue={100} />
+                </label>
+                <label>
+                  Visible Runs <input type="number" defaultValue={25} />
+                </label>
+              </>
+            )}
           </>
         );
     }
