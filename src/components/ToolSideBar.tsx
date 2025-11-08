@@ -53,9 +53,10 @@ interface GraphElement {
 
   queue?: boolean;
   formula?: string;
-  interactive?: boolean;
+  interactive?: boolean | string;
   startingValue?: number;
   step?: number;
+  currentValue?: number;
   script?: string;
   // Connection properties
   startX?: number;
@@ -1314,13 +1315,17 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <label>
             <input
               type="checkbox"
-              checked={selectedElement.interactive || false}
-              onChange={e =>
-                handleElementPropertyChange(
-                  'interactive',
-                  e.target.checked.toString()
-                )
+              checked={
+                selectedElement.interactive === true ||
+                selectedElement.interactive === 'true'
               }
+              onChange={e => {
+                if (onElementUpdate) {
+                  onElementUpdate(selectedElement.id, {
+                    interactive: e.target.checked,
+                  });
+                }
+              }}
             />
             Interactive
           </label>
