@@ -53,10 +53,24 @@ interface GraphElement {
   endY?: number;
   connectedToStart?: number;
   connectedToEnd?: number;
+  // Simulation state properties
+  hasStarted?: boolean;
+  currentPoints?: number;
+  triggerCount?: number;
+  lastGateValue?: number;
+  // Convertor properties
+  inputResources?: Record<string, number>;
+  outputResources?: Record<string, number>;
+  conversionRate?: Record<string, number>;
+  // Trader properties
+  traderInputs?: Record<string, number>;
+  traderOutputs?: Record<string, number>;
+  isIncompleteTrader?: boolean;
 }
 
 const Playground: React.FC = () => {
   const [isRunning, setIsRunning] = useState(false);
+  const [runType, setRunType] = useState<'quick' | 'multiple' | null>(null);
   const [selectedTool, setSelectedTool] = useState<string>('Select');
   const [selectedElementIds, setSelectedElementIds] = useState<number[]>([]);
   const [selectedElement, setSelectedElement] = useState<GraphElement | null>(
@@ -305,7 +319,59 @@ const Playground: React.FC = () => {
   }, [undo, redo]);
 
   const handleRunClick = () => {
-    setIsRunning(prevIsRunning => !prevIsRunning);
+    if (!isRunning) {
+      // Starting quick run
+      setRunType('quick');
+      setIsRunning(true);
+    } else {
+      // Stopping
+      setIsRunning(false);
+      setRunType(null);
+    }
+  };
+
+  const handleMultipleRunClick = () => {
+    if (!isRunning) {
+      // Starting multiple run
+      setRunType('multiple');
+      setIsRunning(true);
+    }
+  };
+
+  const handleReset = () => {
+    // Stop the simulation
+    setIsRunning(false);
+    // Keep runType so we know which button to show when running again
+
+    // Reset all elements to initial state
+    const resetElements = elements.map((el: GraphElement) => {
+      const reset: Partial<GraphElement> = {
+        hasStarted: false,
+        triggerCount: 0,
+        lastGateValue: undefined,
+      };
+
+      // Reset Pool resources to starting value
+      if (el.type === 'Pool') {
+        reset.currentPoints = el.number ?? 0;
+      }
+
+      // Clear stored resources in Converter and Trader
+      if (el.type === 'Convertor') {
+        reset.inputResources = {};
+        reset.outputResources = {};
+        reset.conversionRate = {};
+      }
+
+      if (el.type === 'Trader') {
+        reset.traderInputs = {};
+        reset.traderOutputs = {};
+      }
+
+      return { ...el, ...reset };
+    });
+
+    setElements(resetElements);
   };
 
   const handleElementUpdate = (
@@ -392,7 +458,10 @@ const Playground: React.FC = () => {
             selectedElements={getSelectedElements()}
             allElements={elements}
             isRunning={isRunning}
+            runType={runType}
             onRunClick={handleRunClick}
+            onMultipleRunClick={handleMultipleRunClick}
+            onReset={handleReset}
             onElementUpdate={handleElementUpdate}
             toolProperties={toolProperties}
             onToolPropertiesChange={handleToolPropertiesChange}
