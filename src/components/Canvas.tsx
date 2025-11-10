@@ -301,25 +301,28 @@ const Canvas: React.FC<CanvasProps> = ({
 
   type LabelKind = 'prob' | 'cond' | 'interval' | 'else' | 'empty' | 'invalid';
 
+  // replace your classifyLabel with this
   function classifyLabel(raw?: string): LabelKind {
-    const s = (raw ?? '').trim();
-    if (!s) return 'empty';
-    if (s.toLowerCase() === 'else') return 'else';
+    const s0 = (raw ?? '').trim();
+    if (!s0) return 'empty';
+    if (s0.toLowerCase() === 'else') return 'else';
+    const s = s0.replace(/[–—]/g, '-'); // normalize en/em dashes
+
     if (/^\d+\s*%$/.test(s)) return 'prob'; // "70%"
-    if (/^\d+(\.\d+)?$/.test(s)) return 'prob'; // weight "4"
+    if (/^\d+(\.\d+)?$/.test(s)) return 'prob'; // "4"
     if (/^(==|!=|>=|<=|>|<)\s*-?\d+(\.\d+)?$/.test(s)) return 'cond';
     if (/^-?\d+(\.\d+)?\s*-\s*-?\d+(\.\d+)?$/.test(s)) return 'interval';
     return 'invalid';
   }
 
+  // replace your parseInterval with this
   function parseInterval(raw: string): [number, number] | null {
-    const m = raw
-      .trim()
-      .match(/^\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\s*$/);
+    const norm = raw.trim().replace(/[–—]/g, '-');
+    const m = norm.match(/^\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\s*$/);
     if (!m) return null;
     const a = parseFloat(m[1]),
       b = parseFloat(m[2]);
-    return a <= b ? [a, b] : [b, a];
+    return a <= b ? [a, b] : [b, a]; // inclusive range
   }
 
   function parseCond(raw: string): ((v: number) => boolean) | null {
@@ -347,15 +350,51 @@ const Canvas: React.FC<CanvasProps> = ({
     };
   }
 
-  // Decide a gate "value" for condition/interval labels.
-  function generateGateValue(g: GraphElement): number {
-    const sides = Math.max(2, g.actions ?? 6);
-    if (g.gateType === 'dice') {
-      return randInt(1, sides);
+  function getIntervalWrapMax(outputs: GraphElement[]): number | null {
+    let hi = -Infinity;
+    for (const o of outputs) {
+      if (!o.text) continue;
+      if (classifyLabel(o.text) === 'interval') {
+        const rng = parseInterval(o.text);
+        if (rng) hi = Math.max(hi, rng[1]);
+      }
     }
-    // deterministic cycle
-    const prev = g.lastGateValue ?? 0;
-    return (prev % sides) + 1;
+    return isFinite(hi) ? hi : null;
+  }
+
+  // Optional: allow "d6", "6", or "1d6" in gate.text. Fallback to 6.
+  function getDiceSides(gate: GraphElement, outputs: GraphElement[]): number {
+    const t = (gate.text ?? '').trim().toLowerCase();
+    const m1 = t.match(/^d\s*(\d+)$/);
+    const m2 = t.match(/^(\d+)\s*d\s*(\d+)$/);
+    if (m1) return Math.max(2, parseInt(m1[1], 10));
+    if (m2) return Math.max(2, parseInt(m2[2], 10));
+    const wrap = getIntervalWrapMax(outputs);
+    if (wrap && wrap >= 2) return wrap; // sensible default from labels
+    return 6; // final fallback
+  }
+
+  // change signature to accept outputs
+  function generateGateValue(
+    gate: GraphElement,
+    outputs: GraphElement[]
+  ): number {
+    // Random (dice) mode
+    if (gate.gateType === 'dice') {
+      const sides = getDiceSides(gate, outputs);
+      return randInt(1, sides); // 1..sides
+    }
+
+    // Deterministic: cycle and wrap at the highest interval upper bound (if any)
+    const wrapMax = getIntervalWrapMax(outputs);
+    const prev = gate.lastGateValue ?? 0;
+    const next = prev + 1;
+
+    if (wrapMax && wrapMax >= 1) {
+      const wrapped = ((next - 1) % wrapMax) + 1; // 1..wrapMax
+      return wrapped;
+    }
+    return next; // no intervals -> monotone counter, no wrap
   }
 
   /**
@@ -365,91 +404,97 @@ const Canvas: React.FC<CanvasProps> = ({
    *  - If any '%' are present, '%'-labels are used and 'else' gets (100 - sum%).
    *  - If no '%', numeric weights & empty labels (weight 1) are used. 'else' has weight 0 by default.
    */
-  function chooseGateOutput(
+  function chooseGateOutputs(
     gate: GraphElement,
     outputs: GraphElement[]
-  ): GraphElement | null {
-    if (outputs.length === 0) return null;
+  ): GraphElement[] {
+    if (outputs.length === 0) return [];
 
     const kinds = outputs.map(o => classifyLabel(o.text));
-
-    // ---- condition mode (ignore 'else' when deciding to enter this mode)
     const hasRealCondition = kinds.some(k => k === 'cond' || k === 'interval');
+
+    // ---------- Condition / Interval mode ----------
     if (hasRealCondition) {
-      const v = generateGateValue(gate);
+      const v = generateGateValue(gate, outputs); // NOTE: uses outputs
       gate.lastGateValue = v;
 
-      // try conds and intervals in order
+      const matches: number[] = [];
       for (let i = 0; i < outputs.length; i++) {
         const o = outputs[i];
         const kind = kinds[i];
+        if (!o.text) continue;
+
         if (kind === 'cond') {
-          const fn = parseCond(o.text!);
-          if (fn && fn(v)) return o;
+          const fn = parseCond(o.text);
+          if (fn && fn(v)) matches.push(i);
         } else if (kind === 'interval') {
           const pair = parseInterval(o.text!);
-          if (pair && v >= pair[0] && v <= pair[1]) return o;
+          if (pair && v >= pair[0] && v <= pair[1]) matches.push(i);
         }
       }
-      // else fallback
-      const elseIdx = kinds.findIndex(k => k === 'else');
-      return elseIdx >= 0 ? outputs[elseIdx] : null;
+
+      if (matches.length === 0) {
+        const elseIdx = kinds.findIndex(k => k === 'else');
+        return elseIdx >= 0 ? [outputs[elseIdx]] : [];
+      }
+
+      // IMPORTANT: If labels overlap, duplicate to *every* match.
+      // (This makes overlaps work even if the gate's pullMode is 'pull any'.)
+      if (matches.length > 1) {
+        return matches.map(i => outputs[i]);
+      }
+
+      // Single match
+      return [outputs[matches[0]]];
     }
 
-    // ---- probability mode
+    // ---------- Probability mode (unchanged: pick ONE) ----------
     const isPercent = outputs.some(
       (o, i) => kinds[i] === 'prob' && /%$/.test((o.text ?? '').trim())
     );
-    const weights = new Array(outputs.length).fill(0);
     const elseIdx = kinds.findIndex(k => k === 'else');
 
     if (isPercent) {
-      // use only % labels; else gets remainder to 100
       let sumPercent = 0;
-      for (let i = 0; i < outputs.length; i++) {
-        const o = outputs[i];
+      const weights = outputs.map((o, i) => {
         const s = (o.text ?? '').trim();
         if (kinds[i] === 'prob' && /%$/.test(s)) {
           const w = Math.max(0, parseInt(s, 10) || 0);
-          weights[i] = w;
           sumPercent += w;
+          return w;
         }
-      }
+        return 0;
+      });
       if (elseIdx >= 0) {
         const rem = Math.max(0, 100 - sumPercent);
         weights[elseIdx] = rem;
         sumPercent += rem;
       }
-      if (sumPercent <= 0) return elseIdx >= 0 ? outputs[elseIdx] : null;
+      if (sumPercent <= 0) return elseIdx >= 0 ? [outputs[elseIdx]] : [];
 
       let r = Math.random() * sumPercent;
       for (let i = 0; i < outputs.length; i++) {
         r -= weights[i];
-        if (r <= 0 && weights[i] > 0) return outputs[i];
+        if (r <= 0 && weights[i] > 0) return [outputs[i]];
       }
-      return outputs[outputs.length - 1];
+      return [outputs[outputs.length - 1]];
     } else {
-      // plain weights: number => weight; empty => 1; else => 0 (unless you want to assign a weight)
-      for (let i = 0; i < outputs.length; i++) {
-        const kind = kinds[i];
-        const s = (outputs[i].text ?? '').trim();
-        if (kind === 'prob' && !/%$/.test(s)) {
-          weights[i] = Math.max(0, parseFloat(s) || 0);
-        } else if (kind === 'empty') {
-          weights[i] = 1;
-        } else {
-          weights[i] = 0; // else/invalid default 0 in weight-mode
-        }
-      }
+      const weights = outputs.map((o, i) => {
+        const s = (o.text ?? '').trim();
+        if (kinds[i] === 'prob' && !/%$/.test(s))
+          return Math.max(0, parseFloat(s) || 0);
+        if (kinds[i] === 'empty') return 1;
+        return 0; // else/invalid default 0
+      });
       const total = weights.reduce((a, b) => a + b, 0);
-      if (total <= 0) return elseIdx >= 0 ? outputs[elseIdx] : null;
+      if (total <= 0) return elseIdx >= 0 ? [outputs[elseIdx]] : [];
 
       let r = Math.random() * total;
       for (let i = 0; i < outputs.length; i++) {
         r -= weights[i];
-        if (r <= 0 && weights[i] > 0) return outputs[i];
+        if (r <= 0 && weights[i] > 0) return [outputs[i]];
       }
-      return outputs[outputs.length - 1];
+      return [outputs[outputs.length - 1]];
     }
   }
 
@@ -715,11 +760,13 @@ const Canvas: React.FC<CanvasProps> = ({
 
           // Decide which output gets it
           // NOTE: we give chooseGateOutput the *full* output list so labels compete
-          const chosen = chooseGateOutput(gate, outputConns);
-          if (chosen) {
-            // lastGateValue is set inside chooseGateOutput in condition-mode.
-            deliverOne(chosen);
+          // Decide which outputs get it (may be multiple on overlap)
+          const chosenList = chooseGateOutputs(gate, outputConns);
+          for (const ch of chosenList) {
+            deliverOne(ch);
           }
+
+          // If no match and no else, nothing is delivered (token dropped)
 
           // else: dropped on the floor (no match and no 'else')
         }
