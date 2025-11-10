@@ -654,6 +654,14 @@ const Canvas: React.FC<CanvasProps> = ({
       // Case 2: Pool -> Drain (handled in PASS 2.7 for proper label parsing)
     }
 
+    const consumePassiveTrigger = (el: GraphElement) => {
+      if ((el.triggerCount ?? 0) > 0) {
+        el.triggerCount = (el.triggerCount ?? 0) - 1;
+        return true;
+      }
+      return false;
+    };
+
     // --------- PASS 1.5: process Pools with active firing modes ----------
     for (const pool of nextElements) {
       if (pool.type !== 'Pool') continue;
@@ -662,6 +670,8 @@ const Canvas: React.FC<CanvasProps> = ({
       let isTriggerActive = false;
       if (activationType === 'automatic') {
         if (pool.activation === 'automatic') isTriggerActive = true;
+      } else if (pool.activation === 'passive' && consumePassiveTrigger(pool)) {
+        isTriggerActive = true;
       } else if (activationType === 'interactive') {
         if (pool.activation === 'interactive') {
           isTriggerActive =
@@ -848,8 +858,9 @@ const Canvas: React.FC<CanvasProps> = ({
       // Activation gate check
       let isTriggerActive = false;
       if (activationType === 'automatic') {
-        if (gate.activation === 'automatic' || gate.activation === 'passive')
-          isTriggerActive = true;
+        if (gate.activation === 'automatic') isTriggerActive = true;
+      } else if (gate.activation === 'passive' && consumePassiveTrigger(gate)) {
+        isTriggerActive = true;
       } else {
         if (gate.activation === activationType) isTriggerActive = true;
       }
@@ -972,11 +983,12 @@ const Canvas: React.FC<CanvasProps> = ({
       // Activation check - Source produces based on output streams
       let isTriggerActive = false;
       if (activationType === 'automatic') {
-        if (
-          source.activation === 'automatic' ||
-          source.activation === 'passive'
-        )
-          isTriggerActive = true;
+        if (source.activation === 'automatic') isTriggerActive = true;
+      } else if (
+        source.activation === 'passive' &&
+        consumePassiveTrigger(source)
+      ) {
+        isTriggerActive = true;
       } else {
         if (source.activation === activationType) isTriggerActive = true;
       }
@@ -1031,8 +1043,12 @@ const Canvas: React.FC<CanvasProps> = ({
       // Activation check
       let isTriggerActive = false;
       if (activationType === 'automatic') {
-        if (drain.activation === 'automatic' || drain.activation === 'passive')
-          isTriggerActive = true;
+        if (drain.activation === 'automatic') isTriggerActive = true;
+      } else if (
+        drain.activation === 'passive' &&
+        consumePassiveTrigger(drain)
+      ) {
+        isTriggerActive = true;
       } else {
         if (drain.activation === activationType) isTriggerActive = true;
       }
@@ -1153,11 +1169,12 @@ const Canvas: React.FC<CanvasProps> = ({
       // Activation check
       let isTriggerActive = false;
       if (activationType === 'automatic') {
-        if (
-          convertor.activation === 'automatic' ||
-          convertor.activation === 'passive'
-        )
-          isTriggerActive = true;
+        if (convertor.activation === 'automatic') isTriggerActive = true;
+      } else if (
+        convertor.activation === 'passive' &&
+        consumePassiveTrigger(convertor)
+      ) {
+        isTriggerActive = true;
       } else {
         if (convertor.activation === activationType) isTriggerActive = true;
       }
@@ -1342,11 +1359,12 @@ const Canvas: React.FC<CanvasProps> = ({
       // Activation check
       let isTriggerActive = false;
       if (activationType === 'automatic') {
-        if (
-          trader.activation === 'automatic' ||
-          trader.activation === 'passive'
-        )
-          isTriggerActive = true;
+        if (trader.activation === 'automatic') isTriggerActive = true;
+      } else if (
+        trader.activation === 'passive' &&
+        consumePassiveTrigger(trader)
+      ) {
+        isTriggerActive = true;
       } else {
         if (trader.activation === activationType) isTriggerActive = true;
       }
@@ -2969,11 +2987,6 @@ const Canvas: React.FC<CanvasProps> = ({
             height={40}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
             onClick={e => {
-              if (isRunning && el.activation === 'interactive') {
-                e.stopPropagation();
-                handleInteractiveAction(el.id);
-                return;
-              }
               if (selectedTool === 'Select') {
                 e.stopPropagation();
                 if (e.ctrlKey || e.metaKey) {
@@ -3019,11 +3032,6 @@ const Canvas: React.FC<CanvasProps> = ({
             height={40}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
             onClick={e => {
-              if (isRunning && el.activation === 'interactive') {
-                e.stopPropagation();
-                handleInteractiveAction(el.id);
-                return;
-              }
               if (selectedTool === 'Select') {
                 e.stopPropagation();
                 if (e.ctrlKey || e.metaKey) {
@@ -3068,11 +3076,6 @@ const Canvas: React.FC<CanvasProps> = ({
             height={40}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
             onClick={e => {
-              if (isRunning && el.activation === 'interactive') {
-                e.stopPropagation();
-                handleInteractiveAction(el.id);
-                return;
-              }
               if (selectedTool === 'Select') {
                 e.stopPropagation();
                 if (e.ctrlKey || e.metaKey) {
@@ -3217,11 +3220,6 @@ const Canvas: React.FC<CanvasProps> = ({
             height={40}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
             onClick={e => {
-              if (isRunning && el.activation === 'interactive') {
-                e.stopPropagation();
-                handleInteractiveAction(el.id);
-                return;
-              }
               if (selectedTool === 'Select') {
                 e.stopPropagation();
                 if (e.ctrlKey || e.metaKey) {
@@ -3290,11 +3288,6 @@ const Canvas: React.FC<CanvasProps> = ({
             height={40}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
             onClick={e => {
-              if (isRunning && el.activation === 'interactive') {
-                e.stopPropagation();
-                handleInteractiveAction(el.id);
-                return;
-              }
               if (selectedTool === 'Select') {
                 e.stopPropagation();
                 if (e.ctrlKey || e.metaKey) {
