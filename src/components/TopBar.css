@@ -20,3 +20,12 @@
 .run-button:hover {
   background-color: #5b4db0;
 }
+
+.run-button.running {
+  background-color: #f44336;
+  color: white;
+}
+
+.run-button.running:hover {
+  background-color: #d32f2f;
+}

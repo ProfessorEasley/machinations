@@ -3011,7 +3011,7 @@ const Canvas: React.FC<CanvasProps> = ({
               strokeWidth={el.thickness || 2}
             />
             <text
-              x="20"
+              x="10"
               y="25"
               className="element-value-text"
               fill="black" // <-- The fix is here! Black text for the white pool.
@@ -3054,10 +3054,10 @@ const Canvas: React.FC<CanvasProps> = ({
               className={`source-triangle ${isSelected ? 'selected' : ''}`}
             />
             <text
-              x="20"
+              x="14"
               y="30"
               className="element-value-text"
-              fill="white"
+              fill="black"
               fontSize="20"
             >
               ∞

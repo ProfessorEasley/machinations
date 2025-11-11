@@ -432,7 +432,7 @@ const Playground: React.FC = () => {
 
   return (
     <div className="playground-wrapper">
-      <TopBar />
+      <TopBar isRunning={isRunning} onRunClick={handleRunClick} />
       <div className="playground-body">
         <div className="canvas-section">
           <div className="grid-canvas">
