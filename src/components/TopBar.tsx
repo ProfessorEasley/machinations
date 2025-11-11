@@ -1,10 +1,20 @@
 import React from 'react';
 import './TopBar.css';
 
-const TopBar: React.FC = () => {
+interface TopBarProps {
+  isRunning: boolean;
+  onRunClick: () => void;
+}
+
+const TopBar: React.FC<TopBarProps> = ({ isRunning, onRunClick }) => {
   return (
     <div className="top-bar">
-      <button className="run-button">▶ Run (R)</button>
+      <button
+        className={`run-button ${isRunning ? 'running' : ''}`}
+        onClick={onRunClick}
+      >
+        {isRunning ? '■ Stop (R)' : '▶ Run (R)'}
+      </button>
     </div>
   );
 };
