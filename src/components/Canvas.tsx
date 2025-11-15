@@ -1770,7 +1770,7 @@ const Canvas: React.FC<CanvasProps> = ({
     }
   };
 
-    // Helper function for incomplete trader (behaves like convertor - can create/destroy resources)
+      // Helper function for incomplete trader (behaves like convertor - can create/destroy resources)
   const processIncompleteTrader = (
     trader: GraphElement,
     inputConns: GraphElement[],
@@ -1788,6 +1788,15 @@ const Canvas: React.FC<CanvasProps> = ({
       amount: Math.max(0, parseConnectionLabel(conn.text)),
     }));
 
+    const consumeFromInput = (conn: GraphElement, amount: number) => {
+      const el = conn.connectedToStart
+        ? elementMap.get(conn.connectedToStart)
+        : undefined;
+      if (el && el.type === 'Pool') {
+        el.currentPoints = Math.max(0, (el.currentPoints ?? 0) - amount);
+      }
+    };
+
     if (trader.pullMode === 'pull all') {
       const hasAllResources = parsedInputs.every(({ conn, amount }) => {
         if (amount === 0) return true;
@@ -1796,58 +1805,40 @@ const Canvas: React.FC<CanvasProps> = ({
           : undefined;
         if (!el) return false;
         if (el.type === 'Source') return true;
-        if (el.type === 'Pool') {
-          return (el.currentPoints ?? 0) >= amount;
-        }
+        if (el.type === 'Pool') return (el.currentPoints ?? 0) >= amount;
         return false;
       });
-
       if (!hasAllResources) return;
-
       parsedInputs.forEach(({ conn, amount }) => {
-        if (amount === 0) return;
-        const el = conn.connectedToStart
-          ? elementMap.get(conn.connectedToStart)
-          : undefined;
-        if (el && el.type === 'Pool') {
-          el.currentPoints = Math.max(0, (el.currentPoints ?? 0) - amount);
-        }
+        if (amount > 0) consumeFromInput(conn, amount);
       });
     } else {
       if (!trader.traderInputs) trader.traderInputs = {};
-
       parsedInputs.forEach(({ conn, amount }) => {
         if (amount === 0) return;
         const el = conn.connectedToStart
           ? elementMap.get(conn.connectedToStart)
           : undefined;
-        if (
-          el &&
-          el.type === 'Pool' &&
-          (el.currentPoints ?? 0) > 0
-        ) {
+        const key = `conn_${conn.id}`;
+        if (el && el.type === 'Pool' && (el.currentPoints ?? 0) > 0) {
           const available = Math.min(amount, el.currentPoints ?? 0);
           if (available > 0) {
             el.currentPoints = (el.currentPoints ?? 0) - available;
-            const key = `conn_${conn.id}`;
             trader.traderInputs![key] =
               (trader.traderInputs![key] || 0) + available;
           }
         } else if (el && el.type === 'Source') {
-          const key = `conn_${conn.id}`;
           trader.traderInputs![key] =
             (trader.traderInputs![key] || 0) + amount;
         }
       });
 
-      const canTrade = parsedInputs.every(({ conn, amount }) => {
+      const hasStored = parsedInputs.every(({ conn, amount }) => {
         if (amount === 0) return true;
         const key = `conn_${conn.id}`;
         return (trader.traderInputs?.[key] || 0) >= amount;
       });
-
-      if (!canTrade) return;
-
+      if (!hasStored) return;
       parsedInputs.forEach(({ conn, amount }) => {
         const key = `conn_${conn.id}`;
         trader.traderInputs![key] =
@@ -1855,15 +1846,44 @@ const Canvas: React.FC<CanvasProps> = ({
       });
     }
 
+    if (inputConns.length > 1 && outputConns.length === 1) {
+      const totalInput = parsedInputs.reduce((sum, entry) => sum + entry.amount, 0);
+      const outputConn = outputConns[0];
+      const outputElement = outputConn.connectedToEnd
+        ? elementMap.get(outputConn.connectedToEnd)
+        : undefined;
+      if (outputElement && outputElement.type === 'Pool') {
+        const current = outputElement.currentPoints ?? 0;
+        const max = outputElement.max ?? Infinity;
+        outputElement.currentPoints = Math.min(current + totalInput, max);
+      }
+      return;
+    }
+
+    if (inputConns.length === 1 && outputConns.length > 1) {
+      const amount = parsedInputs[0]?.amount ?? 0;
+      outputConns.forEach(outputConn => {
+        const outputElement = outputConn.connectedToEnd
+          ? elementMap.get(outputConn.connectedToEnd)
+          : undefined;
+        if (outputElement && outputElement.type === 'Pool') {
+          const current = outputElement.currentPoints ?? 0;
+          const max = outputElement.max ?? Infinity;
+          outputElement.currentPoints = Math.min(current + amount, max);
+        }
+      });
+      return;
+    }
+
     parsedOutputs.forEach(({ conn, amount }) => {
       if (amount === 0) return;
-      const el = conn.connectedToEnd
+      const outputElement = conn.connectedToEnd
         ? elementMap.get(conn.connectedToEnd)
         : undefined;
-      if (el && el.type === 'Pool') {
-        const current = el.currentPoints ?? 0;
-        const max = el.max ?? Infinity;
-        el.currentPoints = Math.min(current + amount, max);
+      if (outputElement && outputElement.type === 'Pool') {
+        const current = outputElement.currentPoints ?? 0;
+        const max = outputElement.max ?? Infinity;
+        outputElement.currentPoints = Math.min(current + amount, max);
       }
     });
   };
@@ -3916,4 +3936,3 @@ const Canvas: React.FC<CanvasProps> = ({
 };
 
 export default Canvas;
-
