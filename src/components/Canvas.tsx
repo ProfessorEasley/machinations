@@ -1800,18 +1800,52 @@ const Canvas: React.FC<CanvasProps> = ({
           }
         }
 
-        // Produce all outputs (incomplete trader can create/destroy resources)
-        for (const [connId, outputAmount] of outputAmounts.entries()) {
-          const outputConn = outputConns.find(c => c.id === connId);
-          if (outputConn) {
+        // INCOMPLETE TRADER LOGIC:
+        // - If multiple inputs → single output: sum all inputs and send to output
+        // - If single input → multiple outputs: split input and send to all outputs
+        if (inputConns.length > 1 && outputConns.length === 1) {
+          // Multiple inputs, single output: sum all inputs
+          let totalInput = 0;
+          for (const amount of requiredInputs.values()) {
+            totalInput += amount;
+          }
+
+          const outputConn = outputConns[0];
+          const outputElement = elementMap.get(outputConn.connectedToEnd!);
+          if (outputElement && outputElement.type === 'Pool') {
+            const current = outputElement.currentPoints ?? 0;
+            const max = outputElement.max ?? Infinity;
+            outputElement.currentPoints = Math.min(current + totalInput, max);
+          }
+        } else if (inputConns.length === 1 && outputConns.length > 1) {
+          // Single input, multiple outputs: split input to all outputs
+          const inputAmount = requiredInputs.values().next().value || 0;
+
+          for (const outputConn of outputConns) {
             const outputElement = elementMap.get(outputConn.connectedToEnd!);
             if (outputElement && outputElement.type === 'Pool') {
               const current = outputElement.currentPoints ?? 0;
               const max = outputElement.max ?? Infinity;
               outputElement.currentPoints = Math.min(
-                current + outputAmount,
+                current + inputAmount,
                 max
               );
+            }
+          }
+        } else {
+          // Fallback: use output amounts as specified (for edge cases)
+          for (const [connId, outputAmount] of outputAmounts.entries()) {
+            const outputConn = outputConns.find(c => c.id === connId);
+            if (outputConn) {
+              const outputElement = elementMap.get(outputConn.connectedToEnd!);
+              if (outputElement && outputElement.type === 'Pool') {
+                const current = outputElement.currentPoints ?? 0;
+                const max = outputElement.max ?? Infinity;
+                outputElement.currentPoints = Math.min(
+                  current + outputAmount,
+                  max
+                );
+              }
             }
           }
         }
@@ -1849,18 +1883,55 @@ const Canvas: React.FC<CanvasProps> = ({
             current - requiredAmount * tradesToExecute;
         }
 
-        // Produce outputs (incomplete trader can create/destroy resources)
-        for (const [connId, outputAmount] of outputAmounts.entries()) {
-          const outputConn = outputConns.find(c => c.id === connId);
-          if (outputConn) {
+        // INCOMPLETE TRADER LOGIC:
+        // - If multiple inputs → single output: sum all inputs and send to output
+        // - If single input → multiple outputs: split input and send to all outputs
+        if (inputConns.length > 1 && outputConns.length === 1) {
+          // Multiple inputs, single output: sum all inputs
+          let totalInputPerTrade = 0;
+          for (const amount of requiredInputs.values()) {
+            totalInputPerTrade += amount;
+          }
+
+          const outputConn = outputConns[0];
+          const outputElement = elementMap.get(outputConn.connectedToEnd!);
+          if (outputElement && outputElement.type === 'Pool') {
+            const current = outputElement.currentPoints ?? 0;
+            const max = outputElement.max ?? Infinity;
+            outputElement.currentPoints = Math.min(
+              current + totalInputPerTrade * tradesToExecute,
+              max
+            );
+          }
+        } else if (inputConns.length === 1 && outputConns.length > 1) {
+          // Single input, multiple outputs: split input to all outputs
+          const inputAmount = requiredInputs.values().next().value || 0;
+
+          for (const outputConn of outputConns) {
             const outputElement = elementMap.get(outputConn.connectedToEnd!);
             if (outputElement && outputElement.type === 'Pool') {
               const current = outputElement.currentPoints ?? 0;
               const max = outputElement.max ?? Infinity;
               outputElement.currentPoints = Math.min(
-                current + outputAmount * tradesToExecute,
+                current + inputAmount * tradesToExecute,
                 max
               );
+            }
+          }
+        } else {
+          // Fallback: use output amounts as specified (for edge cases)
+          for (const [connId, outputAmount] of outputAmounts.entries()) {
+            const outputConn = outputConns.find(c => c.id === connId);
+            if (outputConn) {
+              const outputElement = elementMap.get(outputConn.connectedToEnd!);
+              if (outputElement && outputElement.type === 'Pool') {
+                const current = outputElement.currentPoints ?? 0;
+                const max = outputElement.max ?? Infinity;
+                outputElement.currentPoints = Math.min(
+                  current + outputAmount * tradesToExecute,
+                  max
+                );
+              }
             }
           }
         }
@@ -1895,6 +1966,105 @@ const Canvas: React.FC<CanvasProps> = ({
       }
     }
 
+    // Build mapping of input connections to their source pools and colors
+    // and output connections to their destination pools
+    const inputInfo: Array<{
+      connId: number;
+      amount: number;
+      sourcePoolId?: number;
+      color?: string;
+    }> = [];
+    for (const inputConn of inputConns) {
+      const amount = requiredInputs.get(inputConn.id) || 0;
+      const sourceElement = inputConn.connectedToStart
+        ? elementMap.get(inputConn.connectedToStart)
+        : undefined;
+      inputInfo.push({
+        connId: inputConn.id,
+        amount,
+        sourcePoolId: sourceElement?.id,
+        color: inputConn.color,
+      });
+    }
+
+    const outputInfo: Array<{
+      connId: number;
+      destPoolId?: number;
+      color?: string;
+    }> = [];
+    for (const outputConn of outputConns) {
+      const destElement = outputConn.connectedToEnd
+        ? elementMap.get(outputConn.connectedToEnd)
+        : undefined;
+      outputInfo.push({
+        connId: outputConn.id,
+        destPoolId: destElement?.id,
+        color: outputConn.color,
+      });
+    }
+
+    // Check if all connections have the same color (or are black/default)
+    // If so, all resources should go to one output
+    const allInputColors = inputInfo.map(i => i.color || '#000000');
+    const allOutputColors = outputInfo.map(o => o.color || '#000000');
+    const allColors = [...allInputColors, ...allOutputColors];
+    const hasColorDifferentiation = new Set(allColors).size > 1;
+
+    // Match inputs to outputs for resource exchange
+    // Strategy: Match each input to an output that goes to a different pool
+    // Priority: 1) Color matching (different colors), 2) Pool ID matching (different pools), 3) Round-robin
+    const createInputOutputMapping = (): Map<number, number> => {
+      const mapping = new Map<number, number>(); // input connId -> output connId
+      const usedOutputs = new Set<number>();
+
+      for (const input of inputInfo) {
+        let bestMatch: number | null = null;
+        let bestScore = -1;
+
+        for (const output of outputInfo) {
+          if (usedOutputs.has(output.connId)) continue;
+
+          // Skip if output goes to the same pool as input source (no self-trade)
+          if (
+            input.sourcePoolId &&
+            output.destPoolId &&
+            input.sourcePoolId === output.destPoolId
+          ) {
+            continue;
+          }
+
+          // Calculate match score
+          let score = 0;
+          // Prefer different colors
+          if (input.color && output.color && input.color !== output.color) {
+            score += 10;
+          }
+          // Prefer different pools
+          if (
+            input.sourcePoolId &&
+            output.destPoolId &&
+            input.sourcePoolId !== output.destPoolId
+          ) {
+            score += 5;
+          }
+          // Base score for any valid match
+          score += 1;
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestMatch = output.connId;
+          }
+        }
+
+        if (bestMatch !== null) {
+          mapping.set(input.connId, bestMatch);
+          usedOutputs.add(bestMatch);
+        }
+      }
+
+      return mapping;
+    };
+
     if (trader.pullMode === 'pull all') {
       // PULL ALL MODE: Trade only happens if ALL inputs are available simultaneously
       let canTrade = true;
@@ -1928,21 +2098,6 @@ const Canvas: React.FC<CanvasProps> = ({
       }
 
       if (canTrade) {
-        // Calculate total input and output for resource conservation check
-        let totalInput = 0;
-        let totalOutput = 0;
-
-        for (const amount of requiredInputs.values()) {
-          totalInput += amount;
-        }
-        for (const amount of outputAmounts.values()) {
-          totalOutput += amount;
-        }
-
-        // For complete trader, ensure resource conservation
-        // If totals don't match, we need to adjust (this shouldn't happen in proper setup)
-        // But we'll proceed with the trade and ensure outputs match inputs
-
         // Consume all inputs
         for (const [connId, requiredAmount] of requiredInputs.entries()) {
           const inputConn = inputConns.find(c => c.id === connId);
@@ -1958,24 +2113,46 @@ const Canvas: React.FC<CanvasProps> = ({
           }
         }
 
-        // Produce outputs - ensure resource conservation
-        // If total input != total output, scale outputs proportionally to match input
-        const scaleFactor =
-          totalInput > 0 && totalOutput > 0 ? totalInput / totalOutput : 1;
+        // COMPLETE TRADER LOGIC: Exchange resources
+        if (!hasColorDifferentiation) {
+          // No color differentiation: send all resources to one output
+          let totalInput = 0;
+          for (const input of inputInfo) {
+            totalInput += input.amount;
+          }
 
-        for (const [connId, outputAmount] of outputAmounts.entries()) {
-          const outputConn = outputConns.find(c => c.id === connId);
-          if (outputConn) {
+          // Send all resources to the first output
+          if (outputConns.length > 0) {
+            const outputConn = outputConns[0];
             const outputElement = elementMap.get(outputConn.connectedToEnd!);
             if (outputElement && outputElement.type === 'Pool') {
               const current = outputElement.currentPoints ?? 0;
               const max = outputElement.max ?? Infinity;
-              // Scale output to ensure resource conservation
-              const scaledOutput = Math.floor(outputAmount * scaleFactor);
-              outputElement.currentPoints = Math.min(
-                current + scaledOutput,
-                max
-              );
+              outputElement.currentPoints = Math.min(current + totalInput, max);
+            }
+          }
+        } else {
+          // Color differentiation: match inputs to outputs and exchange resources
+          const inputOutputMapping = createInputOutputMapping();
+
+          for (const input of inputInfo) {
+            const outputConnId = inputOutputMapping.get(input.connId);
+            if (outputConnId !== undefined) {
+              const outputConn = outputConns.find(c => c.id === outputConnId);
+              if (outputConn) {
+                const outputElement = elementMap.get(
+                  outputConn.connectedToEnd!
+                );
+                if (outputElement && outputElement.type === 'Pool') {
+                  const current = outputElement.currentPoints ?? 0;
+                  const max = outputElement.max ?? Infinity;
+                  // Send the amount from this input to this output
+                  outputElement.currentPoints = Math.min(
+                    current + input.amount,
+                    max
+                  );
+                }
+              }
             }
           }
         }
@@ -2002,17 +2179,6 @@ const Canvas: React.FC<CanvasProps> = ({
       }
 
       if (canTrade && minTrades > 0) {
-        // Calculate total input and output per trade for resource conservation
-        let totalInputPerTrade = 0;
-        let totalOutputPerTrade = 0;
-
-        for (const amount of requiredInputs.values()) {
-          totalInputPerTrade += amount;
-        }
-        for (const amount of outputAmounts.values()) {
-          totalOutputPerTrade += amount;
-        }
-
         // Execute as many complete trades as possible
         const tradesToExecute = minTrades;
 
@@ -2024,28 +2190,49 @@ const Canvas: React.FC<CanvasProps> = ({
             current - requiredAmount * tradesToExecute;
         }
 
-        // Produce outputs - ensure resource conservation
-        // Scale outputs to match inputs
-        const scaleFactor =
-          totalInputPerTrade > 0 && totalOutputPerTrade > 0
-            ? totalInputPerTrade / totalOutputPerTrade
-            : 1;
+        // COMPLETE TRADER LOGIC: Exchange resources
+        if (!hasColorDifferentiation) {
+          // No color differentiation: send all resources to one output
+          let totalInputPerTrade = 0;
+          for (const input of inputInfo) {
+            totalInputPerTrade += input.amount;
+          }
 
-        for (const [connId, outputAmount] of outputAmounts.entries()) {
-          const outputConn = outputConns.find(c => c.id === connId);
-          if (outputConn) {
+          // Send all resources to the first output
+          if (outputConns.length > 0) {
+            const outputConn = outputConns[0];
             const outputElement = elementMap.get(outputConn.connectedToEnd!);
             if (outputElement && outputElement.type === 'Pool') {
               const current = outputElement.currentPoints ?? 0;
               const max = outputElement.max ?? Infinity;
-              // Scale output to ensure resource conservation
-              const scaledOutput = Math.floor(
-                outputAmount * scaleFactor * tradesToExecute
-              );
               outputElement.currentPoints = Math.min(
-                current + scaledOutput,
+                current + totalInputPerTrade * tradesToExecute,
                 max
               );
+            }
+          }
+        } else {
+          // Color differentiation: match inputs to outputs and exchange resources
+          const inputOutputMapping = createInputOutputMapping();
+
+          for (const input of inputInfo) {
+            const outputConnId = inputOutputMapping.get(input.connId);
+            if (outputConnId !== undefined) {
+              const outputConn = outputConns.find(c => c.id === outputConnId);
+              if (outputConn) {
+                const outputElement = elementMap.get(
+                  outputConn.connectedToEnd!
+                );
+                if (outputElement && outputElement.type === 'Pool') {
+                  const current = outputElement.currentPoints ?? 0;
+                  const max = outputElement.max ?? Infinity;
+                  // Send the amount from this input to this output (multiplied by trades)
+                  outputElement.currentPoints = Math.min(
+                    current + input.amount * tradesToExecute,
+                    max
+                  );
+                }
+              }
             }
           }
         }
