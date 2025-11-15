@@ -195,7 +195,11 @@ interface GraphElement {
   connectedToEnd?: number; // ID of element this connection ends at
   currentPoints?: number;
   hasStarted?: boolean;
+  inhibited?: boolean;
 }
+
+const isResourceLikeConnection = (element: GraphElement) =>
+  element.type === 'Resource Connection';
 
 const Canvas: React.FC<CanvasProps> = ({
   isRunning,
@@ -594,6 +598,29 @@ const Canvas: React.FC<CanvasProps> = ({
     }
   };
 
+  const applyStateConnectionDelta = (
+    target: GraphElement,
+    delta: number
+  ): void => {
+    if (!delta || !target) return;
+
+    if (target.type === 'Pool') {
+      const max = target.max ?? Infinity;
+      const next = (target.currentPoints ?? 0) + delta;
+      target.currentPoints =
+        delta >= 0 ? Math.min(next, max) : Math.max(0, next);
+      return;
+    }
+
+    if (target.type === 'Register') {
+      const min = target.minValue ?? -Infinity;
+      const max = target.maxValue ?? Infinity;
+      const next = (target.currentValue ?? 0) + delta;
+      target.currentValue = Math.min(Math.max(next, min), max);
+      return;
+    }
+  };
+
   const runSimulationTick = (
     elementsToUpdate: GraphElement[],
     activationType: 'automatic' | 'onstart' | 'interactive',
@@ -629,10 +656,57 @@ const Canvas: React.FC<CanvasProps> = ({
       }
     }
 
+    // --------- PASS 0.5: process State Connections (conditions & triggers, always on) ---------
+    for (const connection of nextElements) {
+      if (
+        connection.type !== 'State Connection' ||
+        !connection.connectedToStart ||
+        !connection.connectedToEnd
+      ) {
+        continue;
+      }
+
+      const startEl = elementMap.get(connection.connectedToStart);
+      const endEl = elementMap.get(connection.connectedToEnd);
+      if (!startEl || !endEl) continue;
+
+      const labelText = (connection.text ?? '').trim();
+      const kind = classifyLabel(labelText);
+
+      if (kind === 'cond') {
+        const fn = parseCond(labelText);
+        if (fn) {
+          const value = getElementValue(startEl);
+          endEl.inhibited = !fn(value);
+        }
+      } else if (kind === 'interval') {
+        const range = parseInterval(labelText);
+        if (range) {
+          const value = getElementValue(startEl);
+          endEl.inhibited = !(value >= range[0] && value <= range[1]);
+        }
+      }
+
+      const labelLower = labelText.toLowerCase();
+      if (
+        labelLower === 'trigger' ||
+        labelLower === 'fire' ||
+        startEl.type === 'Gate'
+      ) {
+        endEl.triggerCount = (endEl.triggerCount ?? 0) + 1;
+        continue;
+      }
+
+      if (kind === 'prob' || kind === 'empty') {
+        const delta = parseConnectionLabel(labelText);
+        applyStateConnectionDelta(endEl, delta);
+      }
+    }
+
     // --------- PASS 1: generic connections (but SKIP Gate outputs) ---------
     for (const connection of nextElements) {
       if (
-        connection.type !== 'Resource Connection' ||
+        !isResourceLikeConnection(connection) ||
         !connection.connectedToStart ||
         !connection.connectedToEnd
       ) {
@@ -690,12 +764,12 @@ const Canvas: React.FC<CanvasProps> = ({
 
       // Get input connections (connections ending at this pool)
       const inputConns = nextElements.filter(
-        c => c.type === 'Resource Connection' && c.connectedToEnd === pool.id
+        c => isResourceLikeConnection(c) && c.connectedToEnd === pool.id
       );
 
       // Get output connections (connections starting at this pool)
       const outputConns = nextElements.filter(
-        c => c.type === 'Resource Connection' && c.connectedToStart === pool.id
+        c => isResourceLikeConnection(c) && c.connectedToStart === pool.id
       );
 
       // Handle PULL modes (pull resources from inputs)
@@ -872,7 +946,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
       // Collect inputs (resource connections ending at this gate)
       const inputConns = nextElements.filter(
-        c => c.type === 'Resource Connection' && c.connectedToEnd === gate.id
+        c => isResourceLikeConnection(c) && c.connectedToEnd === gate.id
       );
 
       // Collect outputs (both resource and state connections starting at this gate)
@@ -1000,8 +1074,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
       // Collect output connections (resource connections starting at this source)
       const outputConns = nextElements.filter(
-        c =>
-          c.type === 'Resource Connection' && c.connectedToStart === source.id
+        c => isResourceLikeConnection(c) && c.connectedToStart === source.id
       );
 
       if (outputConns.length === 0) {
@@ -1060,7 +1133,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
       // Collect input connections (resource connections ending at this drain)
       const inputConns = nextElements.filter(
-        c => c.type === 'Resource Connection' && c.connectedToEnd === drain.id
+        c => isResourceLikeConnection(c) && c.connectedToEnd === drain.id
       );
 
       // Collect output connections (state connections for trigger outputs)
@@ -1197,15 +1270,12 @@ const Canvas: React.FC<CanvasProps> = ({
 
       // Collect input connections (resource connections ending at this convertor)
       const inputConns = nextElements.filter(
-        c =>
-          c.type === 'Resource Connection' && c.connectedToEnd === convertor.id
+        c => isResourceLikeConnection(c) && c.connectedToEnd === convertor.id
       );
 
       // Collect output connections (resource connections starting at this convertor)
       const outputConns = nextElements.filter(
-        c =>
-          c.type === 'Resource Connection' &&
-          c.connectedToStart === convertor.id
+        c => isResourceLikeConnection(c) && c.connectedToStart === convertor.id
       );
 
       if (inputConns.length === 0 || outputConns.length === 0) {
@@ -1384,13 +1454,12 @@ const Canvas: React.FC<CanvasProps> = ({
 
       // Collect input connections (resource connections ending at this trader)
       const inputConns = nextElements.filter(
-        c => c.type === 'Resource Connection' && c.connectedToEnd === trader.id
+        c => isResourceLikeConnection(c) && c.connectedToEnd === trader.id
       );
 
       // Collect output connections (resource connections starting at this trader)
       const outputConns = nextElements.filter(
-        c =>
-          c.type === 'Resource Connection' && c.connectedToStart === trader.id
+        c => isResourceLikeConnection(c) && c.connectedToStart === trader.id
       );
 
       if (inputConns.length === 0 || outputConns.length === 0) {
@@ -3617,17 +3686,27 @@ const Canvas: React.FC<CanvasProps> = ({
           </div>
         );
       }
-      case 'State Connection':
+      case 'State Connection': {
+        const sx = el.startX || el.x;
+        const sy = el.startY || el.y;
+        const ex = el.endX || el.x;
+        const ey = el.endY || el.y;
+
+        const left = Math.min(sx, ex) - 15;
+        const top = Math.min(sy, ey) - 15;
+        const width = Math.abs(ex - sx) + 30;
+        const height = Math.abs(ey - sy) + 30;
+
+        const midX = sx - left + (ex - sx) / 2;
+        const midY = sy - top + (ey - sy) / 2;
+
         return (
           <div
             key={el.id}
-            className={`connection-container ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
-            style={{
-              left: Math.min(el.startX || el.x, el.endX || el.x) - 5,
-              top: Math.min(el.startY || el.y, el.endY || el.y) - 5,
-              width: Math.abs((el.endX || el.x) - (el.startX || el.x)) + 10,
-              height: Math.abs((el.endY || el.y) - (el.startY || el.y)) + 10,
-            }}
+            className={`connection-container ${
+              selectedTool === 'Select' ? 'selectable' : ''
+            } ${isSelected ? 'selected' : ''}`}
+            style={{ left, top, width, height }}
             onMouseDown={e => {
               e.stopPropagation();
               if (selectedTool === 'Select') {
@@ -3648,6 +3727,12 @@ const Canvas: React.FC<CanvasProps> = ({
                 <marker
                   id={`arrowhead-dashed-${el.id}`}
                   className="arrow-marker"
+                  viewBox="0 0 10 7"
+                  refX="10"
+                  refY="3.5"
+                  markerWidth="10"
+                  markerHeight="7"
+                  orient="auto-start-reverse"
                 >
                   <polygon
                     points="0 0, 10 3.5, 0 7"
@@ -3679,41 +3764,31 @@ const Canvas: React.FC<CanvasProps> = ({
                 }
                 stroke={isSelected ? '#0078d4' : el.color || '#666'}
                 strokeWidth={isSelected ? 3 : 2}
-                strokeDasharray={isSelected ? '5,5' : '5,5'}
+                strokeDasharray="5,5"
                 className={`state-connection-line ${isSelected ? 'selected' : ''}`}
                 markerEnd={`url(#arrowhead-dashed-${el.id})`}
               />
+              {el.text && el.text !== '0' && (
+                <text x={midX} y={midY} className="connection-label-text">
+                  {el.text}
+                </text>
+              )}
             </svg>
-            {/* Resize handles for arrows */}
             {isSelected && (
               <>
-                {/* Start point handle */}
                 <div
                   className="arrow-handle"
                   style={{
-                    left:
-                      (el.startX || el.x) -
-                      Math.min(el.startX || el.x, el.endX || el.x) +
-                      1,
-                    top:
-                      (el.startY || el.y) -
-                      Math.min(el.startY || el.y, el.endY || el.y) +
-                      1,
+                    left: sx - left - 4,
+                    top: sy - top - 4,
                   }}
                   onMouseDown={e => handleArrowResizeStart(e, el.id, 'start')}
                 />
-                {/* End point handle */}
                 <div
                   className="arrow-handle"
                   style={{
-                    left:
-                      (el.endX || el.x) -
-                      Math.min(el.startX || el.x, el.endX || el.x) +
-                      1,
-                    top:
-                      (el.endY || el.y) -
-                      Math.min(el.startY || el.y, el.endY || el.y) +
-                      1,
+                    left: ex - left - 4,
+                    top: ey - top - 4,
                   }}
                   onMouseDown={e => handleArrowResizeStart(e, el.id, 'end')}
                 />
@@ -3721,6 +3796,7 @@ const Canvas: React.FC<CanvasProps> = ({
             )}
           </div>
         );
+      }
       default:
         return null;
     }
