@@ -1426,24 +1426,6 @@ const Canvas: React.FC<CanvasProps> = ({
     for (const trader of nextElements) {
       if (trader.type !== 'Trader') continue;
 
-      // Activation check
-      let isTriggerActive = false;
-      if (activationType === 'automatic') {
-        if (trader.activation === 'automatic') isTriggerActive = true;
-      } else if (
-        trader.activation === 'passive' &&
-        consumePassiveTrigger(trader)
-      ) {
-        isTriggerActive = true;
-      } else {
-        if (trader.activation === activationType) isTriggerActive = true;
-      }
-      const canFire = activationType !== 'onstart' || !trader.hasStarted;
-      const isTarget =
-        !interactiveElementId || trader.id === interactiveElementId;
-
-      if (!(isTriggerActive && canFire && isTarget)) continue;
-
       // Initialize trader storage if not exists
       if (!trader.traderInputs) {
         trader.traderInputs = {};
@@ -1462,6 +1444,11 @@ const Canvas: React.FC<CanvasProps> = ({
         c => isResourceLikeConnection(c) && c.connectedToStart === trader.id
       );
 
+      // Collect trigger connections (state connections ending at this trader)
+      const triggerConns = nextElements.filter(
+        c => c.type === 'State Connection' && c.connectedToEnd === trader.id
+      );
+
       if (inputConns.length === 0 || outputConns.length === 0) {
         if (activationType === 'onstart') trader.hasStarted = true;
         continue;
@@ -1470,6 +1457,82 @@ const Canvas: React.FC<CanvasProps> = ({
       // Check if trader is incomplete (< 2 inputs or < 2 outputs)
       const isIncomplete = inputConns.length < 2 || outputConns.length < 2;
       trader.isIncompleteTrader = isIncomplete;
+
+      // ACTIVATION: Trader activates in two ways:
+      // 1. Input Activation: Resources arrive at the trader (check if any input has resources available)
+      // 2. Gate/Trigger Activation: A gate or trigger connection fires into the trader
+      let isActivated = false;
+
+      // Check for trigger activation (gate/trigger connection)
+      if (triggerConns.length > 0) {
+        // Check if any trigger connection has fired (has triggerCount)
+        if ((trader.triggerCount ?? 0) > 0) {
+          isActivated = true;
+          // Consume one trigger
+          trader.triggerCount = (trader.triggerCount ?? 0) - 1;
+        }
+      }
+
+      // Check for input activation (resources arriving)
+      if (!isActivated) {
+        // Check if any input connection has resources available
+        for (const inputConn of inputConns) {
+          const inputElement = inputConn.connectedToStart
+            ? elementMap.get(inputConn.connectedToStart)
+            : undefined;
+          if (inputElement) {
+            if (inputElement.type === 'Source') {
+              // Source always has resources
+              isActivated = true;
+              break;
+            } else if (
+              inputElement.type === 'Pool' &&
+              (inputElement.currentPoints ?? 0) > 0
+            ) {
+              // Pool has resources available
+              isActivated = true;
+              break;
+            }
+          }
+        }
+      }
+
+      // Also check activation type (for automatic/passive/interactive/onstart)
+      let isTriggerActive = false;
+      if (activationType === 'automatic') {
+        if (trader.activation === 'automatic') isTriggerActive = true;
+      } else if (
+        trader.activation === 'passive' &&
+        consumePassiveTrigger(trader)
+      ) {
+        isTriggerActive = true;
+      } else {
+        if (trader.activation === activationType) isTriggerActive = true;
+      }
+      const canFire = activationType !== 'onstart' || !trader.hasStarted;
+      const isTarget =
+        !interactiveElementId || trader.id === interactiveElementId;
+
+      // In Pull Any mode, always try to collect available resources (even if not fully activated)
+      // This allows the trader to accumulate resources over time
+      if (
+        trader.pullMode === 'pull any' &&
+        isTriggerActive &&
+        canFire &&
+        isTarget
+      ) {
+        collectResourcesForPullAny(trader, inputConns, elementMap);
+      }
+
+      // Trader only processes trades if:
+      // - It is activated (by resources or trigger) AND
+      // - The activation type matches (automatic/passive/interactive/onstart) AND
+      // - It can fire (hasn't started yet for onstart) AND
+      // - It's the target (for interactive mode)
+      if (!(isActivated && isTriggerActive && canFire && isTarget)) {
+        if (activationType === 'onstart') trader.hasStarted = true;
+        continue;
+      }
 
       // Determine actions this tick
       const actions = Math.max(1, trader.actions ?? 1);
@@ -1626,7 +1689,43 @@ const Canvas: React.FC<CanvasProps> = ({
     return nextElements;
   };
 
-  // Helper function for incomplete trader (behaves like convertor)
+  // Helper function to collect resources for Pull Any mode
+  const collectResourcesForPullAny = (
+    trader: GraphElement,
+    inputConns: GraphElement[],
+    elementMap: Map<number, GraphElement>
+  ) => {
+    for (const inputConn of inputConns) {
+      const inputElement = inputConn.connectedToStart
+        ? elementMap.get(inputConn.connectedToStart)
+        : undefined;
+      if (
+        inputElement &&
+        inputElement.type === 'Pool' &&
+        (inputElement.currentPoints ?? 0) > 0
+      ) {
+        const amount = parseConnectionLabel(inputConn.text);
+        const available = Math.min(amount, inputElement.currentPoints ?? 0);
+
+        if (available > 0) {
+          inputElement.currentPoints =
+            (inputElement.currentPoints ?? 0) - available;
+          // Use connection ID as key to uniquely identify each input connection
+          const resourceKey = `conn_${inputConn.id}`;
+          const current = trader.traderInputs![resourceKey] || 0;
+          trader.traderInputs![resourceKey] = current + available;
+        }
+      } else if (inputElement && inputElement.type === 'Source') {
+        // Source has infinite resources, collect the amount specified
+        const amount = parseConnectionLabel(inputConn.text);
+        const resourceKey = `conn_${inputConn.id}`;
+        const current = trader.traderInputs![resourceKey] || 0;
+        trader.traderInputs![resourceKey] = current + amount;
+      }
+    }
+  };
+
+  // Helper function for incomplete trader (behaves like convertor - can create/destroy resources)
   const processIncompleteTrader = (
     trader: GraphElement,
     inputConns: GraphElement[],
@@ -1653,10 +1752,11 @@ const Canvas: React.FC<CanvasProps> = ({
       }
     }
 
-    // Check if we can satisfy all input requirements
-    let canTrade = true;
     if (trader.pullMode === 'pull all') {
-      // For pull all: need all inputs available simultaneously
+      // PULL ALL MODE: Trade only happens if ALL inputs are available simultaneously
+      let canTrade = true;
+
+      // Check if all inputs are available
       for (const [connId, requiredAmount] of requiredInputs.entries()) {
         const inputConn = inputConns.find(c => c.id === connId);
         if (!inputConn) {
@@ -1666,90 +1766,172 @@ const Canvas: React.FC<CanvasProps> = ({
         const inputElement = inputConn.connectedToStart
           ? elementMap.get(inputConn.connectedToStart)
           : undefined;
-        if (
-          !inputElement ||
-          (inputElement.currentPoints ?? 0) < requiredAmount
-        ) {
+        if (!inputElement) {
+          canTrade = false;
+          break;
+        }
+        if (inputElement.type === 'Source') {
+          // Source always has resources
+          continue;
+        } else if (inputElement.type === 'Pool') {
+          if ((inputElement.currentPoints ?? 0) < requiredAmount) {
+            canTrade = false;
+            break;
+          }
+        } else {
           canTrade = false;
           break;
         }
       }
-    } else {
-      // For pull any: check if we have stored enough resources
-      for (const [connId, requiredAmount] of requiredInputs.entries()) {
-        const inputConn = inputConns.find(c => c.id === connId);
-        if (!inputConn) {
-          canTrade = false;
-          break;
-        }
-        const resourceType = inputConn.text || 'default';
-        const stored = trader.traderInputs![resourceType] || 0;
-        if (stored < requiredAmount) {
-          canTrade = false;
-          break;
-        }
-      }
-    }
 
-    if (canTrade) {
-      // Consume input resources
-      if (trader.pullMode === 'pull all') {
-        // Consume directly from input pools
+      if (canTrade) {
+        // Consume all inputs
         for (const [connId, requiredAmount] of requiredInputs.entries()) {
           const inputConn = inputConns.find(c => c.id === connId);
           if (inputConn) {
             const inputElement = elementMap.get(inputConn.connectedToStart!);
-            if (inputElement) {
+            if (inputElement && inputElement.type === 'Pool') {
               inputElement.currentPoints = Math.max(
                 0,
                 (inputElement.currentPoints ?? 0) - requiredAmount
               );
             }
+            // Source doesn't need to be consumed (infinite)
           }
         }
-      } else {
-        // Consume from stored resources
-        for (const [connId, requiredAmount] of requiredInputs.entries()) {
-          const inputConn = inputConns.find(c => c.id === connId);
-          if (inputConn) {
-            const resourceType = inputConn.text || 'default';
-            const current = trader.traderInputs![resourceType] || 0;
-            trader.traderInputs![resourceType] = current - requiredAmount;
-          }
-        }
-      }
 
-      // Produce output resources
-      for (const [connId, outputAmount] of outputAmounts.entries()) {
-        const outputConn = outputConns.find(c => c.id === connId);
-        if (outputConn) {
+        // INCOMPLETE TRADER LOGIC:
+        // - If multiple inputs → single output: sum all inputs and send to output
+        // - If single input → multiple outputs: split input and send to all outputs
+        if (inputConns.length > 1 && outputConns.length === 1) {
+          // Multiple inputs, single output: sum all inputs
+          let totalInput = 0;
+          for (const amount of requiredInputs.values()) {
+            totalInput += amount;
+          }
+
+          const outputConn = outputConns[0];
           const outputElement = elementMap.get(outputConn.connectedToEnd!);
           if (outputElement && outputElement.type === 'Pool') {
             const current = outputElement.currentPoints ?? 0;
             const max = outputElement.max ?? Infinity;
-            outputElement.currentPoints = Math.min(current + outputAmount, max);
+            outputElement.currentPoints = Math.min(current + totalInput, max);
+          }
+        } else if (inputConns.length === 1 && outputConns.length > 1) {
+          // Single input, multiple outputs: split input to all outputs
+          const inputAmount = requiredInputs.values().next().value || 0;
+
+          for (const outputConn of outputConns) {
+            const outputElement = elementMap.get(outputConn.connectedToEnd!);
+            if (outputElement && outputElement.type === 'Pool') {
+              const current = outputElement.currentPoints ?? 0;
+              const max = outputElement.max ?? Infinity;
+              outputElement.currentPoints = Math.min(
+                current + inputAmount,
+                max
+              );
+            }
+          }
+        } else {
+          // Fallback: use output amounts as specified (for edge cases)
+          for (const [connId, outputAmount] of outputAmounts.entries()) {
+            const outputConn = outputConns.find(c => c.id === connId);
+            if (outputConn) {
+              const outputElement = elementMap.get(outputConn.connectedToEnd!);
+              if (outputElement && outputElement.type === 'Pool') {
+                const current = outputElement.currentPoints ?? 0;
+                const max = outputElement.max ?? Infinity;
+                outputElement.currentPoints = Math.min(
+                  current + outputAmount,
+                  max
+                );
+              }
+            }
           }
         }
       }
+      // If canTrade is false, nothing happens (no partial trade)
     } else {
-      // For pull any mode, try to pull and store resources
-      if (trader.pullMode === 'pull any') {
-        for (const inputConn of inputConns) {
-          const inputElement = elementMap.get(inputConn.connectedToStart!);
-          if (
-            inputElement &&
-            inputElement.type === 'Pool' &&
-            (inputElement.currentPoints ?? 0) > 0
-          ) {
-            const amount = parseConnectionLabel(inputConn.text);
-            const available = Math.min(amount, inputElement.currentPoints ?? 0);
+      // PULL ANY MODE: Execute trades when all inputs are satisfied
+      // (Resources are collected before processing, so we check stored resources here)
 
-            if (available > 0) {
-              inputElement.currentPoints =
-                (inputElement.currentPoints ?? 0) - available;
-              const resourceType = inputConn.text || 'default';
-              const current = trader.traderInputs![resourceType] || 0;
-              trader.traderInputs![resourceType] = current + available;
+      // Check if we have enough stored resources for at least one complete trade
+      let canTrade = true;
+      let minTrades = Infinity;
+
+      for (const [connId, requiredAmount] of requiredInputs.entries()) {
+        const resourceKey = `conn_${connId}`;
+        const stored = trader.traderInputs![resourceKey] || 0;
+        if (stored < requiredAmount) {
+          canTrade = false;
+          break;
+        }
+        // Calculate how many trades we can do with this resource
+        const possibleTrades = Math.floor(stored / requiredAmount);
+        minTrades = Math.min(minTrades, possibleTrades);
+      }
+
+      if (canTrade && minTrades > 0) {
+        // Execute as many complete trades as possible
+        const tradesToExecute = minTrades;
+
+        // Consume stored resources
+        for (const [connId, requiredAmount] of requiredInputs.entries()) {
+          const resourceKey = `conn_${connId}`;
+          const current = trader.traderInputs![resourceKey] || 0;
+          trader.traderInputs![resourceKey] =
+            current - requiredAmount * tradesToExecute;
+        }
+
+        // INCOMPLETE TRADER LOGIC:
+        // - If multiple inputs → single output: sum all inputs and send to output
+        // - If single input → multiple outputs: split input and send to all outputs
+        if (inputConns.length > 1 && outputConns.length === 1) {
+          // Multiple inputs, single output: sum all inputs
+          let totalInputPerTrade = 0;
+          for (const amount of requiredInputs.values()) {
+            totalInputPerTrade += amount;
+          }
+
+          const outputConn = outputConns[0];
+          const outputElement = elementMap.get(outputConn.connectedToEnd!);
+          if (outputElement && outputElement.type === 'Pool') {
+            const current = outputElement.currentPoints ?? 0;
+            const max = outputElement.max ?? Infinity;
+            outputElement.currentPoints = Math.min(
+              current + totalInputPerTrade * tradesToExecute,
+              max
+            );
+          }
+        } else if (inputConns.length === 1 && outputConns.length > 1) {
+          // Single input, multiple outputs: split input to all outputs
+          const inputAmount = requiredInputs.values().next().value || 0;
+
+          for (const outputConn of outputConns) {
+            const outputElement = elementMap.get(outputConn.connectedToEnd!);
+            if (outputElement && outputElement.type === 'Pool') {
+              const current = outputElement.currentPoints ?? 0;
+              const max = outputElement.max ?? Infinity;
+              outputElement.currentPoints = Math.min(
+                current + inputAmount * tradesToExecute,
+                max
+              );
+            }
+          }
+        } else {
+          // Fallback: use output amounts as specified (for edge cases)
+          for (const [connId, outputAmount] of outputAmounts.entries()) {
+            const outputConn = outputConns.find(c => c.id === connId);
+            if (outputConn) {
+              const outputElement = elementMap.get(outputConn.connectedToEnd!);
+              if (outputElement && outputElement.type === 'Pool') {
+                const current = outputElement.currentPoints ?? 0;
+                const max = outputElement.max ?? Infinity;
+                outputElement.currentPoints = Math.min(
+                  current + outputAmount * tradesToExecute,
+                  max
+                );
+              }
             }
           }
         }
@@ -1757,143 +1939,303 @@ const Canvas: React.FC<CanvasProps> = ({
     }
   };
 
-  // Helper function for complete trader (ensures resource conservation)
+  // Helper function for complete trader (ensures resource conservation - no creation/destruction)
   const processCompleteTrader = (
     trader: GraphElement,
     inputConns: GraphElement[],
     outputConns: GraphElement[],
     elementMap: Map<number, GraphElement>
   ) => {
-    // For complete traders, match inputs and outputs by color
-    // Group connections by color (resource type)
-    const inputsByColor = new Map<string, GraphElement[]>();
-    const outputsByColor = new Map<string, GraphElement[]>();
-
-    inputConns.forEach(conn => {
-      const color = conn.color || 'default';
-      if (!inputsByColor.has(color)) {
-        inputsByColor.set(color, []);
+    // Parse input connection labels to determine required resources
+    // Use connection ID as key to handle multiple connections
+    const requiredInputs: Map<number, number> = new Map();
+    for (const inputConn of inputConns) {
+      const amount = parseConnectionLabel(inputConn.text);
+      if (amount > 0) {
+        requiredInputs.set(inputConn.id, amount);
       }
-      inputsByColor.get(color)!.push(conn);
-    });
+    }
 
-    outputConns.forEach(conn => {
-      const color = conn.color || 'default';
-      if (!outputsByColor.has(color)) {
-        outputsByColor.set(color, []);
+    // Parse output connection labels to determine output resources
+    // Use connection ID as key to handle multiple connections
+    const outputAmounts: Map<number, number> = new Map();
+    for (const outputConn of outputConns) {
+      const amount = parseConnectionLabel(outputConn.text);
+      if (amount > 0) {
+        outputAmounts.set(outputConn.id, amount);
       }
-      outputsByColor.get(color)!.push(conn);
-    });
+    }
 
-    // Process each color group separately (for resource conservation per color)
-    const colors = new Set([...inputsByColor.keys(), ...outputsByColor.keys()]);
+    // Build mapping of input connections to their source pools and colors
+    // and output connections to their destination pools
+    const inputInfo: Array<{
+      connId: number;
+      amount: number;
+      sourcePoolId?: number;
+      color?: string;
+    }> = [];
+    for (const inputConn of inputConns) {
+      const amount = requiredInputs.get(inputConn.id) || 0;
+      const sourceElement = inputConn.connectedToStart
+        ? elementMap.get(inputConn.connectedToStart)
+        : undefined;
+      inputInfo.push({
+        connId: inputConn.id,
+        amount,
+        sourcePoolId: sourceElement?.id,
+        color: inputConn.color,
+      });
+    }
 
-    for (const color of colors) {
-      const colorInputs = inputsByColor.get(color) || [];
-      const colorOutputs = outputsByColor.get(color) || [];
+    const outputInfo: Array<{
+      connId: number;
+      destPoolId?: number;
+      color?: string;
+    }> = [];
+    for (const outputConn of outputConns) {
+      const destElement = outputConn.connectedToEnd
+        ? elementMap.get(outputConn.connectedToEnd)
+        : undefined;
+      outputInfo.push({
+        connId: outputConn.id,
+        destPoolId: destElement?.id,
+        color: outputConn.color,
+      });
+    }
 
-      // If only one output, all resources of this color go to it
-      if (colorOutputs.length === 1) {
-        const singleOutput = colorOutputs[0];
-        let totalInputAmount = 0;
+    // Check if all connections have the same color (or are black/default)
+    // If so, all resources should go to one output
+    const allInputColors = inputInfo.map(i => i.color || '#000000');
+    const allOutputColors = outputInfo.map(o => o.color || '#000000');
+    const allColors = [...allInputColors, ...allOutputColors];
+    const hasColorDifferentiation = new Set(allColors).size > 1;
 
-        // Calculate total input for this color
-        for (const inputConn of colorInputs) {
-          totalInputAmount += parseConnectionLabel(inputConn.text);
+    // Match inputs to outputs for resource exchange
+    // Strategy: Match each input to an output that goes to a different pool
+    // Priority: 1) Color matching (different colors), 2) Pool ID matching (different pools), 3) Round-robin
+    const createInputOutputMapping = (): Map<number, number> => {
+      const mapping = new Map<number, number>(); // input connId -> output connId
+      const usedOutputs = new Set<number>();
+
+      for (const input of inputInfo) {
+        let bestMatch: number | null = null;
+        let bestScore = -1;
+
+        for (const output of outputInfo) {
+          if (usedOutputs.has(output.connId)) continue;
+
+          // Skip if output goes to the same pool as input source (no self-trade)
+          if (
+            input.sourcePoolId &&
+            output.destPoolId &&
+            input.sourcePoolId === output.destPoolId
+          ) {
+            continue;
+          }
+
+          // Calculate match score
+          let score = 0;
+          // Prefer different colors
+          if (input.color && output.color && input.color !== output.color) {
+            score += 10;
+          }
+          // Prefer different pools
+          if (
+            input.sourcePoolId &&
+            output.destPoolId &&
+            input.sourcePoolId !== output.destPoolId
+          ) {
+            score += 5;
+          }
+          // Base score for any valid match
+          score += 1;
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestMatch = output.connId;
+          }
         }
 
-        // Check if we can satisfy all input requirements for this color
-        let canTradeColor = true;
-        if (trader.pullMode === 'pull all') {
-          canTradeColor = colorInputs.every(inputConn => {
-            const inputElement = inputConn.connectedToStart
-              ? elementMap.get(inputConn.connectedToStart)
-              : undefined;
-            if (!inputElement) return false;
-            const required = parseConnectionLabel(inputConn.text);
-            if (inputElement.type === 'Source') return true;
-            if (inputElement.type === 'Pool')
-              return (inputElement.currentPoints ?? 0) >= required;
-            return false;
-          });
+        if (bestMatch !== null) {
+          mapping.set(input.connId, bestMatch);
+          usedOutputs.add(bestMatch);
+        }
+      }
+
+      return mapping;
+    };
+
+    if (trader.pullMode === 'pull all') {
+      // PULL ALL MODE: Trade only happens if ALL inputs are available simultaneously
+      let canTrade = true;
+
+      // Check if all inputs are available
+      for (const [connId, requiredAmount] of requiredInputs.entries()) {
+        const inputConn = inputConns.find(c => c.id === connId);
+        if (!inputConn) {
+          canTrade = false;
+          break;
+        }
+        const inputElement = inputConn.connectedToStart
+          ? elementMap.get(inputConn.connectedToStart)
+          : undefined;
+        if (!inputElement) {
+          canTrade = false;
+          break;
+        }
+        if (inputElement.type === 'Source') {
+          // Source always has resources
+          continue;
+        } else if (inputElement.type === 'Pool') {
+          if ((inputElement.currentPoints ?? 0) < requiredAmount) {
+            canTrade = false;
+            break;
+          }
         } else {
-          // pull any: check stored resources
-          canTradeColor = colorInputs.every(inputConn => {
-            const required = parseConnectionLabel(inputConn.text);
-            const resourceKey = `${color}_${inputConn.text || 'default'}`;
-            const stored = trader.traderInputs![resourceKey] || 0;
-            return stored >= required;
-          });
+          canTrade = false;
+          break;
+        }
+      }
+
+      if (canTrade) {
+        // Consume all inputs
+        for (const [connId, requiredAmount] of requiredInputs.entries()) {
+          const inputConn = inputConns.find(c => c.id === connId);
+          if (inputConn) {
+            const inputElement = elementMap.get(inputConn.connectedToStart!);
+            if (inputElement && inputElement.type === 'Pool') {
+              inputElement.currentPoints = Math.max(
+                0,
+                (inputElement.currentPoints ?? 0) - requiredAmount
+              );
+            }
+            // Source doesn't need to be consumed (infinite)
+          }
         }
 
-        if (canTradeColor && totalInputAmount > 0) {
-          // Consume inputs
-          if (trader.pullMode === 'pull all') {
-            colorInputs.forEach(inputConn => {
-              const inputElement = inputConn.connectedToStart
-                ? elementMap.get(inputConn.connectedToStart)
-                : undefined;
-              if (inputElement && inputElement.type === 'Pool') {
-                const amount = parseConnectionLabel(inputConn.text);
-                inputElement.currentPoints = Math.max(
-                  0,
-                  (inputElement.currentPoints ?? 0) - amount
-                );
-              }
-            });
-          } else {
-            colorInputs.forEach(inputConn => {
-              const amount = parseConnectionLabel(inputConn.text);
-              const resourceKey = `${color}_${inputConn.text || 'default'}`;
-              const current = trader.traderInputs![resourceKey] || 0;
-              trader.traderInputs![resourceKey] = current - amount;
-            });
+        // COMPLETE TRADER LOGIC: Exchange resources
+        if (!hasColorDifferentiation) {
+          // No color differentiation: send all resources to one output
+          let totalInput = 0;
+          for (const input of inputInfo) {
+            totalInput += input.amount;
           }
 
-          // Produce output (resource conservation: output = input)
-          const outputElement = singleOutput.connectedToEnd
-            ? elementMap.get(singleOutput.connectedToEnd)
-            : undefined;
-          if (outputElement && outputElement.type === 'Pool') {
-            const current = outputElement.currentPoints ?? 0;
-            const max = outputElement.max ?? Infinity;
-            // Output equals total input for this color
-            outputElement.currentPoints = Math.min(
-              current + totalInputAmount,
-              max
-            );
+          // Send all resources to the first output
+          if (outputConns.length > 0) {
+            const outputConn = outputConns[0];
+            const outputElement = elementMap.get(outputConn.connectedToEnd!);
+            if (outputElement && outputElement.type === 'Pool') {
+              const current = outputElement.currentPoints ?? 0;
+              const max = outputElement.max ?? Infinity;
+              outputElement.currentPoints = Math.min(current + totalInput, max);
+            }
           }
-        } else if (trader.pullMode === 'pull any') {
-          // Try to pull and store resources
-          colorInputs.forEach(inputConn => {
-            const inputElement = inputConn.connectedToStart
-              ? elementMap.get(inputConn.connectedToStart)
-              : undefined;
-            if (
-              inputElement &&
-              inputElement.type === 'Pool' &&
-              (inputElement.currentPoints ?? 0) > 0
-            ) {
-              const amount = parseConnectionLabel(inputConn.text);
-              const available = Math.min(
-                amount,
-                inputElement.currentPoints ?? 0
-              );
-              if (available > 0) {
-                inputElement.currentPoints =
-                  (inputElement.currentPoints ?? 0) - available;
-                const resourceKey = `${color}_${inputConn.text || 'default'}`;
-                const current = trader.traderInputs![resourceKey] || 0;
-                trader.traderInputs![resourceKey] = current + available;
+        } else {
+          // Color differentiation: match inputs to outputs and exchange resources
+          const inputOutputMapping = createInputOutputMapping();
+
+          for (const input of inputInfo) {
+            const outputConnId = inputOutputMapping.get(input.connId);
+            if (outputConnId !== undefined) {
+              const outputConn = outputConns.find(c => c.id === outputConnId);
+              if (outputConn) {
+                const outputElement = elementMap.get(
+                  outputConn.connectedToEnd!
+                );
+                if (outputElement && outputElement.type === 'Pool') {
+                  const current = outputElement.currentPoints ?? 0;
+                  const max = outputElement.max ?? Infinity;
+                  // Send the amount from this input to this output
+                  outputElement.currentPoints = Math.min(
+                    current + input.amount,
+                    max
+                  );
+                }
               }
             }
-          });
+          }
         }
-      } else {
-        // Multiple outputs for same color: distribute proportionally
-        // For complete trader with multiple outputs, we need to ensure
-        // resource conservation across all colors
-        // This case is complex and may need refinement based on specific requirements
+      }
+      // If canTrade is false, nothing happens (no partial trade)
+    } else {
+      // PULL ANY MODE: Execute trades when all inputs are satisfied
+      // (Resources are collected before processing, so we check stored resources here)
+
+      // Check if we have enough stored resources for at least one complete trade
+      let canTrade = true;
+      let minTrades = Infinity;
+
+      for (const [connId, requiredAmount] of requiredInputs.entries()) {
+        const resourceKey = `conn_${connId}`;
+        const stored = trader.traderInputs![resourceKey] || 0;
+        if (stored < requiredAmount) {
+          canTrade = false;
+          break;
+        }
+        // Calculate how many trades we can do with this resource
+        const possibleTrades = Math.floor(stored / requiredAmount);
+        minTrades = Math.min(minTrades, possibleTrades);
+      }
+
+      if (canTrade && minTrades > 0) {
+        // Execute as many complete trades as possible
+        const tradesToExecute = minTrades;
+
+        // Consume stored resources
+        for (const [connId, requiredAmount] of requiredInputs.entries()) {
+          const resourceKey = `conn_${connId}`;
+          const current = trader.traderInputs![resourceKey] || 0;
+          trader.traderInputs![resourceKey] =
+            current - requiredAmount * tradesToExecute;
+        }
+
+        // COMPLETE TRADER LOGIC: Exchange resources
+        if (!hasColorDifferentiation) {
+          // No color differentiation: send all resources to one output
+          let totalInputPerTrade = 0;
+          for (const input of inputInfo) {
+            totalInputPerTrade += input.amount;
+          }
+
+          // Send all resources to the first output
+          if (outputConns.length > 0) {
+            const outputConn = outputConns[0];
+            const outputElement = elementMap.get(outputConn.connectedToEnd!);
+            if (outputElement && outputElement.type === 'Pool') {
+              const current = outputElement.currentPoints ?? 0;
+              const max = outputElement.max ?? Infinity;
+              outputElement.currentPoints = Math.min(
+                current + totalInputPerTrade * tradesToExecute,
+                max
+              );
+            }
+          }
+        } else {
+          // Color differentiation: match inputs to outputs and exchange resources
+          const inputOutputMapping = createInputOutputMapping();
+
+          for (const input of inputInfo) {
+            const outputConnId = inputOutputMapping.get(input.connId);
+            if (outputConnId !== undefined) {
+              const outputConn = outputConns.find(c => c.id === outputConnId);
+              if (outputConn) {
+                const outputElement = elementMap.get(
+                  outputConn.connectedToEnd!
+                );
+                if (outputElement && outputElement.type === 'Pool') {
+                  const current = outputElement.currentPoints ?? 0;
+                  const max = outputElement.max ?? Infinity;
+                  // Send the amount from this input to this output (multiplied by trades)
+                  outputElement.currentPoints = Math.min(
+                    current + input.amount * tradesToExecute,
+                    max
+                  );
+                }
+              }
+            }
+          }
+        }
       }
     }
   };
