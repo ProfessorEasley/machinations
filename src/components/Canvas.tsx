@@ -296,7 +296,7 @@ const Canvas: React.FC<CanvasProps> = ({
   const [connectionType, setConnectionType] = useState<GraphElementType | null>(
     null
   );
-
+  const stateConnectionMemoryRef = useRef<Map<number, number>>(new Map());
   const canvasRef = useRef<HTMLDivElement>(null);
 
   // ---------- Gate helpers ----------
@@ -492,7 +492,7 @@ const Canvas: React.FC<CanvasProps> = ({
       }
 
       if (matches.length === 0) {
-        const elseIdx = kinds.findIndex(k => k === 'else');
+      const elseIdx = kinds.findIndex(k => k === 'else');
         return elseIdx >= 0 ? [outputs[elseIdx]] : [];
       }
 
@@ -626,6 +626,8 @@ const Canvas: React.FC<CanvasProps> = ({
     activationType: 'automatic' | 'onstart' | 'interactive',
     interactiveElementId?: number
   ): GraphElement[] => {
+    const stateMemory = stateConnectionMemoryRef.current;
+    const activeStateConnectionIds = new Set<number>();
     const nextElements = JSON.parse(
       JSON.stringify(elementsToUpdate)
     ) as GraphElement[];
@@ -656,7 +658,7 @@ const Canvas: React.FC<CanvasProps> = ({
       }
     }
 
-    // --------- PASS 0.5: process State Connections (conditions & triggers, always on) ---------
+    // --------- PASS 0.5: process State Connections (conditions & element modifiers) ---------
     for (const connection of nextElements) {
       if (
         connection.type !== 'State Connection' ||
@@ -665,6 +667,7 @@ const Canvas: React.FC<CanvasProps> = ({
       ) {
         continue;
       }
+      activeStateConnectionIds.add(connection.id);
 
       const startEl = elementMap.get(connection.connectedToStart);
       const endEl = elementMap.get(connection.connectedToEnd);
@@ -672,6 +675,18 @@ const Canvas: React.FC<CanvasProps> = ({
 
       const labelText = (connection.text ?? '').trim();
       const kind = classifyLabel(labelText);
+
+      const currentValue = getElementValue(startEl);
+      const previousValue = stateMemory.get(connection.id);
+      if (previousValue === undefined) {
+        stateMemory.set(connection.id, currentValue);
+        continue;
+      }
+      const sourceDelta = currentValue - previousValue;
+      if (sourceDelta === 0) {
+        continue;
+      }
+      stateMemory.set(connection.id, currentValue);
 
       if (kind === 'cond') {
         const fn = parseCond(labelText);
@@ -697,11 +712,40 @@ const Canvas: React.FC<CanvasProps> = ({
         continue;
       }
 
-      if (kind === 'prob' || kind === 'empty') {
-        const delta = parseConnectionLabel(labelText);
-        applyStateConnectionDelta(endEl, delta);
+      const normalized = labelText.replace(/\s+/g, '');
+      let multiplier: number | null = null;
+
+      if (!normalized) {
+        multiplier = 1;
+      } else {
+        const elementMatch = normalized.match(
+          /^([+-]?)(\d+(?:\.\d+)?)(?:\/([+-]?\d+(?:\.\d+)?))?$/
+        );
+        if (elementMatch) {
+          const sign = elementMatch[1] === '-' ? -1 : 1;
+          const numerator = parseFloat(elementMatch[2]);
+          const denominator = elementMatch[3]
+            ? parseFloat(elementMatch[3])
+            : 1;
+          if (!isNaN(numerator) && !isNaN(denominator) && denominator !== 0) {
+            multiplier = sign * (numerator / denominator);
+          }
+        }
+      }
+
+      if (multiplier !== null) {
+        const effect = sourceDelta * multiplier;
+        if (effect !== 0) {
+          applyStateConnectionDelta(endEl, effect);
+        }
       }
     }
+
+    stateMemory.forEach((_, id) => {
+      if (!activeStateConnectionIds.has(id)) {
+        stateMemory.delete(id);
+      }
+    });
 
     // --------- PASS 1: generic connections (but SKIP Gate outputs) ---------
     for (const connection of nextElements) {
@@ -741,11 +785,11 @@ const Canvas: React.FC<CanvasProps> = ({
       if (pool.type !== 'Pool') continue;
 
       // Activation check
-      let isTriggerActive = false;
-      if (activationType === 'automatic') {
+        let isTriggerActive = false;
+        if (activationType === 'automatic') {
         if (pool.activation === 'automatic') isTriggerActive = true;
       } else if (pool.activation === 'passive' && consumePassiveTrigger(pool)) {
-        isTriggerActive = true;
+            isTriggerActive = true;
       } else if (activationType === 'interactive') {
         if (pool.activation === 'interactive') {
           isTriggerActive =
@@ -753,8 +797,8 @@ const Canvas: React.FC<CanvasProps> = ({
         }
       } else if (activationType === 'onstart') {
         if (pool.activation === 'onstart' && !pool.hasStarted)
-          isTriggerActive = true;
-      }
+            isTriggerActive = true;
+        }
       // Passive pools only fire when triggered externally (not in this pass)
 
       if (!isTriggerActive) continue;
@@ -934,7 +978,7 @@ const Canvas: React.FC<CanvasProps> = ({
       if (activationType === 'automatic') {
         if (gate.activation === 'automatic') isTriggerActive = true;
       } else if (gate.activation === 'passive' && consumePassiveTrigger(gate)) {
-        isTriggerActive = true;
+          isTriggerActive = true;
       } else {
         if (gate.activation === activationType) isTriggerActive = true;
       }
@@ -1247,7 +1291,7 @@ const Canvas: React.FC<CanvasProps> = ({
         convertor.activation === 'passive' &&
         consumePassiveTrigger(convertor)
       ) {
-        isTriggerActive = true;
+          isTriggerActive = true;
       } else {
         if (convertor.activation === activationType) isTriggerActive = true;
       }
@@ -1328,8 +1372,8 @@ const Canvas: React.FC<CanvasProps> = ({
               (inputElement.type === 'Source' && false) // Source is always available
             ) {
               if (inputElement?.type !== 'Source') {
-                canConvert = false;
-                break;
+              canConvert = false;
+              break;
               }
             }
           }
@@ -1434,7 +1478,7 @@ const Canvas: React.FC<CanvasProps> = ({
         trader.activation === 'passive' &&
         consumePassiveTrigger(trader)
       ) {
-        isTriggerActive = true;
+          isTriggerActive = true;
       } else {
         if (trader.activation === activationType) isTriggerActive = true;
       }
@@ -1713,8 +1757,8 @@ const Canvas: React.FC<CanvasProps> = ({
           const inputConn = inputConns.find(c => c.id === connId);
           if (inputConn) {
             const resourceType = inputConn.text || 'default';
-            const current = trader.traderInputs![resourceType] || 0;
-            trader.traderInputs![resourceType] = current - requiredAmount;
+          const current = trader.traderInputs![resourceType] || 0;
+          trader.traderInputs![resourceType] = current - requiredAmount;
           }
         }
       }
@@ -1804,11 +1848,11 @@ const Canvas: React.FC<CanvasProps> = ({
 
         // Check if we can satisfy all input requirements for this color
         let canTradeColor = true;
-        if (trader.pullMode === 'pull all') {
+    if (trader.pullMode === 'pull all') {
           canTradeColor = colorInputs.every(inputConn => {
             const inputElement = inputConn.connectedToStart
               ? elementMap.get(inputConn.connectedToStart)
-              : undefined;
+          : undefined;
             if (!inputElement) return false;
             const required = parseConnectionLabel(inputConn.text);
             if (inputElement.type === 'Source') return true;
@@ -1816,7 +1860,7 @@ const Canvas: React.FC<CanvasProps> = ({
               return (inputElement.currentPoints ?? 0) >= required;
             return false;
           });
-        } else {
+    } else {
           // pull any: check stored resources
           canTradeColor = colorInputs.every(inputConn => {
             const required = parseConnectionLabel(inputConn.text);
@@ -1828,20 +1872,20 @@ const Canvas: React.FC<CanvasProps> = ({
 
         if (canTradeColor && totalInputAmount > 0) {
           // Consume inputs
-          if (trader.pullMode === 'pull all') {
+      if (trader.pullMode === 'pull all') {
             colorInputs.forEach(inputConn => {
               const inputElement = inputConn.connectedToStart
                 ? elementMap.get(inputConn.connectedToStart)
                 : undefined;
               if (inputElement && inputElement.type === 'Pool') {
                 const amount = parseConnectionLabel(inputConn.text);
-                inputElement.currentPoints = Math.max(
-                  0,
+              inputElement.currentPoints = Math.max(
+                0,
                   (inputElement.currentPoints ?? 0) - amount
-                );
-              }
+              );
+            }
             });
-          } else {
+      } else {
             colorInputs.forEach(inputConn => {
               const amount = parseConnectionLabel(inputConn.text);
               const resourceKey = `${color}_${inputConn.text || 'default'}`;
@@ -1869,19 +1913,19 @@ const Canvas: React.FC<CanvasProps> = ({
             const inputElement = inputConn.connectedToStart
               ? elementMap.get(inputConn.connectedToStart)
               : undefined;
-            if (
-              inputElement &&
-              inputElement.type === 'Pool' &&
-              (inputElement.currentPoints ?? 0) > 0
-            ) {
+          if (
+            inputElement &&
+            inputElement.type === 'Pool' &&
+            (inputElement.currentPoints ?? 0) > 0
+          ) {
               const amount = parseConnectionLabel(inputConn.text);
               const available = Math.min(
                 amount,
                 inputElement.currentPoints ?? 0
               );
-              if (available > 0) {
-                inputElement.currentPoints =
-                  (inputElement.currentPoints ?? 0) - available;
+            if (available > 0) {
+              inputElement.currentPoints =
+                (inputElement.currentPoints ?? 0) - available;
                 const resourceKey = `${color}_${inputConn.text || 'default'}`;
                 const current = trader.traderInputs![resourceKey] || 0;
                 trader.traderInputs![resourceKey] = current + available;
@@ -3882,3 +3926,4 @@ const Canvas: React.FC<CanvasProps> = ({
 };
 
 export default Canvas;
+
