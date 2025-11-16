@@ -65,6 +65,12 @@
   z-index: 2;
 }
 
+.disabled-by-state {
+  opacity: 0.35;
+  filter: grayscale(0.6);
+  transition: opacity 0.2s ease, filter 0.2s ease;
+}
+
 /* Pool Element */
 .pool-element {
   /* width and height are set dynamically via inline styles */

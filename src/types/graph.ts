@@ -39,6 +39,9 @@ export interface GraphElement {
   endY?: number;
   connectedToStart?: number;
   connectedToEnd?: number;
+  points?: { x: number; y: number }[];
+  isDisabledByState?: boolean;
+  isStateConditionDisabled?: boolean;
   // Resister properties
   formula?: string;
   minValue?: number;

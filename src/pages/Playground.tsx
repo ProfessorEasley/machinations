@@ -22,6 +22,7 @@ type GraphElementType =
   | 'Register'
   | 'End Condition'
   | 'Artifical Intelligence';
+type ConnectionPoint = { x: number; y: number };
 interface GraphElement {
   id: number;
   type: GraphElementType;
@@ -53,6 +54,7 @@ interface GraphElement {
   endY?: number;
   connectedToStart?: number;
   connectedToEnd?: number;
+  points?: ConnectionPoint[];
   // Simulation state properties
   hasStarted?: boolean;
   currentPoints?: number;
@@ -69,6 +71,8 @@ interface GraphElement {
   traderInputs?: Record<string, number>;
   traderOutputs?: Record<string, number>;
   isIncompleteTrader?: boolean;
+  isDisabledByState?: boolean;
+  isStateConditionDisabled?: boolean;
 }
 
 const Playground: React.FC = () => {
@@ -417,13 +421,58 @@ const Playground: React.FC = () => {
     elementId: number,
     updates: Partial<GraphElement>
   ) => {
-    const newElements = elements.map(el =>
-      el.id === elementId ? { ...el, ...updates } : el
-    );
+    const targetElement = elements.find(el => el.id === elementId);
+    const isStateConnection = targetElement?.type === 'State Connection';
+    const resourceConnection = isStateConnection
+      ? elements.find(
+          el =>
+            el.id === targetElement?.connectedToEnd &&
+            el.type === 'Resource Connection'
+        )
+      : null;
+
+    const newElements = elements.map(el => {
+      if (el.id === elementId) {
+        return { ...el, ...updates };
+      }
+      if (
+        resourceConnection &&
+        el.id === resourceConnection.id &&
+        updates.text !== undefined &&
+        typeof targetElement?.text !== 'undefined'
+      ) {
+        const previousValue = parseLabelNumber(targetElement?.text);
+        const nextValue = parseLabelNumber(updates.text);
+        const resourceBase = parseLabelNumber(el.text);
+        if (
+          previousValue !== null &&
+          nextValue !== null &&
+          resourceBase !== null
+        ) {
+          const delta = nextValue - previousValue;
+          const updatedValue = resourceBase + delta;
+          return { ...el, text: formatLabelNumber(updatedValue) };
+        }
+      }
+      return el;
+    });
+
     setElements(newElements);
 
     if (selectedElement && selectedElement.id === elementId) {
       setSelectedElement({ ...selectedElement, ...updates });
+    } else if (
+      selectedElement &&
+      resourceConnection &&
+      selectedElement.id === resourceConnection.id &&
+      updates.text !== undefined
+    ) {
+      const updatedSelected = newElements.find(
+        el => el.id === selectedElement.id
+      );
+      if (updatedSelected) {
+        setSelectedElement(updatedSelected);
+      }
     }
   };
 
@@ -515,3 +564,20 @@ const Playground: React.FC = () => {
 };
 
 export default Playground;
+
+const parseLabelNumber = (value?: string | number | null): number | null => {
+  if (value === undefined || value === null) return 0;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  const trimmed = value.trim();
+  if (!trimmed) return 0;
+  const normalised = trimmed.startsWith('+')
+    ? trimmed.slice(1)
+    : trimmed;
+  const parsed = Number(normalised);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const formatLabelNumber = (value: number): string => {
+  const rounded = Math.round(value * 10000) / 10000;
+  return `${rounded}`;
+};
