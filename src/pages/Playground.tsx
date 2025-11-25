@@ -325,7 +325,7 @@ const Playground: React.FC = () => {
   }, [undo, redo]);
 
   useEffect(() => {
-    const handleGameEnd = (event: CustomEvent) => {
+    const handleGameEnd = () => {
       console.log('🎊 Game ended!');
       setGameEnded(true);
     };
