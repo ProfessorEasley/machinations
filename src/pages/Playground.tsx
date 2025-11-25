@@ -58,6 +58,9 @@ interface GraphElement {
   currentPoints?: number;
   triggerCount?: number;
   lastGateValue?: number;
+  // End Condition properties
+  inhibited?: boolean;
+  isBlinking?: boolean;
   // Convertor properties
   inputResources?: Record<string, number>;
   outputResources?: Record<string, number>;
@@ -71,6 +74,9 @@ interface GraphElement {
 const Playground: React.FC = () => {
   const [isRunning, setIsRunning] = useState(false);
   const [runType, setRunType] = useState<'quick' | 'multiple' | null>(null);
+
+  const [gameEnded, setGameEnded] = useState(false);
+
   const [selectedTool, setSelectedTool] = useState<string>('Select');
   const [selectedElementIds, setSelectedElementIds] = useState<number[]>([]);
   const [selectedElement, setSelectedElement] = useState<GraphElement | null>(
@@ -318,15 +324,30 @@ const Playground: React.FC = () => {
     };
   }, [undo, redo]);
 
+  useEffect(() => {
+    const handleGameEnd = () => {
+      console.log('🎊 Game ended!');
+      setGameEnded(true);
+    };
+
+    document.addEventListener('game-end', handleGameEnd as EventListener);
+    
+    return () => {
+      document.removeEventListener('game-end', handleGameEnd as EventListener);
+    };
+  }, []);
+
   const handleRunClick = () => {
     if (!isRunning) {
       // Starting quick run
       setRunType('quick');
       setIsRunning(true);
+      setGameEnded(false);
     } else {
       // Stopping
-      setIsRunning(false);
-      setRunType(null);
+      //setIsRunning(false);
+      //setRunType(null);
+      handleReset();
     }
   };
 
@@ -335,12 +356,15 @@ const Playground: React.FC = () => {
       // Starting multiple run
       setRunType('multiple');
       setIsRunning(true);
+      setGameEnded(false);
     }
   };
 
   const handleReset = () => {
     // Stop the simulation
     setIsRunning(false);
+    setRunType(null);
+    setGameEnded(false);
     // Keep runType so we know which button to show when running again
 
     // Reset all elements to initial state
@@ -354,6 +378,21 @@ const Playground: React.FC = () => {
       // Reset Pool resources to starting value
       if (el.type === 'Pool') {
         reset.currentPoints = el.number ?? 0;
+      }
+
+      // Reset Register to starting value
+      if (el.type === 'Register') {
+        if (el.interactive === true || el.interactive === 'true') {
+          reset.currentValue = el.startingValue || 0;
+        } else {
+          reset.currentValue = 0;
+        }
+      }
+
+      // Reset EndCondition state
+      if (el.type === 'End Condition') {
+        reset.inhibited = true;
+        reset.isBlinking = false;
       }
 
       // Clear stored resources in Converter and Trader
@@ -437,7 +476,7 @@ const Playground: React.FC = () => {
         <div className="canvas-section">
           <div className="grid-canvas">
             <Canvas
-              isRunning={isRunning}
+              isRunning={isRunning && !gameEnded}
               selectedTool={selectedTool}
               elements={elements}
               selectedElementIds={selectedElementIds}
