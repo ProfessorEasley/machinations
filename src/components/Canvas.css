@@ -465,7 +465,8 @@
 }
 
 @keyframes victory-blink {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
     filter: brightness(1);
   }
@@ -476,7 +477,7 @@
 }
 
 .end-condition-element.victory {
-  filter: drop-shadow(0 0 10px #87CEEB);
+  filter: drop-shadow(0 0 10px #87ceeb);
 }
 
 .condition-met-indicator {
@@ -484,20 +485,23 @@
 }
 
 @keyframes pulse-indicator {
-  0%, 100% {
+  0%,
+  100% {
     r: 4;
     opacity: 1;
-    fill: #87CEEB;
+    fill: #87ceeb;
   }
   50% {
     r: 6;
     opacity: 0.5;
-    fill: #5FB9E8;
+    fill: #5fb9e8;
   }
 }
 
 .end-condition-rect {
-  transition: fill 0.3s ease, stroke 0.3s ease;
+  transition:
+    fill 0.3s ease,
+    stroke 0.3s ease;
 }
 
 .end-condition-inner-rect {

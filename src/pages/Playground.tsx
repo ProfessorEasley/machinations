@@ -331,7 +331,7 @@ const Playground: React.FC = () => {
     };
 
     document.addEventListener('game-end', handleGameEnd as EventListener);
-    
+
     return () => {
       document.removeEventListener('game-end', handleGameEnd as EventListener);
     };
