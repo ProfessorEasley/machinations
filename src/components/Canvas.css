@@ -456,3 +456,81 @@
   ref-y: 3.5;
   orient: auto;
 }
+
+/* ==================== EndCondition Styles ==================== */
+
+.end-condition-element.blinking,
+.end-condition-label.blinking {
+  animation: victory-blink 0.6s ease-in-out infinite;
+}
+
+@keyframes victory-blink {
+  0%, 100% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+  50% {
+    opacity: 0.4;
+    filter: brightness(1.8);
+  }
+}
+
+.end-condition-element.victory {
+  filter: drop-shadow(0 0 10px #87CEEB);
+}
+
+.condition-met-indicator {
+  animation: pulse-indicator 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse-indicator {
+  0%, 100% {
+    r: 4;
+    opacity: 1;
+    fill: #87CEEB;
+  }
+  50% {
+    r: 6;
+    opacity: 0.5;
+    fill: #5FB9E8;
+  }
+}
+
+.end-condition-rect {
+  transition: fill 0.3s ease, stroke 0.3s ease;
+}
+
+.end-condition-inner-rect {
+  transition: fill 0.3s ease;
+}
+
+.end-condition-label {
+  transition: opacity 0.3s ease;
+}
+
+.end-condition-element:hover:not(.is-running) {
+  cursor: pointer;
+  filter: brightness(1.2);
+}
+
+.end-condition-element.selected .end-condition-rect {
+  stroke: #0078d4 !important;
+  stroke-width: 3;
+}
+
+.canvas.game-ended .end-condition-element,
+.canvas.game-ended .pool-element,
+.canvas.game-ended .source-element,
+.canvas.game-ended .gate-element,
+.canvas.game-ended .drain-element,
+.canvas.game-ended .convertor-element,
+.canvas.game-ended .trader-element,
+.canvas.game-ended .register-element {
+  pointer-events: none;
+  cursor: default !important;
+}
+
+.canvas.game-ended .clickable-element {
+  pointer-events: none;
+  cursor: default !important;
+}

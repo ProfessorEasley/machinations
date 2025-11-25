@@ -185,6 +185,9 @@ interface GraphElement {
   step?: number;
   currentValue?: number;
 
+  // endCondition-specific properties
+  isBlinking?: boolean;
+
   // For connection elements
   startX?: number;
   startY?: number;
@@ -296,6 +299,8 @@ const Canvas: React.FC<CanvasProps> = ({
   const [connectionType, setConnectionType] = useState<GraphElementType | null>(
     null
   );
+
+  const [gameEnded, setGameEnded] = useState(false);
 
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -652,6 +657,16 @@ const Canvas: React.FC<CanvasProps> = ({
             // currentPoints: element.currentPoints,
             // });
           }
+        }
+
+        if (element.type === 'End Condition') {
+          element.inhibited = true;
+          element.isBlinking = false;
+          console.log('🎯 [EndCondition] Initialized:', {
+            id: element.id,
+            text: element.text,
+            inhibited: element.inhibited
+          });
         }
       }
     }
@@ -1686,6 +1701,113 @@ const Canvas: React.FC<CanvasProps> = ({
     }
     // console.log('✅ [PASS 5] Register calculation complete');
 
+    // --------- PASS 6: Check EndConditions ----------
+    console.log('🎯 [PASS 6] Starting EndCondition check...');
+    for (const endCondition of nextElements) {
+      if (endCondition.type !== 'End Condition') continue;
+
+      // collect all input State Connections
+      const inputConns = nextElements.filter(
+        c => c.type === 'State Connection' && c.connectedToEnd === endCondition.id
+      );
+
+      console.log('🎯 [EndCondition] Checking:', {
+        id: endCondition.id,
+        text: endCondition.text,
+        inputCount: inputConns.length,
+        currentInhibited: endCondition.inhibited
+      });
+
+      // if no input connections, matain inhibited state
+      if (inputConns.length === 0) {
+        console.log('⚠️ [EndCondition] No input connections, remaining inhibited');
+        continue;
+      }
+
+      // check if all input connections are met
+      let allConditionsMet = true;
+      const conditionDetails: Array<{label: string; value: number; met: boolean}> = [];
+      
+      for (const conn of inputConns) {
+        const startEl = elementMap.get(conn.connectedToStart!);
+        if (!startEl) {
+          allConditionsMet = false;
+          continue;
+        }
+
+        const labelText = (conn.text ?? '').trim();
+        const kind = classifyLabel(labelText);
+
+        // only check condition types (cond or interval)
+        if (kind === 'cond') {
+          const fn = parseCond(labelText);
+          if (fn) {
+            const value = getElementValue(startEl);
+            const conditionMet = fn(value);
+            
+            conditionDetails.push({
+              label: labelText,
+              value: value,
+              met: conditionMet
+            });
+            
+            if (!conditionMet) {
+              allConditionsMet = false;
+            }
+          }
+        } else if (kind === 'interval') {
+          const range = parseInterval(labelText);
+          if (range) {
+            const value = getElementValue(startEl);
+            const conditionMet = value >= range[0] && value <= range[1];
+            
+            conditionDetails.push({
+              label: labelText,
+              value: value,
+              met: conditionMet
+            });
+            
+            if (!conditionMet) {
+              allConditionsMet = false;
+            }
+          }
+        }
+      }
+
+      console.log('🎯 [EndCondition] Condition details:', conditionDetails);
+
+      // update inhibited state
+      const wasInhibited = endCondition.inhibited;
+      endCondition.inhibited = !allConditionsMet;
+      
+      console.log('🎯 [EndCondition] Final state:', {
+        id: endCondition.id,
+        text: endCondition.text,
+        allConditionsMet: allConditionsMet,
+        wasInhibited: wasInhibited,
+        nowInhibited: endCondition.inhibited
+      });
+
+      // if changed from inhibited to not inhibited, trigger game end
+      if (wasInhibited && !endCondition.inhibited) {
+        console.log('🎊🎊🎊 [EndCondition] VICTORY! Game Over!');
+        console.log('🎊 Victory condition:', endCondition.text || 'Unnamed');
+        endCondition.isBlinking = true;
+        
+        // send game end event
+        const gameEndEvent = new CustomEvent('game-end', {
+          detail: {
+            endConditionId: endCondition.id,
+            message: endCondition.text || 'Victory!',
+            timestamp: Date.now()
+          }
+        });
+        document.dispatchEvent(gameEndEvent);
+        break;
+      }
+    }
+    console.log('✅ [PASS 6] EndCondition check complete');
+
     return nextElements;
   };
 
@@ -2468,6 +2590,24 @@ const Canvas: React.FC<CanvasProps> = ({
   ]);
 
   useEffect(() => {
+    const handleGameEnd = () => {
+      setGameEnded(true);
+    };
+    
+    document.addEventListener('game-end', handleGameEnd);
+    
+    return () => {
+      document.removeEventListener('game-end', handleGameEnd);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isRunning) {
+      setGameEnded(false);
+    }
+  }, [isRunning]);
+
+  useEffect(() => {
     if (!onElementSelection) return;
 
     if (selectedId.length === 1) {
@@ -2782,6 +2922,8 @@ const Canvas: React.FC<CanvasProps> = ({
           text: toolProperties?.endCondition?.text,
           actions: toolProperties?.endCondition?.actions,
           pullMode: toolProperties?.endCondition?.pullMode,
+          inhibited: true,
+          isBlinking: false,
         },
       ]);
     } else if (type === 'Artifical Intelligence') {
@@ -3737,93 +3879,89 @@ const Canvas: React.FC<CanvasProps> = ({
             )}
           </svg>
         );
-      case 'End Condition':
-        return (
-          <svg
-            key={el.id}
-            className={`svg-element end-condition-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
-            style={{
-              left: el.x,
-              top: el.y,
-            }}
-            width={40}
-            height={40}
-            onMouseDown={e => handleElementMouseDown(e, el.id)}
-            onClick={e => {
-              if (selectedTool === 'Select') {
-                e.stopPropagation();
-                if (e.ctrlKey || e.metaKey) {
-                  setSelectedId(prev =>
-                    prev.includes(el.id)
-                      ? prev.filter(selId => selId !== el.id)
-                      : [...prev, el.id]
-                  );
-                } else {
-                  setSelectedId([el.id]);
-                }
-              }
-            }}
-          >
-            <rect
-              x="5"
-              y="5"
-              width="30"
-              height="30"
-              fill={el.color || '#000000'}
-              stroke={isSelected ? '#0078d4' : el.color || '#000000'}
-              className={`end-condition-rect ${isSelected ? 'selected' : ''}`}
-            />
-            <rect
-              x="12"
-              y="12"
-              width="16"
-              height="16"
-              fill={el.color || '#000000'}
-              className="end-condition-inner-rect"
-            />
-          </svg>
-        );
-      case 'Artifical Intelligence':
-        return (
-          <svg
-            key={el.id}
-            className={`svg-element ai-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
-            style={{
-              left: el.x,
-              top: el.y,
-            }}
-            width={40}
-            height={40}
-            onMouseDown={e => handleElementMouseDown(e, el.id)}
-            onClick={e => {
-              if (selectedTool === 'Select') {
-                e.stopPropagation();
-                if (e.ctrlKey || e.metaKey) {
-                  setSelectedId(prev =>
-                    prev.includes(el.id)
-                      ? prev.filter(selId => selId !== el.id)
-                      : [...prev, el.id]
-                  );
-                } else {
-                  setSelectedId([el.id]);
-                }
-              }
-            }}
-          >
-            <rect
-              x="5"
-              y="5"
-              width="30"
-              height="30"
-              fill={el.color || '#000000'}
-              stroke={isSelected ? '#0078d4' : el.color || '#000000'}
-              className={`ai-rect ${isSelected ? 'selected' : ''}`}
-            />
-            <text x="20" y="22" className="ai-text">
-              AP
-            </text>
-          </svg>
-        );
+        case 'End Condition':
+          return (
+            <g key={el.id}>
+              {/* EndCondition SVG element*/}
+              <svg
+                className={`svg-element end-condition-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''} ${el.isBlinking ? 'blinking' : ''} ${!el.inhibited ? 'victory' : ''}`}
+                style={{
+                  left: el.x,
+                  top: el.y,
+                }}
+                width={40}
+                height={40}
+                onMouseDown={e => handleElementMouseDown(e, el.id)}
+                onClick={e => {
+                  if (selectedTool === 'Select') {
+                    e.stopPropagation();
+                    if (e.ctrlKey || e.metaKey) {
+                      setSelectedId(prev =>
+                        prev.includes(el.id)
+                          ? prev.filter(selId => selId !== el.id)
+                          : [...prev, el.id]
+                      );
+                    } else {
+                      setSelectedId([el.id]);
+                    }
+                  }
+                }}
+              >
+                {/* outline */}
+                <rect
+                  x="5"
+                  y="5"
+                  width="30"
+                  height="30"
+                  fill={el.inhibited ? '#808080' : (el.color || '#000000')}
+                  stroke={isSelected ? '#0078d4' : (el.color || '#000000')}
+                  strokeWidth={el.thickness || 2}
+                  className={`end-condition-rect ${isSelected ? 'selected' : ''}`}
+                />
+                {/* inner rect */}
+                <rect
+                  x="12"
+                  y="12"
+                  width="16"
+                  height="16"
+                  fill={el.inhibited ? '#a0a0a0' : (el.color || '#000000')}
+                  className="end-condition-inner-rect"
+                />
+                
+                {/* light blue indicator */}
+                {!el.inhibited && (
+                  <circle
+                    cx="20"
+                    cy="20"
+                    r="4"
+                    fill="#87CEEB"
+                    className="condition-met-indicator"
+                  />
+                )}
+              </svg>
+              
+              {/* Label */}
+              {el.text && (
+                <div
+                  className={`end-condition-label ${el.isBlinking ? 'blinking' : ''}`}
+                  style={{
+                    position: 'absolute',
+                    left: el.x,
+                    top: el.y + 45,
+                    fontSize: '12px',
+                    fontWeight: 'bold',
+                    color: el.color || '#000000',
+                    textAlign: 'center',
+                    width: '40px',
+                    pointerEvents: 'none',
+                    userSelect: 'none',
+                  }}
+                >
+                  {el.text}
+                </div>
+              )}
+            </g>
+          );
       case 'Register':
         return (
           <svg
@@ -4208,7 +4346,7 @@ const Canvas: React.FC<CanvasProps> = ({
   return (
     <div
       ref={canvasRef}
-      className={`canvas ${isRunning ? 'is-running' : ''}`}
+      className={`canvas ${isRunning ? 'is-running' : ''} ${gameEnded ? 'game-ended' : ''}`}
       onDrop={handleDrop}
       onDragOver={handleDragOver}
       onClick={handleCanvasClick}
