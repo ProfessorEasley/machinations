@@ -224,6 +224,56 @@ const fileTools = [
 
 // const runTools = ['Quick Run', 'Multiple Runs'];
 
+// Color mapping for predefined colors
+const COLOR_MAP: Record<string, string> = {
+  red: '#FF0000',
+  yellow: '#FFFF00',
+  blue: '#0000FF',
+  orange: '#FFA500',
+  green: '#008000',
+  purple: '#800080',
+  black: '#000000',
+  gray: '#808080',
+  pink: '#FFC0CB',
+};
+
+const COLOR_NAMES = Object.keys(COLOR_MAP);
+
+// Helper function to get color name from hex value (for backwards compatibility)
+const getColorNameFromHex = (hex: string): string => {
+  const normalizedHex = hex.toUpperCase();
+  for (const [name, value] of Object.entries(COLOR_MAP)) {
+    if (value.toUpperCase() === normalizedHex) {
+      return name;
+    }
+  }
+  // If not found, default to black
+  return 'black';
+};
+
+// Helper function to render color dropdown
+const renderColorDropdown = (
+  value: string,
+  onChange: (color: string) => void
+) => {
+  const currentColorName = getColorNameFromHex(value || '#000000');
+
+  return (
+    <select
+      className="color-select"
+      value={currentColorName}
+      onChange={e => onChange(COLOR_MAP[e.target.value])}
+      style={{ width: '100%', padding: '4px' }}
+    >
+      {COLOR_NAMES.map(colorName => (
+        <option key={colorName} value={colorName}>
+          {colorName.charAt(0).toUpperCase() + colorName.slice(1)}
+        </option>
+      ))}
+    </select>
+  );
+};
+
 const ToolSideBar: React.FC<ToolSideBarProps> = ({
   selectedTool,
   setSelectedTool,
@@ -550,19 +600,20 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
               onChange={e =>
                 handleElementPropertyChange('text', e.target.value)
               }
-              placeholder="Enter label text"
+              onFocus={e => {
+                // Clear "Text Label" placeholder text when focused
+                if (e.target.value === 'Text Label') {
+                  handleElementPropertyChange('text', '');
+                }
+              }}
+              placeholder="Text Label"
             />
           </label>
           <label>
             Color
-            <input
-              type="color"
-              className="color-input"
-              value={selectedElement.color || '#000000'}
-              onChange={e =>
-                handleElementPropertyChange('color', e.target.value)
-              }
-            />
+            {renderColorDropdown(selectedElement.color || '#000000', color =>
+              handleElementPropertyChange('color', color)
+            )}
           </label>
         </div>
       );
@@ -575,14 +626,9 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <div className="machinations-label">Pool</div>
           <label>
             Color
-            <input
-              type="color"
-              className="color-input"
-              value={selectedElement.color || '#000000'}
-              onChange={e =>
-                handleElementPropertyChange('color', e.target.value)
-              }
-            />
+            {renderColorDropdown(selectedElement.color || '#000000', color =>
+              handleElementPropertyChange('color', color)
+            )}
           </label>
           <label>
             Thickness
@@ -641,23 +687,41 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           </label>
           <label>
             Resources
-            <input
-              type="text"
-              value={selectedElement.resources || ''}
-              onChange={e =>
-                handleElementPropertyChange('resources', e.target.value)
-              }
-              placeholder="Enter resources"
-            />
+            {renderColorDropdown(
+              selectedElement.resources || '#000000',
+              color => handleElementPropertyChange('resources', color)
+            )}
           </label>
           <label>
             Number
             <input
               type="number"
-              value={selectedElement.number || 0}
-              onChange={e =>
-                handleElementPropertyChange('number', e.target.value)
+              value={
+                selectedElement.number !== undefined
+                  ? selectedElement.number
+                  : ''
               }
+              onChange={e => {
+                const numValue =
+                  e.target.value === '' ? 0 : parseInt(e.target.value, 10) || 0;
+                if (onElementUpdate && selectedElement) {
+                  onElementUpdate(selectedElement.id, { number: numValue });
+                }
+              }}
+              onFocus={e => {
+                if (e.target.value === '0' || e.target.value === '') {
+                  e.target.value = '';
+                }
+              }}
+              onBlur={e => {
+                if (e.target.value === '') {
+                  e.target.value = '0';
+                  if (onElementUpdate && selectedElement) {
+                    onElementUpdate(selectedElement.id, { number: 0 });
+                  }
+                }
+              }}
+              placeholder="0"
               min="0"
             />
           </label>
@@ -692,14 +756,9 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <div className="machinations-label">Gate</div>
           <label>
             Color
-            <input
-              type="color"
-              className="color-input"
-              value={selectedElement.color || '#000000'}
-              onChange={e =>
-                handleElementPropertyChange('color', e.target.value)
-              }
-            />
+            {renderColorDropdown(selectedElement.color || '#000000', color =>
+              handleElementPropertyChange('color', color)
+            )}
           </label>
           <label>
             Thickness
@@ -798,14 +857,9 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <div className="machinations-label">Source</div>
           <label>
             Color
-            <input
-              type="color"
-              className="color-input"
-              value={selectedElement.color || '#000000'}
-              onChange={e =>
-                handleElementPropertyChange('color', e.target.value)
-              }
-            />
+            {renderColorDropdown(selectedElement.color || '#000000', color =>
+              handleElementPropertyChange('color', color)
+            )}
           </label>
           <label>
             Thickness
@@ -875,14 +929,10 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           </label>
           <label>
             Resources
-            <input
-              type="text"
-              value={selectedElement.resources || ''}
-              onChange={e =>
-                handleElementPropertyChange('resources', e.target.value)
-              }
-              placeholder="Enter resources"
-            />
+            {renderColorDropdown(
+              selectedElement.resources || '#000000',
+              color => handleElementPropertyChange('resources', color)
+            )}
           </label>
         </div>
       );
@@ -895,14 +945,9 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <div className="machinations-label">Drain</div>
           <label>
             Color
-            <input
-              type="color"
-              className="color-input"
-              value={selectedElement.color || '#000000'}
-              onChange={e =>
-                handleElementPropertyChange('color', e.target.value)
-              }
-            />
+            {renderColorDropdown(selectedElement.color || '#000000', color =>
+              handleElementPropertyChange('color', color)
+            )}
           </label>
           <label>
             Thickness
@@ -981,14 +1026,9 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <div className="machinations-label">Convertor</div>
           <label>
             Color
-            <input
-              type="color"
-              className="color-input"
-              value={selectedElement.color || '#000000'}
-              onChange={e =>
-                handleElementPropertyChange('color', e.target.value)
-              }
-            />
+            {renderColorDropdown(selectedElement.color || '#000000', color =>
+              handleElementPropertyChange('color', color)
+            )}
           </label>
           <label>
             Thickness
@@ -1058,14 +1098,10 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           </label>
           <label>
             Resources
-            <input
-              type="text"
-              value={selectedElement.resources || ''}
-              onChange={e =>
-                handleElementPropertyChange('resources', e.target.value)
-              }
-              placeholder="Enter resources"
-            />
+            {renderColorDropdown(
+              selectedElement.resources || '#000000',
+              color => handleElementPropertyChange('resources', color)
+            )}
           </label>
         </div>
       );
@@ -1078,14 +1114,9 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <div className="machinations-label">Trader</div>
           <label>
             Color
-            <input
-              type="color"
-              className="color-input"
-              value={selectedElement.color || '#000000'}
-              onChange={e =>
-                handleElementPropertyChange('color', e.target.value)
-              }
-            />
+            {renderColorDropdown(selectedElement.color || '#000000', color =>
+              handleElementPropertyChange('color', color)
+            )}
           </label>
           <label>
             Thickness
@@ -1155,14 +1186,10 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           </label>
           <label>
             Resources
-            <input
-              type="text"
-              value={selectedElement.resources || ''}
-              onChange={e =>
-                handleElementPropertyChange('resources', e.target.value)
-              }
-              placeholder="Enter resources"
-            />
+            {renderColorDropdown(
+              selectedElement.resources || '#000000',
+              color => handleElementPropertyChange('resources', color)
+            )}
           </label>
         </div>
       );
@@ -1175,14 +1202,9 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <div className="machinations-label">Delay</div>
           <label>
             Color
-            <input
-              type="color"
-              className="color-input"
-              value={selectedElement.color || '#000000'}
-              onChange={e =>
-                handleElementPropertyChange('color', e.target.value)
-              }
-            />
+            {renderColorDropdown(selectedElement.color || '#000000', color =>
+              handleElementPropertyChange('color', color)
+            )}
           </label>
           <label>
             Thickness
@@ -1260,14 +1282,9 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <div className="machinations-label">Register</div>
           <label>
             Color
-            <input
-              type="color"
-              className="color-input"
-              value={selectedElement.color || '#000000'}
-              onChange={e =>
-                handleElementPropertyChange('color', e.target.value)
-              }
-            />
+            {renderColorDropdown(selectedElement.color || '#000000', color =>
+              handleElementPropertyChange('color', color)
+            )}
           </label>
           <label>
             Thickness
@@ -1364,14 +1381,9 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <div className="machinations-label">End Condition</div>
           <label>
             Color
-            <input
-              type="color"
-              className="color-input"
-              value={selectedElement.color || '#000000'}
-              onChange={e =>
-                handleElementPropertyChange('color', e.target.value)
-              }
-            />
+            {renderColorDropdown(selectedElement.color || '#000000', color =>
+              handleElementPropertyChange('color', color)
+            )}
           </label>
           <label>
             Thickness
@@ -1432,14 +1444,9 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <div className="machinations-label">Artificial Intelligence</div>
           <label>
             Color
-            <input
-              type="color"
-              className="color-input"
-              value={selectedElement.color || '#000000'}
-              onChange={e =>
-                handleElementPropertyChange('color', e.target.value)
-              }
-            />
+            {renderColorDropdown(selectedElement.color || '#000000', color =>
+              handleElementPropertyChange('color', color)
+            )}
           </label>
           <label>
             Thickness
@@ -1516,14 +1523,9 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <div className="machinations-label">Resource Connection</div>
           <label>
             Color
-            <input
-              type="color"
-              className="color-input"
-              value={selectedElement.color || '#000000'}
-              onChange={e =>
-                handleElementPropertyChange('color', e.target.value)
-              }
-            />
+            {renderColorDropdown(selectedElement.color || '#000000', color =>
+              handleElementPropertyChange('color', color)
+            )}
           </label>
           <label>
             Thickness
@@ -1579,14 +1581,9 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <div className="machinations-label">State Connection</div>
           <label>
             Color
-            <input
-              type="color"
-              className="color-input"
-              value={selectedElement.color || '#000000'}
-              onChange={e =>
-                handleElementPropertyChange('color', e.target.value)
-              }
-            />
+            {renderColorDropdown(selectedElement.color || '#000000', color =>
+              handleElementPropertyChange('color', color)
+            )}
           </label>
           <label>
             Thickness
@@ -1653,24 +1650,33 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
                   });
                 }
               }}
-              placeholder="Enter label text"
+              onFocus={e => {
+                // Clear "Text Label" placeholder text when focused
+                if (e.target.value === 'Text Label') {
+                  if (onToolPropertiesChange) {
+                    onToolPropertiesChange('textLabel', {
+                      text: '',
+                      color: toolProperties?.textLabel?.color || '#000000',
+                    });
+                  }
+                }
+              }}
+              placeholder="Text Label"
             />
           </label>
           <label>
             Color
-            <input
-              type="color"
-              className="color-input"
-              value={toolProperties?.textLabel?.color || '#000000'}
-              onChange={e => {
+            {renderColorDropdown(
+              toolProperties?.textLabel?.color || '#000000',
+              color => {
                 if (onToolPropertiesChange) {
                   onToolPropertiesChange('textLabel', {
                     text: toolProperties?.textLabel?.text || '',
-                    color: e.target.value,
+                    color: color,
                   });
                 }
-              }}
-            />
+              }
+            )}
           </label>
         </div>
       );
@@ -1699,19 +1705,17 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           </label>
           <label>
             Color
-            <input
-              type="color"
-              className="color-input"
-              value={toolProperties?.group?.color || '#000000'}
-              onChange={e => {
+            {renderColorDropdown(
+              toolProperties?.group?.color || '#000000',
+              color => {
                 if (onToolPropertiesChange) {
                   onToolPropertiesChange('group', {
                     text: toolProperties?.group?.text || '',
-                    color: e.target.value,
+                    color: color,
                   });
                 }
-              }}
-            />
+              }
+            )}
           </label>
         </div>
       );
@@ -1724,19 +1728,17 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <div className="machinations-label">Pool</div>
           <label>
             Color
-            <input
-              type="color"
-              className="color-input"
-              value={toolProperties?.pool?.color || '#000000'}
-              onChange={e => {
+            {renderColorDropdown(
+              toolProperties?.pool?.color || '#000000',
+              color => {
                 if (onToolPropertiesChange) {
                   onToolPropertiesChange('pool', {
                     ...toolProperties?.pool,
-                    color: e.target.value,
+                    color: color,
                   });
                 }
-              }}
-            />
+              }
+            )}
           </label>
           <label>
             Thickness
@@ -1823,33 +1825,49 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           </label>
           <label>
             Resources
-            <input
-              type="text"
-              value={toolProperties?.pool?.resources || ''}
-              onChange={e => {
+            {renderColorDropdown(
+              toolProperties?.pool?.resources || '#000000',
+              color => {
                 if (onToolPropertiesChange) {
                   onToolPropertiesChange('pool', {
                     ...toolProperties?.pool,
-                    resources: e.target.value,
+                    resources: color,
                   });
                 }
-              }}
-              placeholder="Enter resources"
-            />
+              }
+            )}
           </label>
           <label>
             Number
             <input
               type="number"
-              value={toolProperties?.pool?.number || 0}
+              value={toolProperties?.pool?.number || ''}
               onChange={e => {
                 if (onToolPropertiesChange) {
                   onToolPropertiesChange('pool', {
                     ...toolProperties?.pool,
-                    number: parseInt(e.target.value) || 0,
+                    number:
+                      e.target.value === '' ? 0 : parseInt(e.target.value) || 0,
                   });
                 }
               }}
+              onFocus={e => {
+                if (e.target.value === '0' || e.target.value === '') {
+                  e.target.value = '';
+                }
+              }}
+              onBlur={e => {
+                if (e.target.value === '') {
+                  e.target.value = '0';
+                  if (onToolPropertiesChange) {
+                    onToolPropertiesChange('pool', {
+                      ...toolProperties?.pool,
+                      number: 0,
+                    });
+                  }
+                }
+              }}
+              placeholder="0"
               min="0"
             />
           </label>
@@ -1895,19 +1913,17 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <div className="machinations-label">Gate</div>
           <label>
             Color
-            <input
-              type="color"
-              className="color-input"
-              value={toolProperties?.gate?.color || '#000000'}
-              onChange={e => {
+            {renderColorDropdown(
+              toolProperties?.gate?.color || '#000000',
+              color => {
                 if (onToolPropertiesChange) {
                   onToolPropertiesChange('gate', {
                     ...toolProperties?.gate,
-                    color: e.target.value,
+                    color: color,
                   });
                 }
-              }}
-            />
+              }
+            )}
           </label>
           <label>
             Thickness
@@ -2051,19 +2067,17 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <div className="machinations-label">Flow</div>
           <label>
             Color
-            <input
-              type="color"
-              className="color-input"
-              value={toolProperties?.resourceConnection?.color || '#000000'}
-              onChange={e => {
+            {renderColorDropdown(
+              toolProperties?.resourceConnection?.color || '#000000',
+              color => {
                 if (onToolPropertiesChange) {
                   onToolPropertiesChange('resourceConnection', {
                     ...toolProperties?.resourceConnection,
-                    color: e.target.value,
+                    color: color,
                   });
                 }
-              }}
-            />
+              }
+            )}
           </label>
           <label>
             Thickness
@@ -2139,19 +2153,17 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <div className="machinations-label">State</div>
           <label>
             Color
-            <input
-              type="color"
-              className="color-input"
-              value={toolProperties?.stateConnection?.color || '#000000'}
-              onChange={e => {
+            {renderColorDropdown(
+              toolProperties?.stateConnection?.color || '#000000',
+              color => {
                 if (onToolPropertiesChange) {
                   onToolPropertiesChange('stateConnection', {
                     ...toolProperties?.stateConnection,
-                    color: e.target.value,
+                    color: color,
                   });
                 }
-              }}
-            />
+              }
+            )}
           </label>
           <label>
             Thickness
@@ -2227,19 +2239,17 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <div className="machinations-label">Source</div>
           <label>
             Color
-            <input
-              type="color"
-              className="color-input"
-              value={toolProperties?.source?.color || '#000000'}
-              onChange={e => {
+            {renderColorDropdown(
+              toolProperties?.source?.color || '#000000',
+              color => {
                 if (onToolPropertiesChange) {
                   onToolPropertiesChange('source', {
                     ...toolProperties?.source,
-                    color: e.target.value,
+                    color: color,
                   });
                 }
-              }}
-            />
+              }
+            )}
           </label>
           <label>
             Thickness
@@ -2342,19 +2352,17 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           </label>
           <label>
             Resources
-            <input
-              type="color"
-              className="color-input"
-              value={toolProperties?.source?.resources || '#000000'}
-              onChange={e => {
+            {renderColorDropdown(
+              toolProperties?.source?.resources || '#000000',
+              color => {
                 if (onToolPropertiesChange) {
                   onToolPropertiesChange('source', {
                     ...toolProperties?.source,
-                    resources: e.target.value,
+                    resources: color,
                   });
                 }
-              }}
-            />
+              }
+            )}
           </label>
         </div>
       );
@@ -2367,19 +2375,17 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <div className="machinations-label">Convertor</div>
           <label>
             Color
-            <input
-              type="color"
-              className="color-input"
-              value={toolProperties?.convertor?.color || '#000000'}
-              onChange={e => {
+            {renderColorDropdown(
+              toolProperties?.convertor?.color || '#000000',
+              color => {
                 if (onToolPropertiesChange) {
                   onToolPropertiesChange('convertor', {
                     ...toolProperties?.convertor,
-                    color: e.target.value,
+                    color: color,
                   });
                 }
-              }}
-            />
+              }
+            )}
           </label>
           <label>
             Thickness
@@ -2482,19 +2488,17 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           </label>
           <label>
             Resources
-            <input
-              type="color"
-              className="color-input"
-              value={toolProperties?.convertor?.resources || '#000000'}
-              onChange={e => {
+            {renderColorDropdown(
+              toolProperties?.convertor?.resources || '#000000',
+              color => {
                 if (onToolPropertiesChange) {
                   onToolPropertiesChange('convertor', {
                     ...toolProperties?.convertor,
-                    resources: e.target.value,
+                    resources: color,
                   });
                 }
-              }}
-            />
+              }
+            )}
           </label>
         </div>
       );
@@ -2507,19 +2511,17 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <div className="machinations-label">Trader</div>
           <label>
             Color
-            <input
-              type="color"
-              className="color-input"
-              value={toolProperties?.trader?.color || '#000000'}
-              onChange={e => {
+            {renderColorDropdown(
+              toolProperties?.trader?.color || '#000000',
+              color => {
                 if (onToolPropertiesChange) {
                   onToolPropertiesChange('trader', {
                     ...toolProperties?.trader,
-                    color: e.target.value,
+                    color: color,
                   });
                 }
-              }}
-            />
+              }
+            )}
           </label>
           <label>
             Thickness
@@ -2622,19 +2624,17 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           </label>
           <label>
             Resources
-            <input
-              type="color"
-              className="color-input"
-              value={toolProperties?.trader?.resources || '#000000'}
-              onChange={e => {
+            {renderColorDropdown(
+              toolProperties?.trader?.resources || '#000000',
+              color => {
                 if (onToolPropertiesChange) {
                   onToolPropertiesChange('trader', {
                     ...toolProperties?.trader,
-                    resources: e.target.value,
+                    resources: color,
                   });
                 }
-              }}
-            />
+              }
+            )}
           </label>
         </div>
       );
@@ -2647,19 +2647,17 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <div className="machinations-label">Drain</div>
           <label>
             Color
-            <input
-              type="color"
-              className="color-input"
-              value={toolProperties?.drain?.color || '#000000'}
-              onChange={e => {
+            {renderColorDropdown(
+              toolProperties?.drain?.color || '#000000',
+              color => {
                 if (onToolPropertiesChange) {
                   onToolPropertiesChange('drain', {
                     ...toolProperties?.drain,
-                    color: e.target.value,
+                    color: color,
                   });
                 }
-              }}
-            />
+              }
+            )}
           </label>
           <label>
             Thickness
@@ -2770,19 +2768,17 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <div className="machinations-label">Delay</div>
           <label>
             Color
-            <input
-              type="color"
-              className="color-input"
-              value={toolProperties?.delay?.color || '#000000'}
-              onChange={e => {
+            {renderColorDropdown(
+              toolProperties?.delay?.color || '#000000',
+              color => {
                 if (onToolPropertiesChange) {
                   onToolPropertiesChange('delay', {
                     ...toolProperties?.delay,
-                    color: e.target.value,
+                    color: color,
                   });
                 }
-              }}
-            />
+              }
+            )}
           </label>
           <label>
             Thickness
@@ -2886,19 +2882,17 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <div className="machinations-label">Register</div>
           <label>
             Color
-            <input
-              type="color"
-              className="color-input"
-              value={toolProperties?.register?.color || '#000000'}
-              onChange={e => {
+            {renderColorDropdown(
+              toolProperties?.register?.color || '#000000',
+              color => {
                 if (onToolPropertiesChange) {
                   onToolPropertiesChange('register', {
                     ...toolProperties?.register,
-                    color: e.target.value,
+                    color: color,
                   });
                 }
-              }}
-            />
+              }
+            )}
           </label>
           <label>
             Thickness
@@ -3023,19 +3017,17 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <div className="machinations-label">End Condition</div>
           <label>
             Color
-            <input
-              type="color"
-              className="color-input"
-              value={toolProperties?.endCondition?.color || '#000000'}
-              onChange={e => {
+            {renderColorDropdown(
+              toolProperties?.endCondition?.color || '#000000',
+              color => {
                 if (onToolPropertiesChange) {
                   onToolPropertiesChange('endCondition', {
                     ...toolProperties?.endCondition,
-                    color: e.target.value,
+                    color: color,
                   });
                 }
-              }}
-            />
+              }
+            )}
           </label>
           <label>
             Thickness
@@ -3120,19 +3112,17 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <div className="machinations-label">Artificial Intelligence</div>
           <label>
             Color
-            <input
-              type="color"
-              className="color-input"
-              value={toolProperties?.artificialIntelligence?.color || '#000000'}
-              onChange={e => {
+            {renderColorDropdown(
+              toolProperties?.artificialIntelligence?.color || '#000000',
+              color => {
                 if (onToolPropertiesChange) {
                   onToolPropertiesChange('artificialIntelligence', {
                     ...toolProperties?.artificialIntelligence,
-                    color: e.target.value,
+                    color: color,
                   });
                 }
-              }}
-            />
+              }
+            )}
           </label>
           <label>
             Thickness

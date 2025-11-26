@@ -15,6 +15,7 @@ interface CanvasProps {
   //} | null;
   onElementUpdate?: (elementId: number, updates: Partial<GraphElement>) => void;
   onElementSelection?: (element: GraphElement | null) => void;
+  onToolChange?: (tool: string) => void;
   externalElementUpdate?: {
     elementId: number;
     updates: Partial<GraphElement>;
@@ -213,6 +214,8 @@ const Canvas: React.FC<CanvasProps> = ({
   onSelectionChange,
   onElementUpdate,
   onElementSelection,
+  onToolChange,
+  //externalElementUpdate,
   toolProperties,
 }) => {
   const [internalElements, setInternalElements] = useState<GraphElement[]>([]);
@@ -2152,12 +2155,32 @@ const Canvas: React.FC<CanvasProps> = ({
   // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Handle escape key to cancel connection creation
-      if (e.key === 'Escape' && isCreatingConnection) {
-        setIsCreatingConnection(false);
-        setConnectionStart(null);
-        setConnectionEnd(null);
-        setConnectionType(null);
+      // Prevent shortcuts when typing in input fields
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        // Allow Escape to work even in input fields to switch to Select tool
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          if (onToolChange) {
+            onToolChange('Select');
+          }
+        }
+        return;
+      }
+
+      // Handle escape key to switch to Select tool or cancel connection creation
+      if (e.key === 'Escape') {
+        if (isCreatingConnection) {
+          setIsCreatingConnection(false);
+          setConnectionStart(null);
+          setConnectionEnd(null);
+          setConnectionType(null);
+        }
+        if (onToolChange) {
+          onToolChange('Select');
+        }
       }
 
       // Handle delete key to remove selected elements
@@ -2166,10 +2189,6 @@ const Canvas: React.FC<CanvasProps> = ({
         selectedId.length > 0
       ) {
         if (isRunning) return;
-        const target = e.target as HTMLElement;
-        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
-          return;
-        }
         e.preventDefault();
 
         setElements(prev => prev.filter(el => !selectedId.includes(el.id)));
@@ -2456,11 +2475,12 @@ const Canvas: React.FC<CanvasProps> = ({
           type,
           x,
           y,
-          text: toolProperties?.textLabel?.text || 'Text Label',
+          text: toolProperties?.textLabel?.text || '',
           color: toolProperties?.textLabel?.color || '#000000',
         },
       ]);
       setEditingId(id);
+      setSelectedId([id]);
     } else if (type === 'Group') {
       setElements(prev => [
         ...prev,
@@ -2475,6 +2495,7 @@ const Canvas: React.FC<CanvasProps> = ({
           color: toolProperties?.group?.color || '#000000',
         },
       ]);
+      setSelectedId([id]);
     } else if (type === 'Pool') {
       const poolProps = toolProperties?.pool;
       const startingPoints =
@@ -2504,6 +2525,7 @@ const Canvas: React.FC<CanvasProps> = ({
             : startingPoints,
         },
       ]);
+      setSelectedId([id]);
     } else if (type === 'Resource Connection' || type === 'State Connection') {
       setIsCreatingConnection(true);
       setConnectionStart({ x, y });
@@ -2522,6 +2544,7 @@ const Canvas: React.FC<CanvasProps> = ({
           currentPoints: parseInt(toolProperties?.source?.text || '0', 10),
         },
       ]);
+      setSelectedId([id]);
     } else if (type === 'Gate') {
       setElements(prev => [
         ...prev,
@@ -2539,6 +2562,7 @@ const Canvas: React.FC<CanvasProps> = ({
           gateType: toolProperties?.gate?.type,
         },
       ]);
+      setSelectedId([id]);
     } else if (type === 'Drain') {
       setElements(prev => [
         ...prev,
@@ -2555,6 +2579,7 @@ const Canvas: React.FC<CanvasProps> = ({
           pullMode: toolProperties?.drain?.pullMode,
         },
       ]);
+      setSelectedId([id]);
     } else if (type === 'Convertor') {
       setElements(prev => [
         ...prev,
@@ -2572,6 +2597,7 @@ const Canvas: React.FC<CanvasProps> = ({
           resources: toolProperties?.convertor?.resources,
         },
       ]);
+      setSelectedId([id]);
     } else if (type === 'Trader') {
       setElements(prev => [
         ...prev,
@@ -2589,6 +2615,7 @@ const Canvas: React.FC<CanvasProps> = ({
           resources: toolProperties?.trader?.resources,
         },
       ]);
+      setSelectedId([id]);
     } else if (type === 'Delay') {
       setElements(prev => [
         ...prev,
@@ -2605,6 +2632,7 @@ const Canvas: React.FC<CanvasProps> = ({
           queue: toolProperties?.delay?.queue,
         },
       ]);
+      setSelectedId([id]);
     } else if (type === 'Register') {
       const interactive = toolProperties?.register?.interactive ?? false;
       const startingValue = toolProperties?.register?.startingValue ?? 0;
@@ -2627,6 +2655,7 @@ const Canvas: React.FC<CanvasProps> = ({
           currentValue: interactive ? startingValue : 0,
         },
       ]);
+      setSelectedId([id]);
     } else if (type === 'End Condition') {
       setElements(prev => [
         ...prev,
@@ -2644,6 +2673,7 @@ const Canvas: React.FC<CanvasProps> = ({
           isBlinking: false,
         },
       ]);
+      setSelectedId([id]);
     } else if (type === 'Artifical Intelligence') {
       setElements(prev => [
         ...prev,
@@ -2660,8 +2690,10 @@ const Canvas: React.FC<CanvasProps> = ({
           script: toolProperties?.artificialIntelligence?.script,
         },
       ]);
+      setSelectedId([id]);
     } else {
       setElements(prev => [...prev, { id, type, x, y }]);
+      setSelectedId([id]);
     }
   };
 
@@ -2706,7 +2738,7 @@ const Canvas: React.FC<CanvasProps> = ({
         e.clientY,
         e.currentTarget
       );
-      setSelectedId([]);
+      // Don't clear selection - the newly placed element will be selected in placeElement
     }
   };
 
@@ -3007,6 +3039,7 @@ const Canvas: React.FC<CanvasProps> = ({
             : {}),
         },
       ]);
+      setSelectedId([id]);
       setIsCreatingConnection(false);
       setConnectionStart(null);
       setConnectionEnd(null);
@@ -3208,10 +3241,32 @@ const Canvas: React.FC<CanvasProps> = ({
               color: el.color || '#000000',
             }}
             value={el.text || ''}
+            placeholder="Text Label"
             autoFocus
             onBlur={() => setEditingId(null)}
             onChange={e => handleTextChange(el.id, e.target.value)}
+            onKeyDown={e => {
+              e.stopPropagation();
+              // Prevent Escape from bubbling up (it will be handled by the useEffect)
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setEditingId(null);
+              }
+              // Stop all other keyboard events from propagating to prevent screen blanking
+              if (e.key !== 'Escape') {
+                e.stopPropagation();
+              }
+            }}
             onClick={e => e.stopPropagation()}
+            onFocus={e => {
+              // Clear "Text Label" placeholder text when focused
+              if (e.target.value === 'Text Label') {
+                handleTextChange(el.id, '');
+              } else {
+                // Select all text when focused to make it easy to replace
+                e.target.select();
+              }
+            }}
           />
         ) : (
           <span
@@ -3236,6 +3291,8 @@ const Canvas: React.FC<CanvasProps> = ({
                 } else {
                   setSelectedId([el.id]);
                 }
+                // Allow editing Text Labels when Select tool is active (double-click or single click)
+                setEditingId(el.id);
               } else {
                 e.stopPropagation();
                 setEditingId(el.id);
@@ -3287,7 +3344,7 @@ const Canvas: React.FC<CanvasProps> = ({
               className="element-value-text"
               fill="black" // <-- The fix is here! Black text for the white pool.
             >
-              {el.currentPoints || 0}
+              {el.number !== undefined ? el.number : el.currentPoints || 0}
             </text>
           </svg>
         );

@@ -204,7 +204,7 @@ const Playground: React.FC = () => {
       color: '#000000',
       thickness: 2,
       text: '',
-      activation: 'passive',
+      activation: 'automatic',
       pullMode: 'pull any',
       resources: '',
       number: 0,
@@ -215,7 +215,7 @@ const Playground: React.FC = () => {
       color: '#000000',
       thickness: 2,
       text: '',
-      activation: 'passive',
+      activation: 'automatic',
       actions: 1,
       pullMode: 'pull any',
       type: 'deterministic',
@@ -238,7 +238,7 @@ const Playground: React.FC = () => {
       color: '#000000',
       thickness: 2,
       text: '',
-      activation: 'passive',
+      activation: 'automatic',
       actions: 1,
       pullMode: 'pull any',
       resources: '',
@@ -247,7 +247,7 @@ const Playground: React.FC = () => {
       color: '#000000',
       thickness: 2,
       text: '',
-      activation: 'passive',
+      activation: 'automatic',
       actions: 1,
       pullMode: 'pull any',
       resources: '',
@@ -256,7 +256,7 @@ const Playground: React.FC = () => {
       color: '#000000',
       thickness: 2,
       text: '',
-      activation: 'passive',
+      activation: 'automatic',
       actions: 1,
       pullMode: 'pull any',
       resources: '',
@@ -265,7 +265,7 @@ const Playground: React.FC = () => {
       color: '#000000',
       thickness: 2,
       text: '',
-      activation: 'passive',
+      activation: 'automatic',
       actions: 1,
       pullMode: 'pull any',
     },
@@ -273,7 +273,7 @@ const Playground: React.FC = () => {
       color: '#000000',
       thickness: 2,
       text: '',
-      activation: 'passive',
+      activation: 'automatic',
       actions: 1,
       queue: false,
     },
@@ -298,7 +298,7 @@ const Playground: React.FC = () => {
       color: '#000000',
       thickness: 2,
       text: '',
-      activation: 'passive',
+      activation: 'automatic',
       actions: 1,
       script: '',
     },
@@ -484,6 +484,7 @@ const Playground: React.FC = () => {
               onSelectionChange={handleSelectionChange}
               onElementUpdate={handleElementUpdate}
               onElementSelection={handleElementSelection}
+              onToolChange={setSelectedTool}
               //externalElementUpdate={externalElementUpdate}
               toolProperties={toolProperties}
             />
