@@ -67,42 +67,27 @@
 
 /* Pool Element */
 .pool-element {
-  left: -20px;
-  top: -20px;
-  width: 40px;
-  height: 40px;
+  /* width and height are set dynamically via inline styles */
 }
 
 /* Source Element */
 .source-element {
-  left: -20px;
-  top: -20px;
-  width: 40px;
-  height: 40px;
+  /* width and height are set dynamically via inline styles */
 }
 
 /* Drain Element */
 .drain-element {
-  left: -20px;
-  top: -20px;
-  width: 40px;
-  height: 40px;
+  /* width and height are set dynamically via inline styles */
 }
 
 /* Gate Element */
 .gate-element {
-  left: -20px;
-  top: -20px;
-  width: 40px;
-  height: 40px;
+  /* width and height are set dynamically via inline styles */
 }
 
 /* Convertor Element */
 .convertor-element {
-  left: -20px;
-  top: -20px;
-  width: 40px;
-  height: 40px;
+  /* width and height are set dynamically via inline styles */
 }
 
 .convertor-shape {
@@ -125,42 +110,27 @@
 
 /* End Condition Element */
 .end-condition-element {
-  left: -20px;
-  top: -20px;
-  width: 40px;
-  height: 40px;
+  /* width and height are set dynamically via inline styles */
 }
 
 /* Artificial Intelligence Element */
 .ai-element {
-  left: -20px;
-  top: -20px;
-  width: 40px;
-  height: 40px;
+  /* width and height are set dynamically via inline styles */
 }
 
 /* Register Element */
 .register-element {
-  left: -20px;
-  top: -20px;
-  width: 40px;
-  height: 40px;
+  /* width and height are set dynamically via inline styles */
 }
 
 /* Delay Element */
 .delay-element {
-  left: -20px;
-  top: -20px;
-  width: 40px;
-  height: 40px;
+  /* width and height are set dynamically via inline styles */
 }
 
 /* Trader Element */
 .trader-element {
-  left: -20px;
-  top: -20px;
-  width: 40px;
-  height: 40px;
+  /* width and height are set dynamically via inline styles */
 }
 
 .trader-shape {

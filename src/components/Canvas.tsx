@@ -2253,12 +2253,26 @@ const Canvas: React.FC<CanvasProps> = ({
       if (elements.length === 0) return;
 
       const bounds = elements.reduce(
-        (acc, el) => ({
-          minX: Math.min(acc.minX, el.x),
-          minY: Math.min(acc.minY, el.y),
-          maxX: Math.max(acc.maxX, el.x + (el.width || 40)),
-          maxY: Math.max(acc.maxY, el.y + (el.height || 40)),
-        }),
+        (acc, el) => {
+          let width = el.width;
+          let height = el.height;
+          if (!width || !height) {
+            if (el.type === 'Group') {
+              width = el.width || 200;
+              height = el.height || 150;
+            } else {
+              const size = getElementSize(el.thickness);
+              width = size;
+              height = size;
+            }
+          }
+          return {
+            minX: Math.min(acc.minX, el.x - width / 2),
+            minY: Math.min(acc.minY, el.y - height / 2),
+            maxX: Math.max(acc.maxX, el.x + width / 2),
+            maxY: Math.max(acc.maxY, el.y + height / 2),
+          };
+        },
         { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }
       );
       const canvasWidth = canvasRef.current?.clientWidth || 800;
@@ -2377,13 +2391,17 @@ const Canvas: React.FC<CanvasProps> = ({
 
       const elementX = element.x;
       const elementY = element.y;
-      let elementWidth = 40; // Default size for most elements
-      let elementHeight = 40;
+      let elementWidth: number;
+      let elementHeight: number;
 
       // Adjust for different element types
       if (element.type === 'Group') {
         elementWidth = element.width || 200;
         elementHeight = element.height || 150;
+      } else {
+        const size = getElementSize(element.thickness);
+        elementWidth = size;
+        elementHeight = size;
       }
 
       // Calculate distance to element center
@@ -2406,13 +2424,23 @@ const Canvas: React.FC<CanvasProps> = ({
     y: number,
     element: GraphElement
   ): { x: number; y: number } => {
-    const elementWidth = element.type === 'Group' ? element.width || 200 : 40;
-    const elementHeight = element.type === 'Group' ? element.height || 150 : 40;
+    let elementWidth: number;
+    let elementHeight: number;
+    if (element.type === 'Group') {
+      elementWidth = element.width || 200;
+      elementHeight = element.height || 150;
+    } else {
+      const size = getElementSize(element.thickness);
+      elementWidth = size;
+      elementHeight = size;
+    }
 
-    const left = element.x;
-    const right = element.x + elementWidth;
-    const top = element.y;
-    const bottom = element.y + elementHeight;
+    const offsetX = elementWidth / 2;
+    const offsetY = elementHeight / 2;
+    const left = element.x - offsetX;
+    const right = element.x + offsetX;
+    const top = element.y - offsetY;
+    const bottom = element.y + offsetY;
 
     // Calculate distances to each edge
     const distances = {
@@ -3226,6 +3254,20 @@ const Canvas: React.FC<CanvasProps> = ({
     }
   };
 
+  // Calculate element size based on thickness
+  // Default thickness is 2, default size is 40
+  // Size increases slowly as thickness increases, max size is 50
+  const getElementSize = (thickness?: number): number => {
+    const defaultThickness = 2;
+    const defaultSize = 40;
+    const maxSize = 50;
+    const thicknessValue = thickness || defaultThickness;
+    // Size increases slowly: 1.25 units per thickness point above default
+    const calculatedSize =
+      defaultSize + (thicknessValue - defaultThickness) * 1.25;
+    return Math.min(calculatedSize, maxSize);
+  };
+
   // Render each element
   const renderElement = (el: GraphElement) => {
     const isSelected = selectedId.includes(el.id);
@@ -3303,16 +3345,20 @@ const Canvas: React.FC<CanvasProps> = ({
             {el.text}
           </span>
         );
-      case 'Pool':
+      case 'Pool': {
+        const size = getElementSize(el.thickness);
+        const center = size / 2;
+        const radius = (size / 40) * 18; // Scale radius proportionally
+        const offset = size / 2; // Offset to center element at el.x, el.y
         return (
           <svg
             key={el.id}
             className={`svg-element pool-element ${
               selectedTool === 'Select' ? 'selectable' : ''
             } ${isSelected ? 'selected' : ''}`}
-            style={{ left: el.x, top: el.y }}
-            width={40}
-            height={40}
+            style={{ left: el.x - offset, top: el.y - offset }}
+            width={size}
+            height={size}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
             onClick={e => {
               if (selectedTool === 'Select') {
@@ -3330,17 +3376,17 @@ const Canvas: React.FC<CanvasProps> = ({
             }}
           >
             <circle
-              cx={20}
-              cy={20}
-              r={18}
+              cx={center}
+              cy={center}
+              r={radius}
               className={`pool-circle ${isSelected ? 'selected' : ''}`}
               fill="white"
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
               strokeWidth={el.thickness || 2}
             />
             <text
-              x="10"
-              y="25"
+              x={center - size / 4}
+              y={center + size / 8}
               className="element-value-text"
               fill="black" // <-- The fix is here! Black text for the white pool.
             >
@@ -3348,16 +3394,21 @@ const Canvas: React.FC<CanvasProps> = ({
             </text>
           </svg>
         );
-      case 'Source':
+      }
+      case 'Source': {
+        const size = getElementSize(el.thickness);
+        const center = size / 2;
+        const scale = size / 40;
+        const offset = size / 2; // Offset to center element at el.x, el.y
         return (
           <svg
             key={el.id}
             className={`svg-element source-element clickable-element ${
               selectedTool === 'Select' ? 'selectable' : ''
             } ${isSelected ? 'selected' : ''}`}
-            style={{ left: el.x, top: el.y }}
-            width={40}
-            height={40}
+            style={{ left: el.x - offset, top: el.y - offset }}
+            width={size}
+            height={size}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
             onClick={e => {
               if (selectedTool === 'Select') {
@@ -3375,33 +3426,38 @@ const Canvas: React.FC<CanvasProps> = ({
             }}
           >
             <polygon
-              points="20,5 35,35 5,35"
+              points={`${center},${5 * scale} ${35 * scale},${35 * scale} ${5 * scale},${35 * scale}`}
               fill={el.color || '#000000'}
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
               strokeWidth={el.thickness || 2}
               className={`source-triangle ${isSelected ? 'selected' : ''}`}
             />
             <text
-              x="14"
-              y="30"
+              x={14 * scale}
+              y={30 * scale}
               className="element-value-text"
               fill="black"
-              fontSize="20"
+              fontSize={20 * scale}
             >
               ∞
             </text>
           </svg>
         );
-      case 'Drain':
+      }
+      case 'Drain': {
+        const size = getElementSize(el.thickness);
+        const center = size / 2;
+        const scale = size / 40;
+        const offset = size / 2; // Offset to center element at el.x, el.y
         return (
           <svg
             key={el.id}
             className={`svg-element drain-element clickable-element ${
               selectedTool === 'Select' ? 'selectable' : ''
             } ${isSelected ? 'selected' : ''}`}
-            style={{ left: el.x, top: el.y }}
-            width={40}
-            height={40}
+            style={{ left: el.x - offset, top: el.y - offset }}
+            width={size}
+            height={size}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
             onClick={e => {
               if (selectedTool === 'Select') {
@@ -3419,7 +3475,7 @@ const Canvas: React.FC<CanvasProps> = ({
             }}
           >
             <polygon
-              points="5,5 35,5 20,35"
+              points={`${5 * scale},${5 * scale} ${35 * scale},${5 * scale} ${center},${35 * scale}`}
               fill={el.color || '#000000'}
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
               strokeWidth={el.thickness || 2}
@@ -3427,6 +3483,7 @@ const Canvas: React.FC<CanvasProps> = ({
             />
           </svg>
         );
+      }
       case 'Group':
         return (
           <div
@@ -3500,17 +3557,21 @@ const Canvas: React.FC<CanvasProps> = ({
             )}
           </div>
         );
-      case 'Gate':
+      case 'Gate': {
+        const size = getElementSize(el.thickness);
+        const center = size / 2;
+        const scale = size / 40;
+        const offset = size / 2; // Offset to center element at el.x, el.y
         return (
           <svg
             key={el.id}
             className={`svg-element gate-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={{
-              left: el.x,
-              top: el.y,
+              left: el.x - offset,
+              top: el.y - offset,
             }}
-            width={40}
-            height={40}
+            width={size}
+            height={size}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
             onClick={e => {
               if (selectedTool === 'Select') {
@@ -3528,24 +3589,30 @@ const Canvas: React.FC<CanvasProps> = ({
             }}
           >
             <polygon
-              points="20,5 35,20 20,35 5,20"
+              points={`${center},${5 * scale} ${35 * scale},${center} ${center},${35 * scale} ${5 * scale},${center}`}
               fill={el.color || '#000000'}
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+              strokeWidth={el.thickness || 2}
               className={`gate-diamond ${isSelected ? 'selected' : ''}`}
             />
           </svg>
         );
-      case 'Convertor':
+      }
+      case 'Convertor': {
+        const size = getElementSize(el.thickness);
+        const center = size / 2;
+        const scale = size / 40;
+        const offset = size / 2; // Offset to center element at el.x, el.y
         return (
           <svg
             key={el.id}
             className={`svg-element convertor-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={{
-              left: el.x,
-              top: el.y,
+              left: el.x - offset,
+              top: el.y - offset,
             }}
-            width={40}
-            height={40}
+            width={size}
+            height={size}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
             onClick={e => {
               if (selectedTool === 'Select') {
@@ -3563,21 +3630,28 @@ const Canvas: React.FC<CanvasProps> = ({
             }}
           >
             <polygon
-              points="5,5 35,20 5,35"
+              points={`${5 * scale},${5 * scale} ${35 * scale},${center} ${5 * scale},${35 * scale}`}
               fill={el.color || '#000000'}
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+              strokeWidth={el.thickness || 2}
               className={`convertor-shape ${isSelected ? 'selected' : ''}`}
             />
-            <line x1="5" y1="5" x2="5" y2="35" className="convertor-line" />
+            <line
+              x1={5 * scale}
+              y1={5 * scale}
+              x2={5 * scale}
+              y2={35 * scale}
+              className="convertor-line"
+            />
 
             {/* Show stored resources for pull any mode */}
             {el.pullMode === 'pull any' &&
               el.inputResources &&
               Object.keys(el.inputResources).length > 0 && (
                 <text
-                  x="20"
-                  y="15"
-                  fontSize="8"
+                  x={center}
+                  y={15 * scale}
+                  fontSize={8 * scale}
                   fill="white"
                   textAnchor="middle"
                   className="convertor-storage"
@@ -3591,9 +3665,9 @@ const Canvas: React.FC<CanvasProps> = ({
             {/* Show conversion status */}
             {el.text && (
               <text
-                x="20"
-                y="30"
-                fontSize="6"
+                x={center}
+                y={30 * scale}
+                fontSize={6 * scale}
                 fill="white"
                 textAnchor="middle"
                 className="convertor-label"
@@ -3603,17 +3677,22 @@ const Canvas: React.FC<CanvasProps> = ({
             )}
           </svg>
         );
-      case 'Trader':
+      }
+      case 'Trader': {
+        const size = getElementSize(el.thickness);
+        const center = size / 2;
+        const scale = size / 40;
+        const offset = size / 2; // Offset to center element at el.x, el.y
         return (
           <svg
             key={el.id}
             className={`svg-element trader-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={{
-              left: el.x,
-              top: el.y,
+              left: el.x - offset,
+              top: el.y - offset,
             }}
-            width={40}
-            height={40}
+            width={size}
+            height={size}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
             onClick={e => {
               if (selectedTool === 'Select') {
@@ -3632,19 +3711,19 @@ const Canvas: React.FC<CanvasProps> = ({
           >
             {/* Trader shape - parallelogram outline with no fill */}
             <polygon
-              points="8,5 35,5 32,35 5,35"
+              points={`${8 * scale},${5 * scale} ${35 * scale},${5 * scale} ${32 * scale},${35 * scale} ${5 * scale},${35 * scale}`}
               fill="none"
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
-              strokeWidth="2"
+              strokeWidth={el.thickness || 2}
               className={`trader-shape ${isSelected ? 'selected' : ''}`}
             />
 
             {/* Show trader status */}
             {el.text && (
               <text
-                x="20"
-                y="30"
-                fontSize="6"
+                x={center}
+                y={30 * scale}
+                fontSize={6 * scale}
                 fill={el.color || '#000000'}
                 textAnchor="middle"
                 className="trader-label"
@@ -3654,18 +3733,23 @@ const Canvas: React.FC<CanvasProps> = ({
             )}
           </svg>
         );
-      case 'End Condition':
+      }
+      case 'End Condition': {
+        const size = getElementSize(el.thickness);
+        const center = size / 2;
+        const scale = size / 40;
+        const offset = size / 2; // Offset to center element at el.x, el.y
         return (
           <g key={el.id}>
             {/* EndCondition SVG element*/}
             <svg
               className={`svg-element end-condition-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''} ${el.isBlinking ? 'blinking' : ''} ${!el.inhibited ? 'victory' : ''}`}
               style={{
-                left: el.x,
-                top: el.y,
+                left: el.x - offset,
+                top: el.y - offset,
               }}
-              width={40}
-              height={40}
+              width={size}
+              height={size}
               onMouseDown={e => handleElementMouseDown(e, el.id)}
               onClick={e => {
                 if (selectedTool === 'Select') {
@@ -3684,10 +3768,10 @@ const Canvas: React.FC<CanvasProps> = ({
             >
               {/* outline */}
               <rect
-                x="5"
-                y="5"
-                width="30"
-                height="30"
+                x={5 * scale}
+                y={5 * scale}
+                width={30 * scale}
+                height={30 * scale}
                 fill={el.inhibited ? '#808080' : el.color || '#000000'}
                 stroke={isSelected ? '#0078d4' : el.color || '#000000'}
                 strokeWidth={el.thickness || 2}
@@ -3695,10 +3779,10 @@ const Canvas: React.FC<CanvasProps> = ({
               />
               {/* inner rect */}
               <rect
-                x="12"
-                y="12"
-                width="16"
-                height="16"
+                x={12 * scale}
+                y={12 * scale}
+                width={16 * scale}
+                height={16 * scale}
                 fill={el.inhibited ? '#a0a0a0' : el.color || '#000000'}
                 className="end-condition-inner-rect"
               />
@@ -3706,9 +3790,9 @@ const Canvas: React.FC<CanvasProps> = ({
               {/* light blue indicator */}
               {!el.inhibited && (
                 <circle
-                  cx="20"
-                  cy="20"
-                  r="4"
+                  cx={center}
+                  cy={center}
+                  r={4 * scale}
                   fill="#87CEEB"
                   className="condition-met-indicator"
                 />
@@ -3721,13 +3805,13 @@ const Canvas: React.FC<CanvasProps> = ({
                 className={`end-condition-label ${el.isBlinking ? 'blinking' : ''}`}
                 style={{
                   position: 'absolute',
-                  left: el.x,
-                  top: el.y + 45,
-                  fontSize: '12px',
+                  left: el.x - offset,
+                  top: el.y - offset + size + 5,
+                  fontSize: `${12 * scale}px`,
                   fontWeight: 'bold',
                   color: el.color || '#000000',
                   textAlign: 'center',
-                  width: '40px',
+                  width: `${size}px`,
                   pointerEvents: 'none',
                   userSelect: 'none',
                 }}
@@ -3737,17 +3821,22 @@ const Canvas: React.FC<CanvasProps> = ({
             )}
           </g>
         );
-      case 'Register':
+      }
+      case 'Register': {
+        const size = getElementSize(el.thickness);
+        const center = size / 2;
+        const scale = size / 40;
+        const offset = size / 2; // Offset to center element at el.x, el.y
         return (
           <svg
             key={el.id}
             className={`svg-element register-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={{
-              left: el.x,
-              top: el.y,
+              left: el.x - offset,
+              top: el.y - offset,
             }}
-            width={40}
-            height={40}
+            width={size}
+            height={size}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
             onClick={e => {
               if (selectedTool === 'Select') {
@@ -3766,10 +3855,10 @@ const Canvas: React.FC<CanvasProps> = ({
           >
             {/* white background */}
             <rect
-              x="5"
-              y="5"
-              width="30"
-              height="30"
+              x={5 * scale}
+              y={5 * scale}
+              width={30 * scale}
+              height={30 * scale}
               fill="white"
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
               strokeWidth={el.thickness || 2}
@@ -3777,11 +3866,11 @@ const Canvas: React.FC<CanvasProps> = ({
             />
             {/* show current value */}
             <text
-              x="20"
-              y="26"
+              x={center}
+              y={center + size / 8}
               className="register-text"
               fill="black"
-              fontSize="14"
+              fontSize={14 * scale}
               textAnchor="middle"
               fontWeight="bold"
             >
@@ -3791,17 +3880,22 @@ const Canvas: React.FC<CanvasProps> = ({
             </text>
           </svg>
         );
-      case 'Delay':
+      }
+      case 'Delay': {
+        const size = getElementSize(el.thickness);
+        const center = size / 2;
+        const scale = size / 40;
+        const offset = size / 2; // Offset to center element at el.x, el.y
         return (
           <svg
             key={el.id}
             className={`svg-element delay-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={{
-              left: el.x,
-              top: el.y,
+              left: el.x - offset,
+              top: el.y - offset,
             }}
-            width={40}
-            height={40}
+            width={size}
+            height={size}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
             onClick={e => {
               if (selectedTool === 'Select') {
@@ -3819,18 +3913,25 @@ const Canvas: React.FC<CanvasProps> = ({
             }}
           >
             <circle
-              cx="20"
-              cy="20"
-              r="15"
+              cx={center}
+              cy={center}
+              r={15 * scale}
               fill={el.color || '#000000'}
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+              strokeWidth={el.thickness || 2}
               className={`delay-circle ${isSelected ? 'selected' : ''}`}
             />
-            <text x="20" y="22" className="delay-text">
+            <text
+              x={center}
+              y={center + 2 * scale}
+              className="delay-text"
+              fontSize={14 * scale}
+            >
               8
             </text>
           </svg>
         );
+      }
       case 'Resource Connection': {
         const sx = el.startX || el.x;
         const sy = el.startY || el.y;
