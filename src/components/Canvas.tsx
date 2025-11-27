@@ -3650,7 +3650,11 @@ const Canvas: React.FC<CanvasProps> = ({
               className="element-value-text"
               fill="black" // <-- The fix is here! Black text for the white pool.
             >
-              {el.number !== undefined ? el.number : el.currentPoints || 0}
+              {el.currentPoints !== undefined && el.currentPoints !== null
+                ? el.currentPoints
+                : el.number !== undefined && el.number !== null
+                  ? el.number
+                  : 0}
             </text>
           </svg>
         );
