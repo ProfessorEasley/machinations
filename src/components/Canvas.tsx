@@ -202,6 +202,35 @@ interface GraphElement {
   inhibited?: boolean;
 }
 
+interface ResourceTransfer {
+  connectionId: number;
+  units: number;
+}
+
+interface MovingToken {
+  id: number;
+  connectionId: number;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  started: boolean; // for CSS transition
+}
+
+const recordTransfer = (
+  transfers: ResourceTransfer[] | undefined,
+  conn: GraphElement | undefined,
+  units: number
+): void => {
+  if (!transfers || !conn || conn.type !== 'Resource Connection') return;
+  if (units <= 0) return;
+
+  transfers.push({
+    connectionId: conn.id,
+    units,
+  });
+};
+
 const isResourceLikeConnection = (element: GraphElement) =>
   element.type === 'Resource Connection';
 
@@ -304,6 +333,79 @@ const Canvas: React.FC<CanvasProps> = ({
   const [gameEnded, setGameEnded] = useState(false);
 
   const canvasRef = useRef<HTMLDivElement>(null);
+
+  // ---------- Moving Tokens (for Resource Connections) ----------
+  const TOKEN_TRAVEL_TIME = 600; // ms
+
+  const [movingTokens, setMovingTokens] = useState<MovingToken[]>([]);
+  const nextTokenIdRef = useRef(1);
+
+  const spawnMovingTokens = React.useCallback(
+    (transfers: ResourceTransfer[], elementsSnapshot: GraphElement[]) => {
+      const tokensToAdd: MovingToken[] = [];
+
+      for (const tr of transfers) {
+        const conn = elementsSnapshot.find(
+          el => el.id === tr.connectionId && el.type === 'Resource Connection'
+        );
+        if (!conn) continue;
+
+        const sx = conn.startX ?? conn.x;
+        const sy = conn.startY ?? conn.y;
+        const ex = conn.endX ?? conn.x;
+        const ey = conn.endY ?? conn.y;
+
+        // Don't spawn one dot per unit if it's huge — cap it for performance
+        const unitsToShow = Math.min(tr.units, 3);
+
+        for (let i = 0; i < unitsToShow; i++) {
+          const id = nextTokenIdRef.current++;
+          // tiny perpendicular offset so multiple tokens don't sit exactly on top of each other
+          const offset = (i - (unitsToShow - 1) / 2) * 4;
+
+          tokensToAdd.push({
+            id,
+            connectionId: tr.connectionId,
+            fromX: sx,
+            fromY: sy + offset,
+            toX: ex,
+            toY: ey + offset,
+            started: false,
+          });
+
+          // remove token after it has finished travelling
+          setTimeout(() => {
+            setMovingTokens(prev => prev.filter(t => t.id !== id));
+          }, TOKEN_TRAVEL_TIME + 50);
+        }
+      }
+
+      if (tokensToAdd.length) {
+        setMovingTokens(prev => [...prev, ...tokensToAdd]);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!movingTokens.some(t => !t.started)) return;
+
+    const timeout = setTimeout(() => {
+      setMovingTokens(prev =>
+        prev.map(t => (t.started ? t : { ...t, started: true }))
+      );
+    }, 16); // one frame
+
+    return () => clearTimeout(timeout);
+  }, [movingTokens]);
+
+  if (!isRunning && hasSimulationStarted) {
+    setHasSimulationStarted(false);
+    setElements(currentElements =>
+      currentElements.map(el => ({ ...el, hasStarted: false }))
+    );
+    setMovingTokens([]); // ⬅️ add this
+  }
 
   // ---------- Gate helpers ----------
   const randInt = (min: number, max: number) =>
@@ -631,7 +733,8 @@ const Canvas: React.FC<CanvasProps> = ({
     (
       elementsToUpdate: GraphElement[],
       activationType: 'automatic' | 'onstart' | 'interactive',
-      interactiveElementId?: number
+      interactiveElementId?: number,
+      transfers?: ResourceTransfer[]
     ): GraphElement[] => {
       const nextElements = JSON.parse(
         JSON.stringify(elementsToUpdate)
@@ -827,6 +930,7 @@ const Canvas: React.FC<CanvasProps> = ({
                     (startEl.currentPoints ?? 0) - required
                   );
                 }
+                recordTransfer(transfers, conn, required);
                 // Add to this pool
                 const max = pool.max ?? Infinity;
                 pool.currentPoints = Math.min(
@@ -857,6 +961,7 @@ const Canvas: React.FC<CanvasProps> = ({
                     (startEl.currentPoints ?? 0) - required
                   );
                 }
+                recordTransfer(transfers, conn, required);
                 const max = pool.max ?? Infinity;
                 pool.currentPoints = Math.min(
                   (pool.currentPoints ?? 0) + required,
@@ -893,11 +998,13 @@ const Canvas: React.FC<CanvasProps> = ({
             });
 
             if (allCanAccept && currentResources >= totalOutput) {
-              // Push to all outputs
               outputConns.forEach((conn, idx) => {
                 const endEl = elementMap.get(conn.connectedToEnd!);
                 if (!endEl) return;
                 const amount = outputAmounts[idx];
+
+                recordTransfer(transfers, conn, amount); // ⬅️ add this
+
                 if (endEl.type === 'Drain') {
                   // Drain consumes, do nothing
                 } else if (endEl.type === 'Pool') {
@@ -926,6 +1033,8 @@ const Canvas: React.FC<CanvasProps> = ({
                 if (!endEl) return;
                 const amount = perOutput + (idx < remainder ? 1 : 0);
                 if (amount <= 0) return;
+
+                recordTransfer(transfers, conn, amount);
 
                 if (endEl.type === 'Drain') {
                   // Drain consumes
@@ -1011,23 +1120,19 @@ const Canvas: React.FC<CanvasProps> = ({
           const end = elementMap.get(outConn.connectedToEnd!);
           if (!end) return;
 
+          recordTransfer(transfers, outConn, 1);
+
           if (outConn.type === 'State Connection') {
-            // Trigger-only: discard resource, bump instrumentation
             end.triggerCount = (end.triggerCount ?? 0) + 1;
-            // You can also flip flags or enqueue effects here if needed.
             return;
           }
 
-          // Resource delivery
           if (end.type === 'Pool') {
             const cur = end.currentPoints ?? 0;
             const cap = end.max ?? Infinity;
             if (cur < cap) end.currentPoints = cur + 1;
             return;
           }
-
-          // If Drain (via resource path) => "lost", do nothing.
-          // If other types later need resource, add handling here.
         };
 
         // Run actions
@@ -1114,15 +1219,17 @@ const Canvas: React.FC<CanvasProps> = ({
 
           if (!endElement) return;
 
-          // Check if this is a trigger output (marked with "*")
           const isTrigger = isTriggerOutput(outputConn.text);
 
           if (isTrigger) {
-            // Trigger output: activate the target element
             endElement.triggerCount = (endElement.triggerCount ?? 0) + 1;
           } else {
-            // Normal resource output
             if (endElement.type === 'Pool') {
+              // NEW: visual transfer Source -> Pool
+              if (transfers && amount > 0) {
+                transfers.push({ connectionId: outputConn.id, units: amount });
+              }
+
               const current = endElement.currentPoints || 0;
               const max = endElement.max ?? Infinity;
               endElement.currentPoints = Math.min(current + amount, max);
@@ -1200,6 +1307,7 @@ const Canvas: React.FC<CanvasProps> = ({
                   0,
                   (startEl.currentPoints ?? 0) - required
                 );
+                recordTransfer(transfers, conn, required);
               }
               // Resource is destroyed (Drain consumes)
             });
@@ -1238,6 +1346,7 @@ const Canvas: React.FC<CanvasProps> = ({
                   (startEl.currentPoints ?? 0) - required
                 );
               }
+              recordTransfer(transfers, conn, required);
               // Resource is destroyed (Drain consumes)
 
               // For pull any, trigger immediately when resource is consumed
@@ -1388,6 +1497,7 @@ const Canvas: React.FC<CanvasProps> = ({
                       0,
                       (inputElement.currentPoints ?? 0) - requiredAmount
                     );
+                    recordTransfer(transfers, inputConn, requiredAmount);
                   }
                 }
               }
@@ -1411,6 +1521,9 @@ const Canvas: React.FC<CanvasProps> = ({
                 if (outputElement && outputElement.type === 'Pool') {
                   const current = outputElement.currentPoints ?? 0;
                   const max = outputElement.max ?? Infinity;
+
+                  recordTransfer(transfers, outputConn, outputAmount);
+
                   outputElement.currentPoints = Math.min(
                     current + outputAmount,
                     max
@@ -1439,6 +1552,7 @@ const Canvas: React.FC<CanvasProps> = ({
                   if (available > 0) {
                     inputElement.currentPoints =
                       (inputElement.currentPoints ?? 0) - available;
+                    recordTransfer(transfers, inputConn, available);
                     const resourceKey = inputConn.text || 'default';
                     const current = convertor.inputResources![resourceKey] || 0;
                     convertor.inputResources![resourceKey] =
@@ -1571,16 +1685,21 @@ const Canvas: React.FC<CanvasProps> = ({
         // Process each action
         for (let a = 0; a < actions; a++) {
           if (isIncomplete) {
-            // Incomplete trader behaves like a convertor
             processIncompleteTrader(
               trader,
               inputConns,
               outputConns,
-              elementMap
+              elementMap,
+              transfers
             );
           } else {
-            // Complete trader - ensure resource conservation
-            processCompleteTrader(trader, inputConns, outputConns, elementMap);
+            processCompleteTrader(
+              trader,
+              inputConns,
+              outputConns,
+              elementMap,
+              transfers
+            );
           }
         }
 
@@ -1842,6 +1961,24 @@ const Canvas: React.FC<CanvasProps> = ({
     []
   );
 
+  const runSimulationAndCollectTransfers = useCallback(
+    (
+      elementsToUpdate: GraphElement[],
+      activationType: 'automatic' | 'onstart' | 'interactive',
+      interactiveElementId?: number
+    ): { nextElements: GraphElement[]; transfers: ResourceTransfer[] } => {
+      const transfers: ResourceTransfer[] = [];
+      const nextElements = runSimulationTick(
+        elementsToUpdate,
+        activationType,
+        interactiveElementId,
+        transfers
+      );
+      return { nextElements, transfers };
+    },
+    [runSimulationTick]
+  );
+
   // Helper function to collect resources for Pull Any mode
   const collectResourcesForPullAny = (
     trader: GraphElement,
@@ -1883,7 +2020,8 @@ const Canvas: React.FC<CanvasProps> = ({
     trader: GraphElement,
     inputConns: GraphElement[],
     outputConns: GraphElement[],
-    elementMap: Map<number, GraphElement>
+    elementMap: Map<number, GraphElement>,
+    transfers?: ResourceTransfer[]
   ) => {
     // Parse input connection labels to determine required resources
     // Use connection ID as key to handle multiple connections
@@ -1948,6 +2086,7 @@ const Canvas: React.FC<CanvasProps> = ({
                 0,
                 (inputElement.currentPoints ?? 0) - requiredAmount
               );
+              recordTransfer(transfers, inputConn, requiredAmount);
             }
             // Source doesn't need to be consumed (infinite)
           }
@@ -1994,6 +2133,7 @@ const Canvas: React.FC<CanvasProps> = ({
               if (outputElement && outputElement.type === 'Pool') {
                 const current = outputElement.currentPoints ?? 0;
                 const max = outputElement.max ?? Infinity;
+                recordTransfer(transfers, outputConn, outputAmount);
                 outputElement.currentPoints = Math.min(
                   current + outputAmount,
                   max
@@ -2097,7 +2237,8 @@ const Canvas: React.FC<CanvasProps> = ({
     trader: GraphElement,
     inputConns: GraphElement[],
     outputConns: GraphElement[],
-    elementMap: Map<number, GraphElement>
+    elementMap: Map<number, GraphElement>,
+    transfers?: ResourceTransfer[]
   ) => {
     // Parse input connection labels to determine required resources
     // Use connection ID as key to handle multiple connections
@@ -2261,6 +2402,7 @@ const Canvas: React.FC<CanvasProps> = ({
                 0,
                 (inputElement.currentPoints ?? 0) - requiredAmount
               );
+              recordTransfer(transfers, inputConn, requiredAmount);
             }
             // Source doesn't need to be consumed (infinite)
           }
@@ -2394,10 +2536,17 @@ const Canvas: React.FC<CanvasProps> = ({
   };
 
   const handleInteractiveAction = (elementId: number) => {
-    // This will only be called by onClick when isRunning is true.
-    setElements(currentElements =>
-      runSimulationTick(currentElements, 'interactive', elementId)
-    );
+    setElements(currentElements => {
+      const { nextElements, transfers } = runSimulationAndCollectTransfers(
+        currentElements,
+        'interactive',
+        elementId
+      );
+      if (transfers.length) {
+        spawnMovingTokens(transfers, nextElements);
+      }
+      return nextElements;
+    });
   };
 
   useEffect(() => {
@@ -2408,9 +2557,16 @@ const Canvas: React.FC<CanvasProps> = ({
       console.log('--- Running OnStart ---'); // LOG
       try {
         // Add try...catch
-        setElements(currentElements =>
-          runSimulationTick(currentElements, 'onstart')
-        );
+        setElements(currentElements => {
+          const { nextElements, transfers } = runSimulationAndCollectTransfers(
+            currentElements,
+            'onstart'
+          );
+          if (transfers.length) {
+            spawnMovingTokens(transfers, nextElements);
+          }
+          return nextElements;
+        });
       } catch (error) {
         console.error('⛔️ Error during OnStart tick:', error); // Log the error
         // Optionally stop simulation on error:
@@ -2427,12 +2583,12 @@ const Canvas: React.FC<CanvasProps> = ({
         try {
           // Add try...catch
           setElements(currentElements => {
-            // Optional: Log state before if needed for complex bugs
-            // console.log('Elements BEFORE tick:', JSON.stringify(currentElements));
-            const nextState = runSimulationTick(currentElements, 'automatic');
-            // Optional: Log state after if needed
-            // console.log('Elements AFTER tick:', JSON.stringify(nextState));
-            return nextState;
+            const { nextElements, transfers } =
+              runSimulationAndCollectTransfers(currentElements, 'automatic');
+            if (transfers.length) {
+              spawnMovingTokens(transfers, nextElements);
+            }
+            return nextElements;
           });
         } catch (error) {
           console.error('⛔️ Error during Automatic tick:', error); // Log the error
@@ -4497,6 +4653,27 @@ const Canvas: React.FC<CanvasProps> = ({
       {displayElements.map(renderElement)}
       {renderConnectionPreview()}
       {renderSelectionBox()}
+      {movingTokens.map(token => (
+        <div
+          key={token.id}
+          className="resource-token"
+          style={{
+            position: 'absolute',
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            borderColor: '#ffffff',
+            borderWidth: 1,
+            borderStyle: 'solid',
+            backgroundColor: '#000000',
+            pointerEvents: 'none',
+            transform: `translate(${token.started ? token.toX : token.fromX}px, ${token.started ? token.toY : token.fromY}px)`,
+            transition: token.started
+              ? `transform ${TOKEN_TRAVEL_TIME}ms linear`
+              : 'none',
+          }}
+        />
+      ))}
     </div>
   );
 };
