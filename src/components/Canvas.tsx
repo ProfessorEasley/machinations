@@ -301,7 +301,9 @@ const Canvas: React.FC<CanvasProps> = ({
   const [connectionType, setConnectionType] = useState<GraphElementType | null>(
     null
   );
-  const stateConnectionMemoryRef = useRef<Map<number, number>>(new Map());
+
+  const [gameEnded, setGameEnded] = useState(false);
+
   const canvasRef = useRef<HTMLDivElement>(null);
 
   // ---------- Gate helpers ----------
@@ -626,19 +628,18 @@ const Canvas: React.FC<CanvasProps> = ({
     }
   };
 
-  const runSimulationTick = (
-    elementsToUpdate: GraphElement[],
-    activationType: 'automatic' | 'onstart' | 'interactive',
-    interactiveElementId?: number
-  ): GraphElement[] => {
-    const stateMemory = stateConnectionMemoryRef.current;
-    const activeStateConnectionIds = new Set<number>();
-    const nextElements = JSON.parse(
-      JSON.stringify(elementsToUpdate)
-    ) as GraphElement[];
-    const elementMap = new Map<number, GraphElement>(
-      nextElements.map(el => [el.id, el])
-    );
+  const runSimulationTick = useCallback(
+    (
+      elementsToUpdate: GraphElement[],
+      activationType: 'automatic' | 'onstart' | 'interactive',
+      interactiveElementId?: number
+    ): GraphElement[] => {
+      const nextElements = JSON.parse(
+        JSON.stringify(elementsToUpdate)
+      ) as GraphElement[];
+      const elementMap = new Map<number, GraphElement>(
+        nextElements.map(el => [el.id, el])
+      );
 
       // PASS 0: initialize check
       if (activationType === 'onstart') {
@@ -817,25 +818,42 @@ const Canvas: React.FC<CanvasProps> = ({
       const endElement = elementMap.get(connection.connectedToEnd);
       if (!startElement || !endElement) continue;
 
-      // NEW: do not let generic logic touch Gate outputs; Gate handles its own routing.
-      if (startElement.type === 'Gate') continue;
+        const startEl = elementMap.get(connection.connectedToStart);
+        const endEl = elementMap.get(connection.connectedToEnd);
+        if (!startEl || !endEl) continue;
 
-      // --- Safety Check for Transfer Amount ---
-      let transferAmount = parseInt(connection.text || '0', 10);
-      if (isNaN(transferAmount)) transferAmount = 0;
-      if (transferAmount === 0) continue;
+        const labelText = (connection.text ?? '').trim();
+        const kind = classifyLabel(labelText);
 
-      // Case 1: Source -> Pool (handled in PASS 2.5 for proper label parsing)
-      // Case 2: Pool -> Drain (handled in PASS 2.7 for proper label parsing)
-    }
+        if (kind === 'cond') {
+          const fn = parseCond(labelText);
+          if (fn) {
+            const value = getElementValue(startEl);
+            endEl.inhibited = !fn(value);
+          }
+        } else if (kind === 'interval') {
+          const range = parseInterval(labelText);
+          if (range) {
+            const value = getElementValue(startEl);
+            endEl.inhibited = !(value >= range[0] && value <= range[1]);
+          }
+        }
 
-    const consumePassiveTrigger = (el: GraphElement) => {
-      if ((el.triggerCount ?? 0) > 0) {
-        el.triggerCount = (el.triggerCount ?? 0) - 1;
-        return true;
+        const labelLower = labelText.toLowerCase();
+        if (
+          labelLower === 'trigger' ||
+          labelLower === 'fire' ||
+          startEl.type === 'Gate'
+        ) {
+          endEl.triggerCount = (endEl.triggerCount ?? 0) + 1;
+          continue;
+        }
+
+        if (kind === 'prob' || kind === 'empty') {
+          const delta = parseConnectionLabel(labelText);
+          applyStateConnectionDelta(endEl, delta);
+        }
       }
-      return false;
-    };
 
     // --------- PASS 1.5: process Pools with active firing modes ----------
     for (const pool of nextElements) {
@@ -859,12 +877,39 @@ const Canvas: React.FC<CanvasProps> = ({
         if (pool.activation === 'onstart' && !pool.hasStarted)
           isTriggerActive = true;
       }
-      // Passive pools only fire when triggered externally (not in this pass)
 
         if (!isTriggerActive) continue;
+      const consumePassiveTrigger = (el: GraphElement) => {
+        if ((el.triggerCount ?? 0) > 0) {
+          el.triggerCount = (el.triggerCount ?? 0) - 1;
+          return true;
+        }
+        return false;
+      };
 
-      const poolPullMode = pool.pullMode || 'pull any';
-      const currentResources = pool.currentPoints || 0;
+      // --------- PASS 1.5: process Pools with active firing modes ----------
+      for (const pool of nextElements) {
+        if (pool.type !== 'Pool') continue;
+
+        // Activation check
+        let isTriggerActive = false;
+        if (activationType === 'automatic') {
+          if (pool.activation === 'automatic') isTriggerActive = true;
+        } else if (
+          pool.activation === 'passive' &&
+          consumePassiveTrigger(pool)
+        ) {
+          isTriggerActive = true;
+        } else if (activationType === 'interactive') {
+          if (pool.activation === 'interactive') {
+            isTriggerActive =
+              !interactiveElementId || pool.id === interactiveElementId;
+          }
+        } else if (activationType === 'onstart') {
+          if (pool.activation === 'onstart' && !pool.hasStarted)
+            isTriggerActive = true;
+        }
+        // Passive pools only fire when triggered externally (not in this pass)
 
       // Get input connections (connections ending at this pool)
       const inputConns = nextElements.filter(
@@ -875,106 +920,124 @@ const Canvas: React.FC<CanvasProps> = ({
       const outputConns = nextElements.filter(
         c => isResourceLikeConnection(c) && c.connectedToStart === pool.id
       );
+        if (!isTriggerActive) continue;
 
-      // Handle PULL modes (pull resources from inputs)
-      if (poolPullMode === 'pull any' || poolPullMode === 'pull all') {
-        if (inputConns.length === 0) continue;
+        const poolPullMode = pool.pullMode || 'pull any';
+        const currentResources = pool.currentPoints || 0;
+
+        // Get input connections (connections ending at this pool)
+        const inputConns = nextElements.filter(
+          c => isResourceLikeConnection(c) && c.connectedToEnd === pool.id
+        );
+
+          // Parse required amounts from input connections
+          const requiredAmounts: number[] = inputConns.map(conn =>
+            parseConnectionLabel(conn.text)
+          );
+        // Get output connections (connections starting at this pool)
+        const outputConns = nextElements.filter(
+          c => isResourceLikeConnection(c) && c.connectedToStart === pool.id
+        );
+
+        // Handle PULL modes (pull resources from inputs)
+        if (poolPullMode === 'pull any' || poolPullMode === 'pull all') {
+          if (inputConns.length === 0) continue;
 
           // Parse required amounts from input connections
           const requiredAmounts: number[] = inputConns.map(conn =>
             parseConnectionLabel(conn.text)
           );
 
-        if (poolPullMode === 'pull all') {
-          // Pull all: need all inputs available simultaneously
-          const allAvailable = inputConns.every((conn, idx) => {
-            const startEl = elementMap.get(conn.connectedToStart!);
-            if (!startEl) return false;
-            const required = requiredAmounts[idx];
-            if (startEl.type === 'Source') return true; // Source is infinite
-            if (startEl.type === 'Pool')
-              return (startEl.currentPoints ?? 0) >= required;
-            return false;
-          });
-
-          if (allAvailable) {
-            // Consume from all inputs
-            inputConns.forEach((conn, idx) => {
+          if (poolPullMode === 'pull all') {
+            // Pull all: need all inputs available simultaneously
+            const allAvailable = inputConns.every((conn, idx) => {
               const startEl = elementMap.get(conn.connectedToStart!);
-              if (!startEl) return;
+              if (!startEl) return false;
               const required = requiredAmounts[idx];
-              if (startEl.type === 'Source') {
-                // Source produces, nothing to consume
-              } else if (startEl.type === 'Pool') {
-                startEl.currentPoints = Math.max(
-                  0,
-                  (startEl.currentPoints ?? 0) - required
-                );
-              }
-              // Add to this pool
-              const max = pool.max ?? Infinity;
-              pool.currentPoints = Math.min(
-                (pool.currentPoints ?? 0) + required,
-                max
-              );
+              if (startEl.type === 'Source') return true; // Source is infinite
+              if (startEl.type === 'Pool')
+                return (startEl.currentPoints ?? 0) >= required;
+              return false;
             });
-          }
-        } else {
-          // Pull any: attempt to pull from any available input
-          for (let idx = 0; idx < inputConns.length; idx++) {
-            const conn = inputConns[idx];
-            const startEl = elementMap.get(conn.connectedToStart!);
-            if (!startEl) continue;
-            const required = requiredAmounts[idx];
 
-            let canPull = false;
-            if (startEl.type === 'Source') {
-              canPull = true;
-            } else if (startEl.type === 'Pool') {
-              canPull = (startEl.currentPoints ?? 0) >= required;
-            }
-
-            if (canPull) {
-              if (startEl.type === 'Pool') {
-                startEl.currentPoints = Math.max(
-                  0,
-                  (startEl.currentPoints ?? 0) - required
+            if (allAvailable) {
+              // Consume from all inputs
+              inputConns.forEach((conn, idx) => {
+                const startEl = elementMap.get(conn.connectedToStart!);
+                if (!startEl) return;
+                const required = requiredAmounts[idx];
+                if (startEl.type === 'Source') {
+                  // Source produces, nothing to consume
+                } else if (startEl.type === 'Pool') {
+                  startEl.currentPoints = Math.max(
+                    0,
+                    (startEl.currentPoints ?? 0) - required
+                  );
+                }
+                // Add to this pool
+                const max = pool.max ?? Infinity;
+                pool.currentPoints = Math.min(
+                  (pool.currentPoints ?? 0) + required,
+                  max
                 );
+              });
+            }
+          } else {
+            // Pull any: attempt to pull from any available input
+            for (let idx = 0; idx < inputConns.length; idx++) {
+              const conn = inputConns[idx];
+              const startEl = elementMap.get(conn.connectedToStart!);
+              if (!startEl) continue;
+              const required = requiredAmounts[idx];
+
+              let canPull = false;
+              if (startEl.type === 'Source') {
+                canPull = true;
+              } else if (startEl.type === 'Pool') {
+                canPull = (startEl.currentPoints ?? 0) >= required;
               }
-              const max = pool.max ?? Infinity;
-              pool.currentPoints = Math.min(
-                (pool.currentPoints ?? 0) + required,
-                max
-              );
-              break; // Only pull from one input in pull any mode
+
+              if (canPull) {
+                if (startEl.type === 'Pool') {
+                  startEl.currentPoints = Math.max(
+                    0,
+                    (startEl.currentPoints ?? 0) - required
+                  );
+                }
+                const max = pool.max ?? Infinity;
+                pool.currentPoints = Math.min(
+                  (pool.currentPoints ?? 0) + required,
+                  max
+                );
+                break; // Only pull from one input in pull any mode
+              }
             }
           }
         }
-      }
 
-      // Handle PUSH modes (push resources to outputs)
-      if (poolPullMode === 'push any' || poolPullMode === 'push all') {
-        if (outputConns.length === 0 || currentResources <= 0) continue;
+        // Handle PUSH modes (push resources to outputs)
+        if (poolPullMode === 'push any' || poolPullMode === 'push all') {
+          if (outputConns.length === 0 || currentResources <= 0) continue;
 
-        // Parse amounts for output connections
-        const outputAmounts: number[] = outputConns.map(conn =>
-          parseConnectionLabel(conn.text)
-        );
-        const totalOutput = outputAmounts.reduce((sum, amt) => sum + amt, 0);
+          // Parse amounts for output connections
+          const outputAmounts: number[] = outputConns.map(conn =>
+            parseConnectionLabel(conn.text)
+          );
+          const totalOutput = outputAmounts.reduce((sum, amt) => sum + amt, 0);
 
-        if (poolPullMode === 'push all') {
-          // Push all: only push if all outputs can accept resources
-          const allCanAccept = outputConns.every((conn, idx) => {
-            const endEl = elementMap.get(conn.connectedToEnd!);
-            if (!endEl) return false;
-            const amount = outputAmounts[idx];
-            if (endEl.type === 'Drain') return true; // Drain always accepts
-            if (endEl.type === 'Pool') {
-              const max = endEl.max ?? Infinity;
-              return (endEl.currentPoints ?? 0) + amount <= max;
-            }
-            return false;
-          });
+          if (poolPullMode === 'push all') {
+            // Push all: only push if all outputs can accept resources
+            const allCanAccept = outputConns.every((conn, idx) => {
+              const endEl = elementMap.get(conn.connectedToEnd!);
+              if (!endEl) return false;
+              const amount = outputAmounts[idx];
+              if (endEl.type === 'Drain') return true; // Drain always accepts
+              if (endEl.type === 'Pool') {
+                const max = endEl.max ?? Infinity;
+                return (endEl.currentPoints ?? 0) + amount <= max;
+              }
+              return false;
+            });
 
             if (allCanAccept && currentResources >= totalOutput) {
               // Push to all outputs
@@ -1026,8 +1089,8 @@ const Canvas: React.FC<CanvasProps> = ({
           }
         }
 
-      if (activationType === 'onstart') pool.hasStarted = true;
-    }
+        if (activationType === 'onstart') pool.hasStarted = true;
+      }
 
       // --------- PASS 2: process Gates ----------
       for (const gate of nextElements) {
@@ -1237,249 +1300,6 @@ const Canvas: React.FC<CanvasProps> = ({
         const isTarget =
           !interactiveElementId || drain.id === interactiveElementId;
 
-        if (!(isTriggerActive && canFire && isTarget)) continue;
-
-        // Collect input connections (resource connections ending at this drain)
-        const inputConns = nextElements.filter(
-          c => isResourceLikeConnection(c) && c.connectedToEnd === drain.id
-        );
-
-        // Collect output connections (state connections for trigger outputs)
-        const outputConns = nextElements.filter(
-          c => c.type === 'State Connection' && c.connectedToStart === drain.id
-        );
-
-        // Check if drain has trigger output (marked with "*")
-        const hasTriggerOutput = outputConns.some(conn =>
-          isTriggerOutput(conn.text)
-        );
-
-        // Parse input connection labels
-        const requiredAmounts: number[] = inputConns.map(conn =>
-          parseConnectionLabel(conn.text)
-        );
-
-        const drainPullMode = drain.pullMode || 'pull any';
-
-        if (drainPullMode === 'pull all') {
-          // Pull all: need all inputs available simultaneously
-          const allAvailable = inputConns.every((conn, idx) => {
-            const startEl = elementMap.get(conn.connectedToStart!);
-            if (!startEl) return false;
-            const required = requiredAmounts[idx];
-            if (startEl.type === 'Source') return true; // Source is infinite
-            if (startEl.type === 'Pool')
-              return (startEl.currentPoints ?? 0) >= required;
-            return false;
-          });
-
-          if (allAvailable) {
-            // Consume from all inputs
-            inputConns.forEach((conn, idx) => {
-              const startEl = elementMap.get(conn.connectedToStart!);
-              if (!startEl) return;
-              const required = requiredAmounts[idx];
-              if (startEl.type === 'Pool') {
-                startEl.currentPoints = Math.max(
-                  0,
-                  (startEl.currentPoints ?? 0) - required
-                );
-              }
-              // Resource is destroyed (Drain consumes)
-            });
-
-            // If trigger output exists, only trigger when all resources received
-            if (hasTriggerOutput) {
-              outputConns.forEach(conn => {
-                if (isTriggerOutput(conn.text)) {
-                  const endEl = elementMap.get(conn.connectedToEnd!);
-                  if (endEl) {
-                    endEl.triggerCount = (endEl.triggerCount ?? 0) + 1;
-                  }
-                }
-              });
-            }
-          }
-        } else {
-          // Pull any: attempt to pull from any available input
-          for (let idx = 0; idx < inputConns.length; idx++) {
-            const conn = inputConns[idx];
-            const startEl = elementMap.get(conn.connectedToStart!);
-            if (!startEl) continue;
-            const required = requiredAmounts[idx];
-
-            let canPull = false;
-            if (startEl.type === 'Source') {
-              canPull = true;
-            } else if (startEl.type === 'Pool') {
-              canPull = (startEl.currentPoints ?? 0) >= required;
-            }
-
-            if (canPull) {
-              if (startEl.type === 'Pool') {
-                startEl.currentPoints = Math.max(
-                  0,
-                  (startEl.currentPoints ?? 0) - required
-                );
-              }
-              // Resource is destroyed (Drain consumes)
-
-              // For pull any, trigger immediately when resource is consumed
-              if (hasTriggerOutput) {
-                outputConns.forEach(conn => {
-                  if (isTriggerOutput(conn.text)) {
-                    const endEl = elementMap.get(conn.connectedToEnd!);
-                    if (endEl) {
-                      endEl.triggerCount = (endEl.triggerCount ?? 0) + 1;
-                    }
-                  }
-                });
-              }
-              break; // Only pull from one input in pull any mode
-            }
-          }
-        }
-
-        if (activationType === 'onstart') drain.hasStarted = true;
-      }
-
-      // --------- PASS 3: process Convertors ----------
-      for (const convertor of nextElements) {
-        if (convertor.type !== 'Convertor') continue;
-
-        // Activation check
-        let isTriggerActive = false;
-        if (activationType === 'automatic') {
-          if (convertor.activation === 'automatic') isTriggerActive = true;
-        } else if (
-          convertor.activation === 'passive' &&
-          consumePassiveTrigger(convertor)
-        ) {
-          isTriggerActive = true;
-        } else {
-          if (convertor.activation === activationType) isTriggerActive = true;
-        }
-        const canFire = activationType !== 'onstart' || !convertor.hasStarted;
-        const isTarget =
-          !interactiveElementId || convertor.id === interactiveElementId;
-
-        if (!(isTriggerActive && canFire && isTarget)) continue;
-
-        // Initialize convertor storage if not exists
-        if (!convertor.inputResources) {
-          convertor.inputResources = {};
-        }
-        if (!convertor.outputResources) {
-          convertor.outputResources = {};
-        }
-        if (!convertor.conversionRate) {
-          convertor.conversionRate = {};
-        }
-
-        // Collect input connections (resource connections ending at this convertor)
-        const inputConns = nextElements.filter(
-          c => isResourceLikeConnection(c) && c.connectedToEnd === convertor.id
-        );
-
-        // Collect output connections (resource connections starting at this convertor)
-        const outputConns = nextElements.filter(
-          c =>
-            isResourceLikeConnection(c) && c.connectedToStart === convertor.id
-        );
-
-        if (inputConns.length === 0 || outputConns.length === 0) {
-          if (activationType === 'onstart') convertor.hasStarted = true;
-          continue;
-        }
-
-        // Determine actions this tick
-        const actions = Math.max(1, convertor.actions ?? 1);
-
-        // Process each action
-        for (let a = 0; a < actions; a++) {
-          // Parse input connection labels to determine required resources
-          // Use connection ID as key to handle multiple connections with same label
-          const requiredInputs: Map<number, number> = new Map();
-          for (const inputConn of inputConns) {
-            const amount = parseConnectionLabel(inputConn.text);
-            if (amount > 0) {
-              requiredInputs.set(inputConn.id, amount);
-            }
-            return false;
-          });
-
-          if (allCanAccept && currentResources >= totalOutput) {
-            // Push to all outputs
-            outputConns.forEach((conn, idx) => {
-              const endEl = elementMap.get(conn.connectedToEnd!);
-              if (!endEl) return;
-              const amount = outputAmounts[idx];
-              if (endEl.type === 'Drain') {
-                // Drain consumes, do nothing
-              } else if (endEl.type === 'Pool') {
-                const max = endEl.max ?? Infinity;
-                endEl.currentPoints = Math.min(
-                  (endEl.currentPoints ?? 0) + amount,
-                  max
-                );
-              }
-            });
-            pool.currentPoints = Math.max(0, currentResources - totalOutput);
-          }
-        } else {
-          // Push any: push maximum possible, evenly distribute if needed
-          const available = currentResources;
-          if (available > 0 && totalOutput > 0) {
-            // Calculate how much we can actually push
-            const actualAmount = Math.min(available, totalOutput);
-
-            // Evenly distribute to all outputs
-            const perOutput = Math.floor(actualAmount / outputConns.length);
-            const remainder = actualAmount % outputConns.length;
-
-            outputConns.forEach((conn, idx) => {
-              const endEl = elementMap.get(conn.connectedToEnd!);
-              if (!endEl) return;
-              const amount = perOutput + (idx < remainder ? 1 : 0);
-              if (amount <= 0) return;
-
-              if (endEl.type === 'Drain') {
-                // Drain consumes
-              } else if (endEl.type === 'Pool') {
-                const max = endEl.max ?? Infinity;
-                endEl.currentPoints = Math.min(
-                  (endEl.currentPoints ?? 0) + amount,
-                  max
-                );
-              }
-            });
-            pool.currentPoints = Math.max(0, available - actualAmount);
-          }
-        }
-      }
-
-      if (activationType === 'onstart') pool.hasStarted = true;
-    }
-
-    // --------- PASS 2: process Gates ----------
-    for (const gate of nextElements) {
-      if (gate.type !== 'Gate') continue;
-
-      // Activation gate check
-      let isTriggerActive = false;
-      if (activationType === 'automatic') {
-        if (gate.activation === 'automatic') isTriggerActive = true;
-      } else if (gate.activation === 'passive' && consumePassiveTrigger(gate)) {
-          isTriggerActive = true;
-      } else {
-        if (gate.activation === activationType) isTriggerActive = true;
-      }
-      const canFire = activationType !== 'onstart' || !gate.hasStarted;
-      const isTarget =
-        !interactiveElementId || gate.id === interactiveElementId;
-
-      if (!(isTriggerActive && canFire && isTarget)) continue;
-
       // Collect inputs (resource connections ending at this gate)
       const inputConns = nextElements.filter(
         c => isResourceLikeConnection(c) && c.connectedToEnd === gate.id
@@ -1614,7 +1434,7 @@ const Canvas: React.FC<CanvasProps> = ({
             }
             // Resource is destroyed (Drain consumes)
 
-            // For pull any, trigger immediately when resource is consumed
+            // If trigger output exists, only trigger when all resources received
             if (hasTriggerOutput) {
               outputConns.forEach(conn => {
                 if (isTriggerOutput(conn.text)) {
@@ -1625,13 +1445,14 @@ const Canvas: React.FC<CanvasProps> = ({
                 }
               });
             }
-            break; // Only pull from one input in pull any mode
           }
-        }
-      }
-
-      if (activationType === 'onstart') drain.hasStarted = true;
-    }
+        } else {
+          // Pull any: attempt to pull from any available input
+          for (let idx = 0; idx < inputConns.length; idx++) {
+            const conn = inputConns[idx];
+            const startEl = elementMap.get(conn.connectedToStart!);
+            if (!startEl) continue;
+            const required = requiredAmounts[idx];
 
     // --------- PASS 3: process Convertors ----------
     for (const convertor of nextElements) {
@@ -1652,18 +1473,39 @@ const Canvas: React.FC<CanvasProps> = ({
       const canFire = activationType !== 'onstart' || !convertor.hasStarted;
       const isTarget =
         !interactiveElementId || convertor.id === interactiveElementId;
+            let canPull = false;
+            if (startEl.type === 'Source') {
+              canPull = true;
+            } else if (startEl.type === 'Pool') {
+              canPull = (startEl.currentPoints ?? 0) >= required;
+            }
 
-      if (!(isTriggerActive && canFire && isTarget)) continue;
+            if (canPull) {
+              if (startEl.type === 'Pool') {
+                startEl.currentPoints = Math.max(
+                  0,
+                  (startEl.currentPoints ?? 0) - required
+                );
+              }
+              // Resource is destroyed (Drain consumes)
 
-      // Initialize convertor storage if not exists
-      if (!convertor.inputResources) {
-        convertor.inputResources = {};
-      }
-      if (!convertor.outputResources) {
-        convertor.outputResources = {};
-      }
-      if (!convertor.conversionRate) {
-        convertor.conversionRate = {};
+              // For pull any, trigger immediately when resource is consumed
+              if (hasTriggerOutput) {
+                outputConns.forEach(conn => {
+                  if (isTriggerOutput(conn.text)) {
+                    const endEl = elementMap.get(conn.connectedToEnd!);
+                    if (endEl) {
+                      endEl.triggerCount = (endEl.triggerCount ?? 0) + 1;
+                    }
+                  }
+                });
+              }
+              break; // Only pull from one input in pull any mode
+            }
+          }
+        }
+
+        if (activationType === 'onstart') drain.hasStarted = true;
       }
 
       // Collect input connections (resource connections ending at this convertor)
@@ -1675,59 +1517,115 @@ const Canvas: React.FC<CanvasProps> = ({
       const outputConns = nextElements.filter(
         c => isResourceLikeConnection(c) && c.connectedToStart === convertor.id
       );
+      // --------- PASS 3: process Convertors ----------
+      for (const convertor of nextElements) {
+        if (convertor.type !== 'Convertor') continue;
 
-      if (inputConns.length === 0 || outputConns.length === 0) {
-        if (activationType === 'onstart') convertor.hasStarted = true;
-        continue;
-      }
+        // Activation check
+        let isTriggerActive = false;
+        if (activationType === 'automatic') {
+          if (convertor.activation === 'automatic') isTriggerActive = true;
+        } else if (
+          convertor.activation === 'passive' &&
+          consumePassiveTrigger(convertor)
+        ) {
+          isTriggerActive = true;
+        } else {
+          if (convertor.activation === activationType) isTriggerActive = true;
+        }
+        const canFire = activationType !== 'onstart' || !convertor.hasStarted;
+        const isTarget =
+          !interactiveElementId || convertor.id === interactiveElementId;
 
-      // Determine actions this tick
-      const actions = Math.max(1, convertor.actions ?? 1);
+        if (!(isTriggerActive && canFire && isTarget)) continue;
 
-      // Process each action
-      for (let a = 0; a < actions; a++) {
-        // Parse input connection labels to determine required resources
-        // Use connection ID as key to handle multiple connections with same label
-        const requiredInputs: Map<number, number> = new Map();
-        for (const inputConn of inputConns) {
-          const amount = parseConnectionLabel(inputConn.text);
-          if (amount > 0) {
-            requiredInputs.set(inputConn.id, amount);
-          }
+        // Initialize convertor storage if not exists
+        if (!convertor.inputResources) {
+          convertor.inputResources = {};
+        }
+        if (!convertor.outputResources) {
+          convertor.outputResources = {};
+        }
+        if (!convertor.conversionRate) {
+          convertor.conversionRate = {};
         }
 
-        // Parse output connection labels to determine output resources
-        // Use connection ID as key to handle multiple connections with same label
-        const outputAmounts: Map<number, number> = new Map();
-        for (const outputConn of outputConns) {
-          const amount = parseConnectionLabel(outputConn.text);
-          if (amount > 0) {
-            outputAmounts.set(outputConn.id, amount);
-          }
+        // Collect input connections (resource connections ending at this convertor)
+        const inputConns = nextElements.filter(
+          c => isResourceLikeConnection(c) && c.connectedToEnd === convertor.id
+        );
+
+        // Collect output connections (resource connections starting at this convertor)
+        const outputConns = nextElements.filter(
+          c =>
+            isResourceLikeConnection(c) && c.connectedToStart === convertor.id
+        );
+
+        if (inputConns.length === 0 || outputConns.length === 0) {
+          if (activationType === 'onstart') convertor.hasStarted = true;
+          continue;
         }
 
-        // Check if we can satisfy all input requirements
-        let canConvert = true;
-        if (convertor.pullMode === 'pull all') {
-          // For pull all: need all inputs available simultaneously
-          for (const [connId, requiredAmount] of requiredInputs.entries()) {
-            const connection = inputConns.find(c => c.id === connId);
-            if (!connection) {
-              canConvert = false;
-              break;
+        // Determine actions this tick
+        const actions = Math.max(1, convertor.actions ?? 1);
+
+        // Process each action
+        for (let a = 0; a < actions; a++) {
+          // Parse input connection labels to determine required resources
+          // Use connection ID as key to handle multiple connections with same label
+          const requiredInputs: Map<number, number> = new Map();
+          for (const inputConn of inputConns) {
+            const amount = parseConnectionLabel(inputConn.text);
+            if (amount > 0) {
+              requiredInputs.set(inputConn.id, amount);
             }
-            const inputElement = connection.connectedToStart
-              ? elementMap.get(connection.connectedToStart)
-              : undefined;
-            if (
-              !inputElement ||
-              (inputElement.type === 'Pool' &&
-                (inputElement.currentPoints ?? 0) < requiredAmount) ||
-              (inputElement.type === 'Source' && false) // Source is always available
-            ) {
-              if (inputElement?.type !== 'Source') {
-              canConvert = false;
-              break;
+          }
+
+          // Parse output connection labels to determine output resources
+          // Use connection ID as key to handle multiple connections with same label
+          const outputAmounts: Map<number, number> = new Map();
+          for (const outputConn of outputConns) {
+            const amount = parseConnectionLabel(outputConn.text);
+            if (amount > 0) {
+              outputAmounts.set(outputConn.id, amount);
+            }
+          }
+
+          // Check if we can satisfy all input requirements
+          let canConvert = true;
+          if (convertor.pullMode === 'pull all') {
+            // For pull all: need all inputs available simultaneously
+            for (const [connId, requiredAmount] of requiredInputs.entries()) {
+              const connection = inputConns.find(c => c.id === connId);
+              if (!connection) {
+                canConvert = false;
+                break;
+              }
+              const inputElement = connection.connectedToStart
+                ? elementMap.get(connection.connectedToStart)
+                : undefined;
+              if (
+                !inputElement ||
+                (inputElement.type === 'Pool' &&
+                  (inputElement.currentPoints ?? 0) < requiredAmount) ||
+                (inputElement.type === 'Source' && false) // Source is always available
+              ) {
+                if (inputElement?.type !== 'Source') {
+                  canConvert = false;
+                  break;
+                }
+              }
+            } else {
+              // Consume from stored resources
+              for (const [connId, requiredAmount] of requiredInputs.entries()) {
+                const connection = inputConns.find(c => c.id === connId);
+                if (!connection) continue;
+                const resourceKey = connection.text || 'default';
+                const current = convertor.inputResources![resourceKey] || 0;
+                convertor.inputResources![resourceKey] =
+                  current - requiredAmount;
+              }
+            }
           } else {
             // For pull any: check if we have stored enough resources
             // Use connection text as key for storage
@@ -1843,56 +1741,11 @@ const Canvas: React.FC<CanvasProps> = ({
       } else {
         if (trader.activation === activationType) isTriggerActive = true;
       }
-      const canFire = activationType !== 'onstart' || !trader.hasStarted;
-      const isTarget =
-        !interactiveElementId || trader.id === interactiveElementId;
 
-      if (!(isTriggerActive && canFire && isTarget)) continue;
+      // --------- PASS 4: process Traders ----------
+      for (const trader of nextElements) {
+        if (trader.type !== 'Trader') continue;
 
-      // Initialize trader storage if not exists
-      if (!trader.traderInputs) {
-        trader.traderInputs = {};
-      }
-      if (!trader.traderOutputs) {
-        trader.traderOutputs = {};
-      }
-
-      // Collect input connections (resource connections ending at this trader)
-      const inputConns = nextElements.filter(
-        c => isResourceLikeConnection(c) && c.connectedToEnd === trader.id
-      );
-
-      // Collect output connections (resource connections starting at this trader)
-      const outputConns = nextElements.filter(
-        c => isResourceLikeConnection(c) && c.connectedToStart === trader.id
-      );
-
-      // Collect trigger connections (state connections ending at this trader)
-      const triggerConns = nextElements.filter(
-        c => c.type === 'State Connection' && c.connectedToEnd === trader.id
-      );
-
-      if (inputConns.length === 0 || outputConns.length === 0) {
-        if (activationType === 'onstart') trader.hasStarted = true;
-        continue;
-      }
-
-      // Check if trader is incomplete (< 2 inputs or < 2 outputs)
-      const isIncomplete = inputConns.length < 2 || outputConns.length < 2;
-      trader.isIncompleteTrader = isIncomplete;
-
-      // ACTIVATION: Trader activates in two ways:
-      // 1. Input Activation: Resources arrive at the trader (check if any input has resources available)
-      // 2. Gate/Trigger Activation: A gate or trigger connection fires into the trader
-      let isActivated = false;
-
-      // Check for trigger activation (gate/trigger connection)
-      if (triggerConns.length > 0) {
-        // Check if any trigger connection has fired (has triggerCount)
-        if ((trader.triggerCount ?? 0) > 0) {
-          isActivated = true;
-          // Consume one trigger
-          trader.triggerCount = (trader.triggerCount ?? 0) - 1;
         // Initialize trader storage if not exists
         if (!trader.traderInputs) {
           trader.traderInputs = {};
@@ -1988,36 +1841,30 @@ const Canvas: React.FC<CanvasProps> = ({
       // Determine actions this tick
       const actions = Math.max(1, trader.actions ?? 1);
 
-      // Process each action
-      for (let a = 0; a < actions; a++) {
-        if (isIncomplete) {
-          // Incomplete trader behaves like a convertor
-          processIncompleteTrader(trader, inputConns, outputConns, elementMap);
-        } else {
-          // Complete trader - ensure resource conservation
-          processCompleteTrader(trader, inputConns, outputConns, elementMap);
+        // Check for input activation (resources arriving)
+        if (!isActivated) {
+          // Check if any input connection has resources available
+          for (const inputConn of inputConns) {
+            const inputElement = inputConn.connectedToStart
+              ? elementMap.get(inputConn.connectedToStart)
+              : undefined;
+            if (inputElement) {
+              if (inputElement.type === 'Source') {
+                // Source always has resources
+                isActivated = true;
+                break;
+              } else if (
+                inputElement.type === 'Pool' &&
+                (inputElement.currentPoints ?? 0) > 0
+              ) {
+                // Pool has resources available
+                isActivated = true;
+                break;
+              }
+            }
+          }
         }
-      }
 
-      if (activationType === 'onstart') trader.hasStarted = true;
-    }
-
-    // --------- PASS 5: Calculate Registers ----------
-    // console.log('🔧 [PASS 5] Starting Register calculation...');
-    for (const register of nextElements) {
-      if (register.type !== 'Register') continue;
-
-      // console.log('📊 [Register] Found register:', {
-      // id: register.id,
-      // formula: register.formula,
-      // interactive: register.interactive,
-      // currentValue: register.currentValue,
-      // });
-
-      if (register.interactive === true || register.interactive === 'true') {
-        if (
-          register.currentValue === undefined ||
-          register.currentValue === null
         // Also check activation type (for automatic/passive/interactive/onstart)
         let isTriggerActive = false;
         if (activationType === 'automatic') {
@@ -2368,6 +2215,42 @@ const Canvas: React.FC<CanvasProps> = ({
     }
   };
 
+  // Helper function for incomplete trader (behaves like convertor - can create/destroy resources)
+  const processIncompleteTrader = (
+    trader: GraphElement,
+    inputConns: GraphElement[],
+    elementMap: Map<number, GraphElement>
+  ) => {
+    for (const inputConn of inputConns) {
+      const inputElement = inputConn.connectedToStart
+        ? elementMap.get(inputConn.connectedToStart)
+        : undefined;
+      if (
+        inputElement &&
+        inputElement.type === 'Pool' &&
+        (inputElement.currentPoints ?? 0) > 0
+      ) {
+        const amount = parseConnectionLabel(inputConn.text);
+        const available = Math.min(amount, inputElement.currentPoints ?? 0);
+
+        if (available > 0) {
+          inputElement.currentPoints =
+            (inputElement.currentPoints ?? 0) - available;
+          // Use connection ID as key to uniquely identify each input connection
+          const resourceKey = `conn_${inputConn.id}`;
+          const current = trader.traderInputs![resourceKey] || 0;
+          trader.traderInputs![resourceKey] = current + available;
+        }
+      } else if (inputElement && inputElement.type === 'Source') {
+        // Source has infinite resources, collect the amount specified
+        const amount = parseConnectionLabel(inputConn.text);
+        const resourceKey = `conn_${inputConn.id}`;
+        const current = trader.traderInputs![resourceKey] || 0;
+        trader.traderInputs![resourceKey] = current + amount;
+      }
+    }
+  };
+
       // Helper function for incomplete trader (behaves like convertor - can create/destroy resources)
   const processIncompleteTrader = (
     trader: GraphElement,
@@ -2396,156 +2279,491 @@ const Canvas: React.FC<CanvasProps> = ({
     };
 
     if (trader.pullMode === 'pull all') {
-      const hasAllResources = parsedInputs.every(({ conn, amount }) => {
-        if (amount === 0) return true;
-        const el = conn.connectedToStart
-          ? elementMap.get(conn.connectedToStart)
+      // PULL ALL MODE: Trade only happens if ALL inputs are available simultaneously
+      let canTrade = true;
+
+      // Check if all inputs are available
+      for (const [connId, requiredAmount] of requiredInputs.entries()) {
+        const inputConn = inputConns.find(c => c.id === connId);
+        if (!inputConn) {
+          canTrade = false;
+          break;
+        }
+        const inputElement = inputConn.connectedToStart
+          ? elementMap.get(inputConn.connectedToStart)
           : undefined;
-        if (!el) return false;
-        if (el.type === 'Source') return true;
-        if (el.type === 'Pool') return (el.currentPoints ?? 0) >= amount;
-        return false;
-      });
-      if (!hasAllResources) return;
-      parsedInputs.forEach(({ conn, amount }) => {
-        if (amount > 0) consumeFromInput(conn, amount);
-      });
-    } else {
-      if (!trader.traderInputs) trader.traderInputs = {};
-      parsedInputs.forEach(({ conn, amount }) => {
-        if (amount === 0) return;
-        const el = conn.connectedToStart
-          ? elementMap.get(conn.connectedToStart)
-          : undefined;
-        const key = `conn_${conn.id}`;
-        if (el && el.type === 'Pool' && (el.currentPoints ?? 0) > 0) {
-          const available = Math.min(amount, el.currentPoints ?? 0);
-          if (available > 0) {
-            el.currentPoints = (el.currentPoints ?? 0) - available;
-            trader.traderInputs![key] =
-              (trader.traderInputs![key] || 0) + available;
+        if (!inputElement) {
+          canTrade = false;
+          break;
+        }
+        if (inputElement.type === 'Source') {
+          // Source always has resources
+          continue;
+        } else if (inputElement.type === 'Pool') {
+          if ((inputElement.currentPoints ?? 0) < requiredAmount) {
+            canTrade = false;
+            break;
           }
-        } else if (el && el.type === 'Source') {
-          trader.traderInputs![key] =
-            (trader.traderInputs![key] || 0) + amount;
+        } else {
+          canTrade = false;
+          break;
         }
-      });
+      }
 
-      const hasStored = parsedInputs.every(({ conn, amount }) => {
-        if (amount === 0) return true;
-        const key = `conn_${conn.id}`;
-        return (trader.traderInputs?.[key] || 0) >= amount;
-      });
-      if (!hasStored) return;
-      parsedInputs.forEach(({ conn, amount }) => {
-        const key = `conn_${conn.id}`;
-        trader.traderInputs![key] =
-          (trader.traderInputs![key] || 0) - amount;
-      });
-    }
+      if (canTrade) {
+        // Consume all inputs
+        for (const [connId, requiredAmount] of requiredInputs.entries()) {
+          const inputConn = inputConns.find(c => c.id === connId);
+          if (inputConn) {
+            const inputElement = elementMap.get(inputConn.connectedToStart!);
+            if (inputElement && inputElement.type === 'Pool') {
+              inputElement.currentPoints = Math.max(
+                0,
+                (inputElement.currentPoints ?? 0) - requiredAmount
+              );
+            }
+            // Source doesn't need to be consumed (infinite)
+          }
+        }
 
-    if (inputConns.length > 1 && outputConns.length === 1) {
-      const totalInput = parsedInputs.reduce((sum, entry) => sum + entry.amount, 0);
-      const outputConn = outputConns[0];
-      const outputElement = outputConn.connectedToEnd
-        ? elementMap.get(outputConn.connectedToEnd)
-        : undefined;
-      if (outputElement && outputElement.type === 'Pool') {
-        const current = outputElement.currentPoints ?? 0;
-        const max = outputElement.max ?? Infinity;
-        outputElement.currentPoints = Math.min(current + totalInput, max);
+        // INCOMPLETE TRADER LOGIC:
+        // - If multiple inputs → single output: sum all inputs and send to output
+        // - If single input → multiple outputs: split input and send to all outputs
+        if (inputConns.length > 1 && outputConns.length === 1) {
+          // Multiple inputs, single output: sum all inputs
+          let totalInput = 0;
+          for (const amount of requiredInputs.values()) {
+            totalInput += amount;
+          }
+
+          const outputConn = outputConns[0];
+          const outputElement = elementMap.get(outputConn.connectedToEnd!);
+          if (outputElement && outputElement.type === 'Pool') {
+            const current = outputElement.currentPoints ?? 0;
+            const max = outputElement.max ?? Infinity;
+            outputElement.currentPoints = Math.min(current + totalInput, max);
+          }
+        } else if (inputConns.length === 1 && outputConns.length > 1) {
+          // Single input, multiple outputs: split input to all outputs
+          const inputAmount = requiredInputs.values().next().value || 0;
+
+          for (const outputConn of outputConns) {
+            const outputElement = elementMap.get(outputConn.connectedToEnd!);
+            if (outputElement && outputElement.type === 'Pool') {
+              const current = outputElement.currentPoints ?? 0;
+              const max = outputElement.max ?? Infinity;
+              outputElement.currentPoints = Math.min(
+                current + inputAmount,
+                max
+              );
+            }
+          }
+        } else {
+          // Fallback: use output amounts as specified (for edge cases)
+          for (const [connId, outputAmount] of outputAmounts.entries()) {
+            const outputConn = outputConns.find(c => c.id === connId);
+            if (outputConn) {
+              const outputElement = elementMap.get(outputConn.connectedToEnd!);
+              if (outputElement && outputElement.type === 'Pool') {
+                const current = outputElement.currentPoints ?? 0;
+                const max = outputElement.max ?? Infinity;
+                outputElement.currentPoints = Math.min(
+                  current + outputAmount,
+                  max
+                );
+              }
+            }
+          }
+        }
+      }
+      // If canTrade is false, nothing happens (no partial trade)
+    } else {
+      // PULL ANY MODE: Execute trades when all inputs are satisfied
+      // (Resources are collected before processing, so we check stored resources here)
+
+      // Check if we have enough stored resources for at least one complete trade
+      let canTrade = true;
+      let minTrades = Infinity;
+
+      for (const [connId, requiredAmount] of requiredInputs.entries()) {
+        const resourceKey = `conn_${connId}`;
+        const stored = trader.traderInputs![resourceKey] || 0;
+        if (stored < requiredAmount) {
+          canTrade = false;
+          break;
+        }
+        // Calculate how many trades we can do with this resource
+        const possibleTrades = Math.floor(stored / requiredAmount);
+        minTrades = Math.min(minTrades, possibleTrades);
       }
       return;
     }
 
-    if (inputConns.length === 1 && outputConns.length > 1) {
-      const amount = parsedInputs[0]?.amount ?? 0;
-      outputConns.forEach(outputConn => {
-        const outputElement = outputConn.connectedToEnd
-          ? elementMap.get(outputConn.connectedToEnd)
-          : undefined;
-        if (outputElement && outputElement.type === 'Pool') {
-          const current = outputElement.currentPoints ?? 0;
-          const max = outputElement.max ?? Infinity;
-          outputElement.currentPoints = Math.min(current + amount, max);
-        }
-      });
-      return;
-    }
+      if (canTrade && minTrades > 0) {
+        // Execute as many complete trades as possible
+        const tradesToExecute = minTrades;
 
-    parsedOutputs.forEach(({ conn, amount }) => {
-      if (amount === 0) return;
-      const outputElement = conn.connectedToEnd
-        ? elementMap.get(conn.connectedToEnd)
-        : undefined;
-      if (outputElement && outputElement.type === 'Pool') {
-        const current = outputElement.currentPoints ?? 0;
-        const max = outputElement.max ?? Infinity;
-        outputElement.currentPoints = Math.min(current + amount, max);
+        // Consume stored resources
+        for (const [connId, requiredAmount] of requiredInputs.entries()) {
+          const resourceKey = `conn_${connId}`;
+          const current = trader.traderInputs![resourceKey] || 0;
+          trader.traderInputs![resourceKey] =
+            current - requiredAmount * tradesToExecute;
+        }
+
+        // INCOMPLETE TRADER LOGIC:
+        // - If multiple inputs → single output: sum all inputs and send to output
+        // - If single input → multiple outputs: split input and send to all outputs
+        if (inputConns.length > 1 && outputConns.length === 1) {
+          // Multiple inputs, single output: sum all inputs
+          let totalInputPerTrade = 0;
+          for (const amount of requiredInputs.values()) {
+            totalInputPerTrade += amount;
+          }
+
+          const outputConn = outputConns[0];
+          const outputElement = elementMap.get(outputConn.connectedToEnd!);
+          if (outputElement && outputElement.type === 'Pool') {
+            const current = outputElement.currentPoints ?? 0;
+            const max = outputElement.max ?? Infinity;
+            outputElement.currentPoints = Math.min(
+              current + totalInputPerTrade * tradesToExecute,
+              max
+            );
+          }
+        } else if (inputConns.length === 1 && outputConns.length > 1) {
+          // Single input, multiple outputs: split input to all outputs
+          const inputAmount = requiredInputs.values().next().value || 0;
+
+          for (const outputConn of outputConns) {
+            const outputElement = elementMap.get(outputConn.connectedToEnd!);
+            if (outputElement && outputElement.type === 'Pool') {
+              const current = outputElement.currentPoints ?? 0;
+              const max = outputElement.max ?? Infinity;
+              outputElement.currentPoints = Math.min(
+                current + inputAmount * tradesToExecute,
+                max
+              );
+            }
+          }
+        } else {
+          // Fallback: use output amounts as specified (for edge cases)
+          for (const [connId, outputAmount] of outputAmounts.entries()) {
+            const outputConn = outputConns.find(c => c.id === connId);
+            if (outputConn) {
+              const outputElement = elementMap.get(outputConn.connectedToEnd!);
+              if (outputElement && outputElement.type === 'Pool') {
+                const current = outputElement.currentPoints ?? 0;
+                const max = outputElement.max ?? Infinity;
+                outputElement.currentPoints = Math.min(
+                  current + outputAmount * tradesToExecute,
+                  max
+                );
+              }
+            }
+          }
+        }
       }
-    });
+    }
   };
 
   // Helper function for complete trader (ensures resource conservation - no creation/destruction)
   const processCompleteTrader = (
-    _trader: GraphElement,
+    trader: GraphElement,
     inputConns: GraphElement[],
     outputConns: GraphElement[],
     elementMap: Map<number, GraphElement>
   ) => {
-    if (inputConns.length === 0 || outputConns.length === 0) return;
-
-    const parsedInputs = inputConns.map(conn => ({
-      conn,
-      amount: Math.max(0, parseConnectionLabel(conn.text)),
-    }));
-
-    const parsedOutputs = outputConns.map(conn => ({
-      conn,
-      amount: Math.max(0, parseConnectionLabel(conn.text)),
-    }));
-
-    if (parsedInputs.every(input => input.amount === 0)) return;
-
-    const hasAllInputs = parsedInputs.every(({ conn, amount }) => {
-      if (amount === 0) return true;
-      const el = conn.connectedToStart
-        ? elementMap.get(conn.connectedToStart)
-        : undefined;
-      if (!el) return false;
-      if (el.type === 'Source') return true;
-      if (el.type === 'Pool') {
-        return (el.currentPoints ?? 0) >= amount;
+    // Parse input connection labels to determine required resources
+    // Use connection ID as key to handle multiple connections
+    const requiredInputs: Map<number, number> = new Map();
+    for (const inputConn of inputConns) {
+      const amount = parseConnectionLabel(inputConn.text);
+      if (amount > 0) {
+        requiredInputs.set(inputConn.id, amount);
       }
-      return false;
-    });
+    }
 
-    if (!hasAllInputs) return;
-
-    parsedInputs.forEach(({ conn, amount }) => {
-      if (amount === 0) return;
-      const el = conn.connectedToStart
-        ? elementMap.get(conn.connectedToStart)
-        : undefined;
-      if (el && el.type === 'Pool') {
-        el.currentPoints = Math.max(0, (el.currentPoints ?? 0) - amount);
+    // Parse output connection labels to determine output resources
+    // Use connection ID as key to handle multiple connections
+    const outputAmounts: Map<number, number> = new Map();
+    for (const outputConn of outputConns) {
+      const amount = parseConnectionLabel(outputConn.text);
+      if (amount > 0) {
+        outputAmounts.set(outputConn.id, amount);
       }
-    });
+    }
 
-    const totalInput = parsedInputs.reduce((sum, entry) => sum + entry.amount, 0);
-    const totalOutput = parsedOutputs.reduce((sum, entry) => sum + entry.amount, 0);
-    const scale = totalOutput > 0 ? totalInput / totalOutput : 0;
-
-    parsedOutputs.forEach(({ conn, amount }) => {
-      if (amount === 0) return;
-      const el = conn.connectedToEnd
-        ? elementMap.get(conn.connectedToEnd)
+    // Build mapping of input connections to their source pools and colors
+    // and output connections to their destination pools
+    const inputInfo: Array<{
+      connId: number;
+      amount: number;
+      sourcePoolId?: number;
+      color?: string;
+    }> = [];
+    for (const inputConn of inputConns) {
+      const amount = requiredInputs.get(inputConn.id) || 0;
+      const sourceElement = inputConn.connectedToStart
+        ? elementMap.get(inputConn.connectedToStart)
         : undefined;
-      if (el && el.type === 'Pool') {
-        const current = el.currentPoints ?? 0;
-        const max = el.max ?? Infinity;
-        const delta = scale > 0 ? Math.floor(amount * scale) : amount;
-        el.currentPoints = Math.min(current + delta, max);
+      inputInfo.push({
+        connId: inputConn.id,
+        amount,
+        sourcePoolId: sourceElement?.id,
+        color: inputConn.color,
+      });
+    }
+
+    const outputInfo: Array<{
+      connId: number;
+      destPoolId?: number;
+      color?: string;
+    }> = [];
+    for (const outputConn of outputConns) {
+      const destElement = outputConn.connectedToEnd
+        ? elementMap.get(outputConn.connectedToEnd)
+        : undefined;
+      outputInfo.push({
+        connId: outputConn.id,
+        destPoolId: destElement?.id,
+        color: outputConn.color,
+      });
+    }
+
+    // Check if all connections have the same color (or are black/default)
+    // If so, all resources should go to one output
+    const allInputColors = inputInfo.map(i => i.color || '#000000');
+    const allOutputColors = outputInfo.map(o => o.color || '#000000');
+    const allColors = [...allInputColors, ...allOutputColors];
+    const hasColorDifferentiation = new Set(allColors).size > 1;
+
+    // Match inputs to outputs for resource exchange
+    // Strategy: Match each input to an output that goes to a different pool
+    // Priority: 1) Color matching (different colors), 2) Pool ID matching (different pools), 3) Round-robin
+    const createInputOutputMapping = (): Map<number, number> => {
+      const mapping = new Map<number, number>(); // input connId -> output connId
+      const usedOutputs = new Set<number>();
+
+      for (const input of inputInfo) {
+        let bestMatch: number | null = null;
+        let bestScore = -1;
+
+        for (const output of outputInfo) {
+          if (usedOutputs.has(output.connId)) continue;
+
+          // Skip if output goes to the same pool as input source (no self-trade)
+          if (
+            input.sourcePoolId &&
+            output.destPoolId &&
+            input.sourcePoolId === output.destPoolId
+          ) {
+            continue;
+          }
+
+          // Calculate match score
+          let score = 0;
+          // Prefer different colors
+          if (input.color && output.color && input.color !== output.color) {
+            score += 10;
+          }
+          // Prefer different pools
+          if (
+            input.sourcePoolId &&
+            output.destPoolId &&
+            input.sourcePoolId !== output.destPoolId
+          ) {
+            score += 5;
+          }
+          // Base score for any valid match
+          score += 1;
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestMatch = output.connId;
+          }
+        }
+
+        if (bestMatch !== null) {
+          mapping.set(input.connId, bestMatch);
+          usedOutputs.add(bestMatch);
+        }
+      }
+
+      return mapping;
+    };
+
+    if (trader.pullMode === 'pull all') {
+      // PULL ALL MODE: Trade only happens if ALL inputs are available simultaneously
+      let canTrade = true;
+
+      // Check if all inputs are available
+      for (const [connId, requiredAmount] of requiredInputs.entries()) {
+        const inputConn = inputConns.find(c => c.id === connId);
+        if (!inputConn) {
+          canTrade = false;
+          break;
+        }
+        const inputElement = inputConn.connectedToStart
+          ? elementMap.get(inputConn.connectedToStart)
+          : undefined;
+        if (!inputElement) {
+          canTrade = false;
+          break;
+        }
+        if (inputElement.type === 'Source') {
+          // Source always has resources
+          continue;
+        } else if (inputElement.type === 'Pool') {
+          if ((inputElement.currentPoints ?? 0) < requiredAmount) {
+            canTrade = false;
+            break;
+          }
+        } else {
+          canTrade = false;
+          break;
+        }
+      }
+
+      if (canTrade) {
+        // Consume all inputs
+        for (const [connId, requiredAmount] of requiredInputs.entries()) {
+          const inputConn = inputConns.find(c => c.id === connId);
+          if (inputConn) {
+            const inputElement = elementMap.get(inputConn.connectedToStart!);
+            if (inputElement && inputElement.type === 'Pool') {
+              inputElement.currentPoints = Math.max(
+                0,
+                (inputElement.currentPoints ?? 0) - requiredAmount
+              );
+            }
+            // Source doesn't need to be consumed (infinite)
+          }
+        }
+
+        // COMPLETE TRADER LOGIC: Exchange resources
+        if (!hasColorDifferentiation) {
+          // No color differentiation: send all resources to one output
+          let totalInput = 0;
+          for (const input of inputInfo) {
+            totalInput += input.amount;
+          }
+
+          // Send all resources to the first output
+          if (outputConns.length > 0) {
+            const outputConn = outputConns[0];
+            const outputElement = elementMap.get(outputConn.connectedToEnd!);
+            if (outputElement && outputElement.type === 'Pool') {
+              const current = outputElement.currentPoints ?? 0;
+              const max = outputElement.max ?? Infinity;
+              outputElement.currentPoints = Math.min(current + totalInput, max);
+            }
+          }
+        } else {
+          // Color differentiation: match inputs to outputs and exchange resources
+          const inputOutputMapping = createInputOutputMapping();
+
+          for (const input of inputInfo) {
+            const outputConnId = inputOutputMapping.get(input.connId);
+            if (outputConnId !== undefined) {
+              const outputConn = outputConns.find(c => c.id === outputConnId);
+              if (outputConn) {
+                const outputElement = elementMap.get(
+                  outputConn.connectedToEnd!
+                );
+                if (outputElement && outputElement.type === 'Pool') {
+                  const current = outputElement.currentPoints ?? 0;
+                  const max = outputElement.max ?? Infinity;
+                  // Send the amount from this input to this output
+                  outputElement.currentPoints = Math.min(
+                    current + input.amount,
+                    max
+                  );
+                }
+              }
+            }
+          }
+        }
+      }
+      // If canTrade is false, nothing happens (no partial trade)
+    } else {
+      // PULL ANY MODE: Execute trades when all inputs are satisfied
+      // (Resources are collected before processing, so we check stored resources here)
+
+      // Check if we have enough stored resources for at least one complete trade
+      let canTrade = true;
+      let minTrades = Infinity;
+
+      for (const [connId, requiredAmount] of requiredInputs.entries()) {
+        const resourceKey = `conn_${connId}`;
+        const stored = trader.traderInputs![resourceKey] || 0;
+        if (stored < requiredAmount) {
+          canTrade = false;
+          break;
+        }
+        // Calculate how many trades we can do with this resource
+        const possibleTrades = Math.floor(stored / requiredAmount);
+        minTrades = Math.min(minTrades, possibleTrades);
+      }
+
+      if (canTrade && minTrades > 0) {
+        // Execute as many complete trades as possible
+        const tradesToExecute = minTrades;
+
+        // Consume stored resources
+        for (const [connId, requiredAmount] of requiredInputs.entries()) {
+          const resourceKey = `conn_${connId}`;
+          const current = trader.traderInputs![resourceKey] || 0;
+          trader.traderInputs![resourceKey] =
+            current - requiredAmount * tradesToExecute;
+        }
+
+        // COMPLETE TRADER LOGIC: Exchange resources
+        if (!hasColorDifferentiation) {
+          // No color differentiation: send all resources to one output
+          let totalInputPerTrade = 0;
+          for (const input of inputInfo) {
+            totalInputPerTrade += input.amount;
+          }
+
+          // Send all resources to the first output
+          if (outputConns.length > 0) {
+            const outputConn = outputConns[0];
+            const outputElement = elementMap.get(outputConn.connectedToEnd!);
+            if (outputElement && outputElement.type === 'Pool') {
+              const current = outputElement.currentPoints ?? 0;
+              const max = outputElement.max ?? Infinity;
+              outputElement.currentPoints = Math.min(
+                current + totalInputPerTrade * tradesToExecute,
+                max
+              );
+            }
+          }
+        } else {
+          // Color differentiation: match inputs to outputs and exchange resources
+          const inputOutputMapping = createInputOutputMapping();
+
+          for (const input of inputInfo) {
+            const outputConnId = inputOutputMapping.get(input.connId);
+            if (outputConnId !== undefined) {
+              const outputConn = outputConns.find(c => c.id === outputConnId);
+              if (outputConn) {
+                const outputElement = elementMap.get(
+                  outputConn.connectedToEnd!
+                );
+                if (outputElement && outputElement.type === 'Pool') {
+                  const current = outputElement.currentPoints ?? 0;
+                  const max = outputElement.max ?? Infinity;
+                  // Send the amount from this input to this output (multiplied by trades)
+                  outputElement.currentPoints = Math.min(
+                    current + input.amount * tradesToExecute,
+                    max
+                  );
+                }
+              }
+            }
+          }
+        }
       }
     });
   };
@@ -2720,12 +2938,26 @@ const Canvas: React.FC<CanvasProps> = ({
       if (elements.length === 0) return;
 
       const bounds = elements.reduce(
-        (acc, el) => ({
-          minX: Math.min(acc.minX, el.x),
-          minY: Math.min(acc.minY, el.y),
-          maxX: Math.max(acc.maxX, el.x + (el.width || 40)),
-          maxY: Math.max(acc.maxY, el.y + (el.height || 40)),
-        }),
+        (acc, el) => {
+          let width = el.width;
+          let height = el.height;
+          if (!width || !height) {
+            if (el.type === 'Group') {
+              width = el.width || 200;
+              height = el.height || 150;
+            } else {
+              const size = getElementSize(el.thickness);
+              width = size;
+              height = size;
+            }
+          }
+          return {
+            minX: Math.min(acc.minX, el.x - width / 2),
+            minY: Math.min(acc.minY, el.y - height / 2),
+            maxX: Math.max(acc.maxX, el.x + width / 2),
+            maxY: Math.max(acc.maxY, el.y + height / 2),
+          };
+        },
         { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }
       );
       const canvasWidth = canvasRef.current?.clientWidth || 800;
@@ -2845,13 +3077,17 @@ const Canvas: React.FC<CanvasProps> = ({
 
       const elementX = element.x;
       const elementY = element.y;
-      let elementWidth = 40; // Default size for most elements
-      let elementHeight = 40;
+      let elementWidth: number;
+      let elementHeight: number;
 
       // Adjust for different element types
       if (element.type === 'Group') {
         elementWidth = element.width || 200;
         elementHeight = element.height || 150;
+      } else {
+        const size = getElementSize(element.thickness);
+        elementWidth = size;
+        elementHeight = size;
       }
 
       // Calculate distance to element center
@@ -2874,13 +3110,23 @@ const Canvas: React.FC<CanvasProps> = ({
     y: number,
     element: GraphElement
   ): { x: number; y: number } => {
-    const elementWidth = element.type === 'Group' ? element.width || 200 : 40;
-    const elementHeight = element.type === 'Group' ? element.height || 150 : 40;
+    let elementWidth: number;
+    let elementHeight: number;
+    if (element.type === 'Group') {
+      elementWidth = element.width || 200;
+      elementHeight = element.height || 150;
+    } else {
+      const size = getElementSize(element.thickness);
+      elementWidth = size;
+      elementHeight = size;
+    }
 
-    const left = element.x;
-    const right = element.x + elementWidth;
-    const top = element.y;
-    const bottom = element.y + elementHeight;
+    const offsetX = elementWidth / 2;
+    const offsetY = elementHeight / 2;
+    const left = element.x - offsetX;
+    const right = element.x + offsetX;
+    const top = element.y - offsetY;
+    const bottom = element.y + offsetY;
 
     // Calculate distances to each edge
     const distances = {
@@ -3682,6 +3928,20 @@ const Canvas: React.FC<CanvasProps> = ({
     }
   };
 
+  // Calculate element size based on thickness
+  // Default thickness is 2, default size is 40
+  // Size increases slowly as thickness increases, max size is 50
+  const getElementSize = (thickness?: number): number => {
+    const defaultThickness = 2;
+    const defaultSize = 40;
+    const maxSize = 50;
+    const thicknessValue = thickness || defaultThickness;
+    // Size increases slowly: 1.25 units per thickness point above default
+    const calculatedSize =
+      defaultSize + (thicknessValue - defaultThickness) * 1.25;
+    return Math.min(calculatedSize, maxSize);
+  };
+
   // Render each element
   const renderElement = (el: GraphElement) => {
     const isSelected = selectedId.includes(el.id);
@@ -3720,16 +3980,20 @@ const Canvas: React.FC<CanvasProps> = ({
             {el.text || 'Text Label'}
           </span>
         );
-      case 'Pool':
+      case 'Pool': {
+        const size = getElementSize(el.thickness);
+        const center = size / 2;
+        const radius = (size / 40) * 18; // Scale radius proportionally
+        const offset = size / 2; // Offset to center element at el.x, el.y
         return (
           <svg
             key={el.id}
             className={`svg-element pool-element ${
               selectedTool === 'Select' ? 'selectable' : ''
             } ${isSelected ? 'selected' : ''}`}
-            style={{ left: el.x, top: el.y }}
-            width={40}
-            height={40}
+            style={{ left: el.x - offset, top: el.y - offset }}
+            width={size}
+            height={size}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
             onClick={e => {
               if (selectedTool === 'Select') {
@@ -3747,34 +4011,43 @@ const Canvas: React.FC<CanvasProps> = ({
             }}
           >
             <circle
-              cx={20}
-              cy={20}
-              r={18}
+              cx={center}
+              cy={center}
+              r={radius}
               className={`pool-circle ${isSelected ? 'selected' : ''}`}
               fill="white"
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
               strokeWidth={el.thickness || 2}
             />
             <text
-              x="10"
-              y="25"
+              x={center - size / 4}
+              y={center + size / 8}
               className="element-value-text"
               fill="black" // <-- The fix is here! Black text for the white pool.
             >
-              {el.number !== undefined ? el.number : el.currentPoints || 0}
+              {el.currentPoints !== undefined && el.currentPoints !== null
+                ? el.currentPoints
+                : el.number !== undefined && el.number !== null
+                  ? el.number
+                  : 0}
             </text>
           </svg>
         );
-      case 'Source':
+      }
+      case 'Source': {
+        const size = getElementSize(el.thickness);
+        const center = size / 2;
+        const scale = size / 40;
+        const offset = size / 2; // Offset to center element at el.x, el.y
         return (
           <svg
             key={el.id}
             className={`svg-element source-element clickable-element ${
               selectedTool === 'Select' ? 'selectable' : ''
             } ${isSelected ? 'selected' : ''}`}
-            style={{ left: el.x, top: el.y }}
-            width={40}
-            height={40}
+            style={{ left: el.x - offset, top: el.y - offset }}
+            width={size}
+            height={size}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
             onClick={e => {
               if (selectedTool === 'Select') {
@@ -3792,33 +4065,38 @@ const Canvas: React.FC<CanvasProps> = ({
             }}
           >
             <polygon
-              points="20,5 35,35 5,35"
+              points={`${center},${5 * scale} ${35 * scale},${35 * scale} ${5 * scale},${35 * scale}`}
               fill={el.color || '#000000'}
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
               strokeWidth={el.thickness || 2}
               className={`source-triangle ${isSelected ? 'selected' : ''}`}
             />
             <text
-              x="14"
-              y="30"
+              x={14 * scale}
+              y={30 * scale}
               className="element-value-text"
               fill="black"
-              fontSize="20"
+              fontSize={20 * scale}
             >
               ∞
             </text>
           </svg>
         );
-      case 'Drain':
+      }
+      case 'Drain': {
+        const size = getElementSize(el.thickness);
+        const center = size / 2;
+        const scale = size / 40;
+        const offset = size / 2; // Offset to center element at el.x, el.y
         return (
           <svg
             key={el.id}
             className={`svg-element drain-element clickable-element ${
               selectedTool === 'Select' ? 'selectable' : ''
             } ${isSelected ? 'selected' : ''}`}
-            style={{ left: el.x, top: el.y }}
-            width={40}
-            height={40}
+            style={{ left: el.x - offset, top: el.y - offset }}
+            width={size}
+            height={size}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
             onClick={e => {
               if (selectedTool === 'Select') {
@@ -3836,7 +4114,7 @@ const Canvas: React.FC<CanvasProps> = ({
             }}
           >
             <polygon
-              points="5,5 35,5 20,35"
+              points={`${5 * scale},${5 * scale} ${35 * scale},${5 * scale} ${center},${35 * scale}`}
               fill={el.color || '#000000'}
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
               strokeWidth={el.thickness || 2}
@@ -3844,6 +4122,7 @@ const Canvas: React.FC<CanvasProps> = ({
             />
           </svg>
         );
+      }
       case 'Group':
         return (
           <div
@@ -3917,17 +4196,21 @@ const Canvas: React.FC<CanvasProps> = ({
             )}
           </div>
         );
-      case 'Gate':
+      case 'Gate': {
+        const size = getElementSize(el.thickness);
+        const center = size / 2;
+        const scale = size / 40;
+        const offset = size / 2; // Offset to center element at el.x, el.y
         return (
           <svg
             key={el.id}
             className={`svg-element gate-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={{
-              left: el.x,
-              top: el.y,
+              left: el.x - offset,
+              top: el.y - offset,
             }}
-            width={40}
-            height={40}
+            width={size}
+            height={size}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
             onClick={e => {
               if (selectedTool === 'Select') {
@@ -3945,24 +4228,30 @@ const Canvas: React.FC<CanvasProps> = ({
             }}
           >
             <polygon
-              points="20,5 35,20 20,35 5,20"
+              points={`${center},${5 * scale} ${35 * scale},${center} ${center},${35 * scale} ${5 * scale},${center}`}
               fill={el.color || '#000000'}
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+              strokeWidth={el.thickness || 2}
               className={`gate-diamond ${isSelected ? 'selected' : ''}`}
             />
           </svg>
         );
-      case 'Convertor':
+      }
+      case 'Convertor': {
+        const size = getElementSize(el.thickness);
+        const center = size / 2;
+        const scale = size / 40;
+        const offset = size / 2; // Offset to center element at el.x, el.y
         return (
           <svg
             key={el.id}
             className={`svg-element convertor-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={{
-              left: el.x,
-              top: el.y,
+              left: el.x - offset,
+              top: el.y - offset,
             }}
-            width={40}
-            height={40}
+            width={size}
+            height={size}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
             onClick={e => {
               if (selectedTool === 'Select') {
@@ -3980,21 +4269,28 @@ const Canvas: React.FC<CanvasProps> = ({
             }}
           >
             <polygon
-              points="5,5 35,20 5,35"
+              points={`${5 * scale},${5 * scale} ${35 * scale},${center} ${5 * scale},${35 * scale}`}
               fill={el.color || '#000000'}
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+              strokeWidth={el.thickness || 2}
               className={`convertor-shape ${isSelected ? 'selected' : ''}`}
             />
-            <line x1="5" y1="5" x2="5" y2="35" className="convertor-line" />
+            <line
+              x1={5 * scale}
+              y1={5 * scale}
+              x2={5 * scale}
+              y2={35 * scale}
+              className="convertor-line"
+            />
 
             {/* Show stored resources for pull any mode */}
             {el.pullMode === 'pull any' &&
               el.inputResources &&
               Object.keys(el.inputResources).length > 0 && (
                 <text
-                  x="20"
-                  y="15"
-                  fontSize="8"
+                  x={center}
+                  y={15 * scale}
+                  fontSize={8 * scale}
                   fill="white"
                   textAnchor="middle"
                   className="convertor-storage"
@@ -4008,9 +4304,9 @@ const Canvas: React.FC<CanvasProps> = ({
             {/* Show conversion status */}
             {el.text && (
               <text
-                x="20"
-                y="30"
-                fontSize="6"
+                x={center}
+                y={30 * scale}
+                fontSize={6 * scale}
                 fill="white"
                 textAnchor="middle"
                 className="convertor-label"
@@ -4020,17 +4316,22 @@ const Canvas: React.FC<CanvasProps> = ({
             )}
           </svg>
         );
-      case 'Trader':
+      }
+      case 'Trader': {
+        const size = getElementSize(el.thickness);
+        const center = size / 2;
+        const scale = size / 40;
+        const offset = size / 2; // Offset to center element at el.x, el.y
         return (
           <svg
             key={el.id}
             className={`svg-element trader-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={{
-              left: el.x,
-              top: el.y,
+              left: el.x - offset,
+              top: el.y - offset,
             }}
-            width={40}
-            height={40}
+            width={size}
+            height={size}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
             onClick={e => {
               if (selectedTool === 'Select') {
@@ -4049,19 +4350,19 @@ const Canvas: React.FC<CanvasProps> = ({
           >
             {/* Trader shape - parallelogram outline with no fill */}
             <polygon
-              points="8,5 35,5 32,35 5,35"
+              points={`${8 * scale},${5 * scale} ${35 * scale},${5 * scale} ${32 * scale},${35 * scale} ${5 * scale},${35 * scale}`}
               fill="none"
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
-              strokeWidth="2"
+              strokeWidth={el.thickness || 2}
               className={`trader-shape ${isSelected ? 'selected' : ''}`}
             />
 
             {/* Show trader status */}
             {el.text && (
               <text
-                x="20"
-                y="30"
-                fontSize="6"
+                x={center}
+                y={30 * scale}
+                fontSize={6 * scale}
                 fill={el.color || '#000000'}
                 textAnchor="middle"
                 className="trader-label"
@@ -4071,18 +4372,23 @@ const Canvas: React.FC<CanvasProps> = ({
             )}
           </svg>
         );
-      case 'End Condition':
+      }
+      case 'End Condition': {
+        const size = getElementSize(el.thickness);
+        const center = size / 2;
+        const scale = size / 40;
+        const offset = size / 2; // Offset to center element at el.x, el.y
         return (
           <g key={el.id}>
             {/* EndCondition SVG element*/}
             <svg
               className={`svg-element end-condition-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''} ${el.isBlinking ? 'blinking' : ''} ${!el.inhibited ? 'victory' : ''}`}
               style={{
-                left: el.x,
-                top: el.y,
+                left: el.x - offset,
+                top: el.y - offset,
               }}
-              width={40}
-              height={40}
+              width={size}
+              height={size}
               onMouseDown={e => handleElementMouseDown(e, el.id)}
               onClick={e => {
                 if (selectedTool === 'Select') {
@@ -4101,10 +4407,10 @@ const Canvas: React.FC<CanvasProps> = ({
             >
               {/* outline */}
               <rect
-                x="5"
-                y="5"
-                width="30"
-                height="30"
+                x={5 * scale}
+                y={5 * scale}
+                width={30 * scale}
+                height={30 * scale}
                 fill={el.inhibited ? '#808080' : el.color || '#000000'}
                 stroke={isSelected ? '#0078d4' : el.color || '#000000'}
                 strokeWidth={el.thickness || 2}
@@ -4112,10 +4418,10 @@ const Canvas: React.FC<CanvasProps> = ({
               />
               {/* inner rect */}
               <rect
-                x="12"
-                y="12"
-                width="16"
-                height="16"
+                x={12 * scale}
+                y={12 * scale}
+                width={16 * scale}
+                height={16 * scale}
                 fill={el.inhibited ? '#a0a0a0' : el.color || '#000000'}
                 className="end-condition-inner-rect"
               />
@@ -4123,9 +4429,9 @@ const Canvas: React.FC<CanvasProps> = ({
               {/* light blue indicator */}
               {!el.inhibited && (
                 <circle
-                  cx="20"
-                  cy="20"
-                  r="4"
+                  cx={center}
+                  cy={center}
+                  r={4 * scale}
                   fill="#87CEEB"
                   className="condition-met-indicator"
                 />
@@ -4138,13 +4444,13 @@ const Canvas: React.FC<CanvasProps> = ({
                 className={`end-condition-label ${el.isBlinking ? 'blinking' : ''}`}
                 style={{
                   position: 'absolute',
-                  left: el.x,
-                  top: el.y + 45,
-                  fontSize: '12px',
+                  left: el.x - offset,
+                  top: el.y - offset + size + 5,
+                  fontSize: `${12 * scale}px`,
                   fontWeight: 'bold',
                   color: el.color || '#000000',
                   textAlign: 'center',
-                  width: '40px',
+                  width: `${size}px`,
                   pointerEvents: 'none',
                   userSelect: 'none',
                 }}
@@ -4154,17 +4460,22 @@ const Canvas: React.FC<CanvasProps> = ({
             )}
           </g>
         );
-      case 'Register':
+      }
+      case 'Register': {
+        const size = getElementSize(el.thickness);
+        const center = size / 2;
+        const scale = size / 40;
+        const offset = size / 2; // Offset to center element at el.x, el.y
         return (
           <svg
             key={el.id}
             className={`svg-element register-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={{
-              left: el.x,
-              top: el.y,
+              left: el.x - offset,
+              top: el.y - offset,
             }}
-            width={40}
-            height={40}
+            width={size}
+            height={size}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
             onClick={e => {
               if (selectedTool === 'Select') {
@@ -4183,10 +4494,10 @@ const Canvas: React.FC<CanvasProps> = ({
           >
             {/* white background */}
             <rect
-              x="5"
-              y="5"
-              width="30"
-              height="30"
+              x={5 * scale}
+              y={5 * scale}
+              width={30 * scale}
+              height={30 * scale}
               fill="white"
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
               strokeWidth={el.thickness || 2}
@@ -4194,11 +4505,11 @@ const Canvas: React.FC<CanvasProps> = ({
             />
             {/* show current value */}
             <text
-              x="20"
-              y="26"
+              x={center}
+              y={center + size / 8}
               className="register-text"
               fill="black"
-              fontSize="14"
+              fontSize={14 * scale}
               textAnchor="middle"
               fontWeight="bold"
             >
@@ -4208,17 +4519,22 @@ const Canvas: React.FC<CanvasProps> = ({
             </text>
           </svg>
         );
-      case 'Delay':
+      }
+      case 'Delay': {
+        const size = getElementSize(el.thickness);
+        const center = size / 2;
+        const scale = size / 40;
+        const offset = size / 2; // Offset to center element at el.x, el.y
         return (
           <svg
             key={el.id}
             className={`svg-element delay-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={{
-              left: el.x,
-              top: el.y,
+              left: el.x - offset,
+              top: el.y - offset,
             }}
-            width={40}
-            height={40}
+            width={size}
+            height={size}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
             onClick={e => {
               if (selectedTool === 'Select') {
@@ -4236,18 +4552,25 @@ const Canvas: React.FC<CanvasProps> = ({
             }}
           >
             <circle
-              cx="20"
-              cy="20"
-              r="15"
+              cx={center}
+              cy={center}
+              r={15 * scale}
               fill={el.color || '#000000'}
               stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+              strokeWidth={el.thickness || 2}
               className={`delay-circle ${isSelected ? 'selected' : ''}`}
             />
-            <text x="20" y="22" className="delay-text">
+            <text
+              x={center}
+              y={center + 2 * scale}
+              className="delay-text"
+              fontSize={14 * scale}
+            >
               8
             </text>
           </svg>
         );
+      }
       case 'Resource Connection': {
         const sx = el.startX || el.x;
         const sy = el.startY || el.y;
