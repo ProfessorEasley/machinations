@@ -1,9 +1,4 @@
-import React, {
-  useState,
-  useRef,
-  useEffect,
-  useCallback,
-} from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { CSSProperties } from 'react';
 import { RegisterExpression } from '../utils/RegisterExpression';
 import './Canvas.css';
@@ -225,11 +220,7 @@ const getResourcePolylinePoints = (resource: GraphElement) => {
     x: resource.endX ?? resource.x,
     y: resource.endY ?? resource.y,
   };
-  return [
-    startPoint,
-    ...(resource.points ?? []),
-    endPoint,
-  ];
+  return [startPoint, ...(resource.points ?? []), endPoint];
 };
 
 const getClosestPointOnPolyline = (
@@ -249,8 +240,7 @@ const getClosestPointOnPolyline = (
     if (lengthSquared === 0) continue;
 
     const t =
-      ((point.x - segmentStart.x) * dx +
-        (point.y - segmentStart.y) * dy) /
+      ((point.x - segmentStart.x) * dx + (point.y - segmentStart.y) * dy) /
       lengthSquared;
 
     const clampedT = Math.max(0, Math.min(1, t));
@@ -317,18 +307,14 @@ function evaluateDynamicResourceLabel(
   }
 
   if (startElement) {
-    const amountMatch = normalized.match(
-      /^([+-])\s*x(?:\s*amount)?$/
-    );
+    const amountMatch = normalized.match(/^([+-])\s*x(?:\s*amount)?$/);
     if (amountMatch) {
       const sign = amountMatch[1] === '-' ? -1 : 1;
       const value = getElementValue(startElement);
       return { matched: true, delta: sign * value };
     }
 
-    const xFractionMatch = normalized.match(
-      /^([+-])\s*x\s*\/\s*(\d+)$/
-    );
+    const xFractionMatch = normalized.match(/^([+-])\s*x\s*\/\s*(\d+)$/);
     if (xFractionMatch) {
       const sign = xFractionMatch[1] === '-' ? -1 : 1;
       const denominator = parseInt(xFractionMatch[2], 10);
@@ -366,9 +352,7 @@ function evaluateDynamicResourceLabel(
     return { matched: true, delta: 0 };
   }
 
-  const numericMatch = normalized.match(
-    /^([+-])\s*(\d+(?:\.\d+)?)$/
-  );
+  const numericMatch = normalized.match(/^([+-])\s*(\d+(?:\.\d+)?)$/);
   if (numericMatch) {
     const sign = numericMatch[1] === '-' ? -1 : 1;
     const magnitude = parseFloat(numericMatch[2]);
@@ -385,9 +369,7 @@ function evaluateDynamicResourceLabel(
   return { matched: false, delta: 0 };
 }
 
-function applyDynamicResourceLabelsMutable(
-  elementsList: GraphElement[]
-): void {
+function applyDynamicResourceLabelsMutable(elementsList: GraphElement[]): void {
   if (!elementsList.length) return;
 
   const elementMap = new Map<number, GraphElement>(
@@ -396,9 +378,7 @@ function applyDynamicResourceLabelsMutable(
 
   const stateConnections = elementsList.filter(
     el =>
-      el.type === 'State Connection' &&
-      el.connectedToStart &&
-      el.connectedToEnd
+      el.type === 'State Connection' && el.connectedToStart && el.connectedToEnd
   );
 
   if (stateConnections.length === 0) return;
@@ -419,9 +399,7 @@ function applyDynamicResourceLabelsMutable(
     if (typeof resource.dynamicLabelBase === 'number') {
       if (hasNumeric) {
         const expected = resource.dynamicLabelBase + lastDelta;
-        if (
-          Math.abs(numeric - expected) > RESOURCE_LABEL_EPSILON
-        ) {
+        if (Math.abs(numeric - expected) > RESOURCE_LABEL_EPSILON) {
           resource.dynamicLabelBase = numeric;
           resource.dynamicLabelLastDelta = 0;
         }
@@ -488,6 +466,22 @@ const Canvas: React.FC<CanvasProps> = ({
   const elements = externalElements ?? internalElements;
   const selectedId = externalSelectedIds ?? internalSelectedIds;
 
+  // const setElements = useCallback(
+  //   (
+  //     newElements: GraphElement[] | ((prev: GraphElement[]) => GraphElement[])
+  //   ) => {
+  //     const updatedElements =
+  //       typeof newElements === 'function' ? newElements(elements) : newElements;
+
+  //     if (onElementsChange) {
+  //       onElementsChange(updatedElements);
+  //     } else {
+  //       setInternalElements(updatedElements);
+  //     }
+  //   },
+  //   [elements, onElementsChange]
+  // );
+
   const setSelectedId = useCallback(
     (newSelection: number[] | ((prev: number[]) => number[])) => {
       const updatedSelection =
@@ -547,6 +541,18 @@ const Canvas: React.FC<CanvasProps> = ({
     x: number;
     y: number;
   } | null>(null);
+  //setConnectionStart
+  // const [connectionStart, setConnectionStart] = useState<{
+  //   x: number;
+  //   y: number;
+  // } | null>(null);
+  // const [connectionEnd, setConnectionEnd] = useState<{
+  //   x: number;
+  //   y: number;
+  // } | null>(null);
+  // const [connectionType, setConnectionType] = useState<GraphElementType | null>(
+  //   null
+  // );
 
   const [gameEnded, setGameEnded] = useState(false);
 
@@ -765,8 +771,7 @@ const Canvas: React.FC<CanvasProps> = ({
       const updatedElements =
         typeof newElements === 'function' ? newElements(elements) : newElements;
 
-      const processedElements =
-        applyDynamicResourceLabels(updatedElements);
+      const processedElements = applyDynamicResourceLabels(updatedElements);
       updateStateConnectionVisualState(processedElements);
 
       if (onElementsChange) {
@@ -917,6 +922,45 @@ const Canvas: React.FC<CanvasProps> = ({
   /**
    * get current value of an element
    */
+  const getElementValue = (element: GraphElement | undefined): number => {
+    if (!element) {
+      // console.log('⚠️ [getElementValue] Element is undefined');
+      return 0;
+    }
+
+    //console.log('📈 [getElementValue] Getting value from:', {
+    // type: element.type,
+    // id: element.id,
+    // currentPoints: element.currentPoints,
+    // currentValue: element.currentValue,
+    // number: element.number,
+    // });
+
+    switch (element.type) {
+      case 'Pool':
+        if (
+          element.currentPoints !== undefined &&
+          element.currentPoints !== null
+        ) {
+          return element.currentPoints;
+        }
+        return typeof element.number === 'string'
+          ? parseInt(element.number, 10) || 0
+          : element.number || 0;
+
+      case 'Register':
+        return element.currentValue || 0;
+
+      case 'Source':
+        return typeof element.number === 'string'
+          ? parseInt(element.number, 10) || 0
+          : element.number || 0;
+
+      default:
+        return 0;
+    }
+  };
+
   const applyStateConnectionDelta = (
     target: GraphElement,
     delta: number
@@ -1014,10 +1058,7 @@ const Canvas: React.FC<CanvasProps> = ({
         const rawLabel = (connection.text ?? '').trim();
 
         if (endEl.type === 'Resource Connection') {
-          const { matched } = evaluateDynamicResourceLabel(
-            rawLabel,
-            startEl
-          );
+          const { matched } = evaluateDynamicResourceLabel(rawLabel, startEl);
           if (matched) {
             continue;
           }
@@ -1042,6 +1083,20 @@ const Canvas: React.FC<CanvasProps> = ({
 
         const labelText = rawLabel;
         const kind = classifyLabel(labelText);
+
+        if (kind === 'cond') {
+          const fn = parseCond(labelText);
+          if (fn) {
+            const value = getElementValue(startEl);
+            endEl.inhibited = !fn(value);
+          }
+        } else if (kind === 'interval') {
+          const range = parseInterval(labelText);
+          if (range) {
+            const value = getElementValue(startEl);
+            endEl.inhibited = !(value >= range[0] && value <= range[1]);
+          }
+        }
         const labelLower = rawLabel.toLowerCase();
         if (
           labelLower === 'trigger' ||
@@ -1160,19 +1215,20 @@ const Canvas: React.FC<CanvasProps> = ({
                 const startEl = elementMap.get(conn.connectedToStart!);
                 if (!startEl) return;
                 const required = requiredAmounts[idx];
-              const max = pool.max ?? Infinity;
-              if (startEl.type === 'Pool') {
+                if (startEl.type === 'Source') {
+                  // Source produces, nothing to consume
+                } else if (startEl.type === 'Pool') {
                   startEl.currentPoints = Math.max(
                     0,
                     (startEl.currentPoints ?? 0) - required
                   );
+                }
+                // Add to this pool
+                const max = pool.max ?? Infinity;
                 pool.currentPoints = Math.min(
                   (pool.currentPoints ?? 0) + required,
                   max
                 );
-              } else if (startEl.type === 'Source') {
-                // Source handles delivery in its own pass to avoid double counting.
-                }
               });
             }
           } else {
@@ -1196,12 +1252,12 @@ const Canvas: React.FC<CanvasProps> = ({
                     0,
                     (startEl.currentPoints ?? 0) - required
                   );
+                }
                 const max = pool.max ?? Infinity;
                 pool.currentPoints = Math.min(
                   (pool.currentPoints ?? 0) + required,
                   max
                 );
-              } 
                 break; // Only pull from one input in pull any mode
               }
             }
@@ -1472,7 +1528,6 @@ const Canvas: React.FC<CanvasProps> = ({
 
         if (activationType === 'onstart') source.hasStarted = true;
       }
-
 
       // // --------- PASS 2.5: process Sources ----------
       // for (const source of nextElements) {
@@ -3102,10 +3157,7 @@ const Canvas: React.FC<CanvasProps> = ({
         if (!includeConnections) return;
         const polyline = getResourcePolylinePoints(element);
         if (polyline.length < 2) return;
-        const { distance } = getClosestPointOnPolyline(
-          { x, y },
-          polyline
-        );
+        const { distance } = getClosestPointOnPolyline({ x, y }, polyline);
         if (distance < closestDistance) {
           closestDistance = distance;
           closestElement = element;
@@ -3212,7 +3264,10 @@ const Canvas: React.FC<CanvasProps> = ({
     return { x: connectionX, y: connectionY };
   };
 
-  const normalizeVector = (dx: number, dy: number): { x: number; y: number } => {
+  const normalizeVector = (
+    dx: number,
+    dy: number
+  ): { x: number; y: number } => {
     const len = Math.hypot(dx, dy);
     if (len === 0) return { x: 0, y: 0 };
     return { x: dx / len, y: dy / len };
@@ -3545,7 +3600,11 @@ const Canvas: React.FC<CanvasProps> = ({
 
     const pointsSequence = [...connectionPoints];
     const lastPoint = pointsSequence[pointsSequence.length - 1];
-    if (!lastPoint || lastPoint.x !== finalPoint.x || lastPoint.y !== finalPoint.y) {
+    if (
+      !lastPoint ||
+      lastPoint.x !== finalPoint.x ||
+      lastPoint.y !== finalPoint.y
+    ) {
       pointsSequence.push(finalPoint);
     }
 
@@ -3586,10 +3645,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
     const startCoord = snappedPoints[0];
     const endCoord = snappedPoints[snappedPoints.length - 1];
-    const intermediatePoints = snappedPoints.slice(
-      1,
-      snappedPoints.length - 1
-    );
+    const intermediatePoints = snappedPoints.slice(1, snappedPoints.length - 1);
 
     const connectionProps =
       connectionType === 'Resource Connection'
@@ -4088,9 +4144,7 @@ const Canvas: React.FC<CanvasProps> = ({
   // Render each element
   const renderElement = (el: GraphElement) => {
     const isSelected = selectedId.includes(el.id);
-    const applyConditionStyle = (
-      style: CSSProperties = {}
-    ): CSSProperties =>
+    const applyConditionStyle = (style: CSSProperties = {}): CSSProperties =>
       el.hasUnsatisfiedCondition ? { ...style, opacity: 0.4 } : style;
     switch (el.type) {
       case 'Text Label':
@@ -4138,7 +4192,10 @@ const Canvas: React.FC<CanvasProps> = ({
             className={`svg-element pool-element ${
               selectedTool === 'Select' ? 'selectable' : ''
             } ${isSelected ? 'selected' : ''}`}
-            style={applyConditionStyle({ left: el.x - offset, top: el.y - offset })}
+            style={applyConditionStyle({
+              left: el.x - offset,
+              top: el.y - offset,
+            })}
             width={size}
             height={size}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
@@ -4192,7 +4249,10 @@ const Canvas: React.FC<CanvasProps> = ({
             className={`svg-element source-element clickable-element ${
               selectedTool === 'Select' ? 'selectable' : ''
             } ${isSelected ? 'selected' : ''}`}
-            style={applyConditionStyle({ left: el.x - offset, top: el.y - offset })}
+            style={applyConditionStyle({
+              left: el.x - offset,
+              top: el.y - offset,
+            })}
             width={size}
             height={size}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
@@ -4241,7 +4301,10 @@ const Canvas: React.FC<CanvasProps> = ({
             className={`svg-element drain-element clickable-element ${
               selectedTool === 'Select' ? 'selectable' : ''
             } ${isSelected ? 'selected' : ''}`}
-            style={applyConditionStyle({ left: el.x - offset, top: el.y - offset })}
+            style={applyConditionStyle({
+              left: el.x - offset,
+              top: el.y - offset,
+            })}
             width={size}
             height={size}
             onMouseDown={e => handleElementMouseDown(e, el.id)}
@@ -4727,11 +4790,7 @@ const Canvas: React.FC<CanvasProps> = ({
           x: el.endX ?? el.x,
           y: el.endY ?? el.y,
         };
-        const pathPoints = [
-          startPoint,
-          ...(el.points ?? []),
-          endPoint,
-        ];
+        const pathPoints = [startPoint, ...(el.points ?? []), endPoint];
 
         if (pathPoints.length < 2) {
           return null;
@@ -4864,11 +4923,7 @@ const Canvas: React.FC<CanvasProps> = ({
           x: el.endX ?? el.x,
           y: el.endY ?? el.y,
         };
-        const pathPoints = [
-          startPoint,
-          ...(el.points ?? []),
-          endPoint,
-        ];
+        const pathPoints = [startPoint, ...(el.points ?? []), endPoint];
 
         if (pathPoints.length < 2) {
           return null;
