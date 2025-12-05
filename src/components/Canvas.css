@@ -1,0 +1,524 @@
+/* Canvas Component Styles */
+
+/* Main Canvas Container */
+.canvas {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background: transparent;
+  overflow: hidden;
+}
+
+/* Text Label Styles */
+.text-label-input {
+  position: absolute;
+  border: none;
+  background: transparent;
+  font-size: 16px;
+  outline: none;
+  min-width: 40px;
+  z-index: 1;
+}
+
+.text-label-input.selected {
+  border: 2px solid #0078d4;
+  z-index: 2;
+}
+
+.text-label-span {
+  position: absolute;
+  font-size: 16px;
+  user-select: none;
+  z-index: 1;
+  padding: 0;
+}
+
+.text-label-span.selectable {
+  cursor: move;
+}
+
+.text-label-span.clickable {
+  cursor: pointer;
+}
+
+.text-label-span.selected {
+  border: 2px solid #0078d4;
+  background: #e3f2fd;
+  z-index: 2;
+  padding: 2px;
+}
+
+/* SVG Element Base Styles */
+.svg-element {
+  position: absolute;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.svg-element.selectable {
+  cursor: move;
+}
+
+.svg-element.selected {
+  border: 2px solid #0078d4;
+  background: #e3f2fd;
+  z-index: 2;
+}
+
+/* Pool Element */
+.pool-element {
+  /* width and height are set dynamically via inline styles */
+}
+
+/* Source Element */
+.source-element {
+  /* width and height are set dynamically via inline styles */
+}
+
+/* Drain Element */
+.drain-element {
+  /* width and height are set dynamically via inline styles */
+}
+
+/* Gate Element */
+.gate-element {
+  /* width and height are set dynamically via inline styles */
+}
+
+/* Convertor Element */
+.convertor-element {
+  /* width and height are set dynamically via inline styles */
+}
+
+.convertor-shape {
+  stroke-width: 2;
+}
+
+.convertor-line {
+  stroke-width: 1;
+}
+
+.convertor-storage {
+  font-family: monospace;
+  font-weight: bold;
+}
+
+.convertor-label {
+  font-family: Arial, sans-serif;
+  font-weight: bold;
+}
+
+/* End Condition Element */
+.end-condition-element {
+  /* width and height are set dynamically via inline styles */
+}
+
+/* Artificial Intelligence Element */
+.ai-element {
+  /* width and height are set dynamically via inline styles */
+}
+
+/* Register Element */
+.register-element {
+  /* width and height are set dynamically via inline styles */
+}
+
+/* Delay Element */
+.delay-element {
+  /* width and height are set dynamically via inline styles */
+}
+
+/* Trader Element */
+.trader-element {
+  /* width and height are set dynamically via inline styles */
+}
+
+.trader-shape {
+  stroke-width: 2;
+}
+
+.trader-line {
+  stroke: white;
+  stroke-width: 1;
+}
+
+.trader-storage {
+  font-family: monospace;
+  font-weight: bold;
+}
+
+.trader-label {
+  font-family: Arial, sans-serif;
+  font-weight: bold;
+}
+
+.trader-incomplete {
+  font-family: Arial, sans-serif;
+  font-weight: bold;
+}
+
+/* Group Element */
+.group-element {
+  position: absolute;
+  border: 2px dashed #666;
+  background: transparent;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.group-element.selectable {
+  cursor: move;
+}
+
+.group-element.selected {
+  background: rgba(0, 120, 212, 0.1);
+  z-index: 2;
+}
+
+/* Group Resize Handles */
+.resize-handle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #0078d4;
+  border: 1px solid white;
+  z-index: 3;
+}
+
+.resize-handle.se {
+  right: -4px;
+  bottom: -4px;
+  cursor: se-resize;
+}
+
+.resize-handle.sw {
+  left: -4px;
+  bottom: -4px;
+  cursor: sw-resize;
+}
+
+.resize-handle.ne {
+  right: -4px;
+  top: -4px;
+  cursor: ne-resize;
+}
+
+.resize-handle.nw {
+  left: -4px;
+  top: -4px;
+  cursor: nw-resize;
+}
+
+/* Connection Elements */
+.connection-container {
+  position: absolute;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.connection-container.selectable {
+  cursor: move;
+}
+
+.connection-container.selected {
+  z-index: 2;
+}
+
+.greyed {
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+
+.connection-container.condition-pending .state-connection-line,
+.connection-container.condition-pending .connection-line {
+  stroke: #9c9c9c !important;
+}
+
+.connection-container.condition-pending .connection-label-text {
+  fill: #8a8a8a !important;
+}
+
+.connection-svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Connection Preview */
+.connection-preview {
+  position: absolute;
+  pointer-events: none;
+  z-index: 99;
+}
+
+/* Selection Box */
+.selection-box {
+  position: absolute;
+  border: 2px dashed #0078d4;
+  background: rgba(0, 120, 212, 0.08);
+  pointer-events: none;
+  z-index: 99;
+}
+
+/* Arrow Resize Handles */
+.arrow-handle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #0078d4;
+  border: 1px solid white;
+  border-radius: 50%;
+  cursor: move;
+  z-index: 3;
+  transform: translate(-50%, -50%);
+}
+
+/* SVG Shape Styles */
+.pool-circle {
+  stroke-width: 2;
+}
+
+.pool-circle.selected {
+  fill: none;
+  stroke-width: 2;
+}
+
+.source-triangle {
+  fill: none;
+  stroke-width: 2;
+}
+
+.source-triangle.selected {
+  fill: none;
+  stroke: #0078d4;
+  stroke-width: 2;
+}
+
+.drain-triangle {
+  fill: none;
+  stroke-width: 2;
+}
+
+.drain-triangle.selected {
+  fill: none;
+  stroke: #0078d4;
+  stroke-width: 2;
+}
+
+.gate-diamond {
+  fill: none;
+  stroke-width: 2;
+}
+
+.gate-diamond.selected {
+  fill: none;
+  stroke-width: 2;
+}
+
+.convertor-shape {
+  fill: none;
+  stroke-width: 2;
+}
+
+.convertor-line {
+  stroke-width: 2;
+}
+
+.convertor-shape.selected {
+  fill: none;
+  stroke: #0078d4;
+  stroke-width: 2;
+}
+
+.end-condition-rect {
+  fill: none;
+  stroke-width: 2;
+}
+
+.end-condition-rect.selected {
+  fill: none;
+  stroke: #0078d4;
+  stroke-width: 2;
+}
+
+.ai-rect {
+  fill: none;
+  stroke-width: 2;
+}
+
+.ai-text {
+  text-anchor: middle;
+  dominant-baseline: middle;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.ai-rect.selected {
+  fill: none;
+  stroke: #0078d4;
+  stroke-width: 2;
+}
+
+.register-rect {
+  stroke-width: 2;
+}
+
+.register-text {
+  text-anchor: middle;
+  dominant-baseline: middle;
+  fill: black !important;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.register-rect.selected {
+  fill: none;
+  stroke: #0078d4;
+  stroke-width: 2;
+}
+
+.delay-circle {
+  fill: none;
+  stroke-width: 2;
+}
+
+.delay-text {
+  text-anchor: middle;
+  dominant-baseline: middle;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.delay-circle.selected {
+  fill: none;
+  stroke: #0078d4;
+  stroke-width: 2;
+}
+
+.trader-polygon {
+  fill: none;
+  stroke-width: 2;
+}
+
+.trader-polygon.selected {
+  fill: none;
+  stroke: #0078d4;
+  stroke-width: 2;
+}
+
+/* Connection Line Styles */
+.connection-line {
+  stroke: #333;
+  stroke-width: 2;
+}
+
+.connection-line.selected {
+  stroke: #0078d4;
+  stroke-width: 3;
+}
+
+.state-connection-line {
+  stroke: #666;
+  stroke-width: 2;
+  stroke-dasharray: 5, 5;
+}
+
+.state-connection-line.selected {
+  stroke: #0078d4;
+  stroke-width: 3;
+  stroke-dasharray: 5, 5;
+}
+
+/* Arrow Marker Styles */
+.arrow-marker {
+  marker-width: 10;
+  marker-height: 7;
+  ref-x: 9;
+  ref-y: 3.5;
+  orient: auto;
+}
+
+/* ==================== EndCondition Styles ==================== */
+
+.end-condition-element.blinking,
+.end-condition-label.blinking {
+  animation: victory-blink 0.6s ease-in-out infinite;
+}
+
+@keyframes victory-blink {
+  0%,
+  100% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+  50% {
+    opacity: 0.4;
+    filter: brightness(1.8);
+  }
+}
+
+.end-condition-element.victory {
+  filter: drop-shadow(0 0 10px #87ceeb);
+}
+
+.condition-met-indicator {
+  animation: pulse-indicator 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse-indicator {
+  0%,
+  100% {
+    r: 4;
+    opacity: 1;
+    fill: #87ceeb;
+  }
+  50% {
+    r: 6;
+    opacity: 0.5;
+    fill: #5fb9e8;
+  }
+}
+
+.end-condition-rect {
+  transition:
+    fill 0.3s ease,
+    stroke 0.3s ease;
+}
+
+.end-condition-inner-rect {
+  transition: fill 0.3s ease;
+}
+
+.end-condition-label {
+  transition: opacity 0.3s ease;
+}
+
+.end-condition-element:hover:not(.is-running) {
+  cursor: pointer;
+  filter: brightness(1.2);
+}
+
+.end-condition-element.selected .end-condition-rect {
+  stroke: #0078d4 !important;
+  stroke-width: 3;
+}
+
+.canvas.game-ended .end-condition-element,
+.canvas.game-ended .pool-element,
+.canvas.game-ended .source-element,
+.canvas.game-ended .gate-element,
+.canvas.game-ended .drain-element,
+.canvas.game-ended .convertor-element,
+.canvas.game-ended .trader-element,
+.canvas.game-ended .register-element {
+  pointer-events: none;
+  cursor: default !important;
+}
+
+.canvas.game-ended .clickable-element {
+  pointer-events: none;
+  cursor: default !important;
+}

@@ -1,0 +1,192 @@
+.file-tabs-container {
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #dee2e6;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.file-tabs {
+  display: flex;
+  align-items: center;
+  min-width: fit-content;
+  height: 40px;
+  padding: 0 8px;
+}
+
+.file-tab {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  margin-right: 2px;
+  background-color: #e9ecef;
+  border: 1px solid #dee2e6;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+  user-select: none;
+  min-width: 120px;
+  max-width: 200px;
+  position: relative;
+  transition: background-color 0.2s;
+}
+
+.file-tab:hover {
+  background-color: #f8f9fa;
+}
+
+.file-tab.active {
+  background-color: white;
+  border-bottom: 1px solid white;
+  z-index: 1;
+  margin-bottom: -1px;
+}
+
+.file-tab.modified {
+  font-style: italic;
+}
+
+.file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: #495057;
+}
+
+.file-status {
+  color: #dc3545;
+  font-size: 16px;
+  margin-left: 4px;
+  line-height: 1;
+}
+
+.close-tab-button {
+  background: none;
+  border: none;
+  color: #6c757d;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 4px;
+  margin-left: 4px;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  transition: all 0.2s;
+}
+
+.close-tab-button:hover {
+  background-color: #dc3545;
+  color: white;
+}
+
+.new-file-button {
+  background: none;
+  border: 1px dashed #6c757d;
+  color: #6c757d;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 8px 12px;
+  margin-left: 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  min-width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.new-file-button:hover {
+  border-color: #007bff;
+  color: #007bff;
+  background-color: #f8f9fa;
+}
+
+/* Scrollbar styling for file tabs */
+.file-tabs-container::-webkit-scrollbar {
+  height: 4px;
+}
+
+.file-tabs-container::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.file-tabs-container::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 2px;
+}
+
+.file-tabs-container::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .file-tab {
+    min-width: 100px;
+    max-width: 150px;
+    padding: 6px 8px;
+  }
+
+  .file-name {
+    font-size: 12px;
+  }
+
+  .new-file-button {
+    min-width: 28px;
+    height: 28px;
+    font-size: 14px;
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .file-tabs-container {
+    background-color: #343a40;
+    border-bottom-color: #495057;
+  }
+
+  .file-tab {
+    background-color: #495057;
+    border-color: #6c757d;
+    color: #f8f9fa;
+  }
+
+  .file-tab:hover {
+    background-color: #6c757d;
+  }
+
+  .file-tab.active {
+    background-color: #212529;
+    border-bottom-color: #212529;
+  }
+
+  .file-name {
+    color: #f8f9fa;
+  }
+
+  .close-tab-button {
+    color: #adb5bd;
+  }
+
+  .close-tab-button:hover {
+    background-color: #dc3545;
+    color: white;
+  }
+
+  .new-file-button {
+    border-color: #adb5bd;
+    color: #adb5bd;
+  }
+
+  .new-file-button:hover {
+    border-color: #007bff;
+    color: #007bff;
+    background-color: #495057;
+  }
+}
