@@ -224,6 +224,20 @@
   z-index: 2;
 }
 
+.greyed {
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+
+.connection-container.condition-pending .state-connection-line,
+.connection-container.condition-pending .connection-line {
+  stroke: #9c9c9c !important;
+}
+
+.connection-container.condition-pending .connection-label-text {
+  fill: #8a8a8a !important;
+}
+
 .connection-svg {
   position: absolute;
   left: 0;
