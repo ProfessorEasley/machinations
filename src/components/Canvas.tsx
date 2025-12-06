@@ -293,8 +293,8 @@ function getElementValue(element: GraphElement | undefined): number {
 
 const sanitizeResourceLabelValue = (value: number): number => {
   if (!Number.isFinite(value)) return 0;
-  const floored = Math.floor(value);
-  return floored < 0 ? 0 : floored;
+  const rounded = Math.round(value * 10) / 10; // keep at most one decimal
+  return rounded < 0 ? 0 : rounded;
 };
 
 function evaluateDynamicResourceLabel(
@@ -1179,9 +1179,17 @@ const Canvas: React.FC<CanvasProps> = ({
         const currentResources = pool.currentPoints || 0;
 
         // Get input connections (connections ending at this pool)
-        const inputConns = nextElements.filter(
-          c => isResourceLikeConnection(c) && c.connectedToEnd === pool.id
-        );
+        const inputConns = nextElements
+          .filter(
+            c => isResourceLikeConnection(c) && c.connectedToEnd === pool.id
+          )
+          .filter(conn => {
+            const startEl = conn.connectedToStart
+              ? elementMap.get(conn.connectedToStart)
+              : undefined;
+            // Sources push resources in their own pass; skip here to avoid double counting.
+            return !startEl || startEl.type !== 'Source';
+          });
 
         // Get output connections (connections starting at this pool)
         const outputConns = nextElements.filter(
@@ -1263,7 +1271,6 @@ const Canvas: React.FC<CanvasProps> = ({
             }
           }
         }
-
         // Handle PUSH modes (push resources to outputs)
         if (poolPullMode === 'push any' || poolPullMode === 'push all') {
           if (outputConns.length === 0 || currentResources <= 0) continue;
@@ -1334,6 +1341,77 @@ const Canvas: React.FC<CanvasProps> = ({
                 }
               });
               pool.currentPoints = Math.max(0, available - actualAmount);
+            }
+          }
+        }
+
+        // Handle PUSH modes (push resources to outputs)
+        if (poolPullMode === 'push any' || poolPullMode === 'push all') {
+          if (outputConns.length === 0 || currentResources <= 0) continue;
+
+          // Parse amounts for output connections
+          const outputAmounts: number[] = outputConns.map(conn =>
+            parseConnectionLabel(conn.text)
+          );
+          const totalOutput = outputAmounts.reduce((sum, amt) => sum + amt, 0);
+
+          if (poolPullMode === 'push all') {
+            // Push all: only push if all outputs can accept resources
+            const allCanAccept = outputConns.every((conn, idx) => {
+              const endEl = elementMap.get(conn.connectedToEnd!);
+              if (!endEl) return false;
+              const amount = outputAmounts[idx];
+              if (endEl.type === 'Drain') return true; // Drain always accepts
+              if (endEl.type === 'Pool') {
+                const max = endEl.max ?? Infinity;
+                return (endEl.currentPoints ?? 0) + amount <= max;
+              }
+              return false;
+            });
+
+            if (allCanAccept && currentResources >= totalOutput) {
+              // Push to all outputs
+              outputConns.forEach((conn, idx) => {
+                const endEl = elementMap.get(conn.connectedToEnd!);
+                if (!endEl) return;
+                const amount = outputAmounts[idx];
+                if (endEl.type === 'Drain') {
+                  // Drain consumes, do nothing
+                } else if (endEl.type === 'Pool') {
+                  const max = endEl.max ?? Infinity;
+                  endEl.currentPoints = Math.min(
+                    (endEl.currentPoints ?? 0) + amount,
+                    max
+                  );
+                }
+              });
+              pool.currentPoints = Math.max(0, currentResources - totalOutput);
+            }
+          } else {
+            // Push any: push maximum possible, evenly distribute if needed
+            const available = currentResources;
+            if (available > 0 && totalOutput > 0) {
+              // Calculate how much we can actually push
+              // const actualAmount = Math.min(available, totalOutput);
+              // // Evenly distribute to all outputs
+              // const perOutput = Math.floor(actualAmount / outputConns.length);
+              // const remainder = actualAmount % outputConns.length;
+              // outputConns.forEach((conn, idx) => {
+              //   const endEl = elementMap.get(conn.connectedToEnd!);
+              //   if (!endEl) return;
+              //   const amount = perOutput + (idx < remainder ? 1 : 0);
+              //   if (amount <= 0) return;
+              //   if (endEl.type === 'Drain') {
+              //     // Drain consumes
+              //   } else if (endEl.type === 'Pool') {
+              //     const max = endEl.max ?? Infinity;
+              //     endEl.currentPoints = Math.min(
+              //       (endEl.currentPoints ?? 0) + amount,
+              //       max
+              //     );
+              //   }
+              // });
+              // pool.currentPoints = Math.max(0, available - actualAmount);
             }
           }
         }
@@ -4823,7 +4901,10 @@ const Canvas: React.FC<CanvasProps> = ({
         const labelX = labelPoint.x - left;
         const labelY = labelPoint.y - top;
         const isConditionUnsatisfied = !!el.hasUnsatisfiedCondition;
-        const stateStroke = isConditionUnsatisfied ? '#B0B0B0' : '#000000';
+        const baseConnectionColor = el.color || '#000000';
+        const stateStroke = isConditionUnsatisfied
+          ? '#B0B0B0'
+          : baseConnectionColor;
         const markerStroke = stateStroke;
         const containerClasses = [
           'connection-container',
@@ -4885,7 +4966,9 @@ const Canvas: React.FC<CanvasProps> = ({
                   x={labelX}
                   y={labelY}
                   className="connection-label-text"
-                  fill={isConditionUnsatisfied ? '#8a8a8a' : '#000000'}
+                  fill={
+                    isConditionUnsatisfied ? '#8a8a8a' : baseConnectionColor
+                  }
                 >
                   {el.text}
                 </text>
@@ -4963,8 +5046,8 @@ const Canvas: React.FC<CanvasProps> = ({
           (targetElement && targetElement.hasUnsatisfiedCondition) ||
           (typeof targetElement === 'undefined' &&
             el.conditionSatisfied === false);
-        const stateStroke = isConditionUnsatisfied ? '#B0B0B0' : '#000000';
-        const markerStroke = stateStroke;
+        // const stateStroke = isConditionUnsatisfied ? '#B0B0B0' : '#000000';
+        // const markerStroke = stateStroke;
         const labelFill = isConditionUnsatisfied ? '#888888' : '#000000';
         const containerClasses = [
           'connection-container',
@@ -5009,14 +5092,16 @@ const Canvas: React.FC<CanvasProps> = ({
                 >
                   <polygon
                     points="0 0, 10 3.5, 0 7"
-                    fill={markerStroke}
+                    // fill={markerStroke}
+                    fill={el.color || '#000000'}
                     className="dashed-arrow-polygon"
                   />
                 </marker>
               </defs>
               <polyline
                 points={polyPoints}
-                stroke={stateStroke}
+                // stroke={stateStroke}
+                stroke={isConditionUnsatisfied ? '#B0B0B0' : el.color || '#666'}
                 strokeWidth={isSelected ? 3 : 2}
                 strokeDasharray="5,5"
                 fill="none"
