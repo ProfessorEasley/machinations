@@ -652,13 +652,13 @@ const Canvas: React.FC<CanvasProps> = ({
     return () => clearTimeout(timeout);
   }, [movingTokens]);
 
-  if (!isRunning && hasSimulationStarted) {
-    setHasSimulationStarted(false);
-    setElements(currentElements =>
-      currentElements.map(el => ({ ...el, hasStarted: false }))
-    );
-    setMovingTokens([]); // ⬅️ add this
-  }
+  // if (!isRunning && hasSimulationStarted) {
+  //   setHasSimulationStarted(false);
+  //   setElements(currentElements =>
+  //     currentElements.map(el => ({ ...el, hasStarted: false }))
+  //   );
+  //   setMovingTokens([]); // ⬅️ add this
+  // }
 
   // ---------- Gate helpers ----------
   const randInt = (min: number, max: number) =>
