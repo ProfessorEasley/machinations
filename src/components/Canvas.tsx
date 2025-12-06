@@ -1544,6 +1544,7 @@ const Canvas: React.FC<CanvasProps> = ({
         } else {
           if (gate.activation === activationType) isTriggerActive = true;
         }
+
         const canFire = activationType !== 'onstart' || !gate.hasStarted;
         const isTarget =
           !interactiveElementId || gate.id === interactiveElementId;
@@ -1555,7 +1556,7 @@ const Canvas: React.FC<CanvasProps> = ({
           c => isResourceLikeConnection(c) && c.connectedToEnd === gate.id
         );
 
-        // Collect outputs (both resource and state connections starting at this gate)
+        // Collect outputs (resource + state connections starting at this gate)
         const outputConns = nextElements.filter(
           c =>
             (c.type === 'Resource Connection' ||
@@ -1568,86 +1569,137 @@ const Canvas: React.FC<CanvasProps> = ({
           continue;
         }
 
-        // Determine actions this tick
         const actions = Math.max(1, gate.actions ?? 1);
+        const pullMode = gate.pullMode ?? 'pull any';
 
-        // Helper: can we take 1 unit from a start element?
-        const canTakeOne = (start: GraphElement): boolean => {
+        // Helpers that work with N units instead of hard-coded "1"
+        const canTakeUnits = (start: GraphElement, units: number): boolean => {
+          if (units <= 0) return false;
           if (start.type === 'Source') return true; // infinite
-          if (start.type === 'Pool') return (start.currentPoints ?? 0) > 0;
-          return false; // not supported as input (yet)
-        };
-
-        const takeOne = (start: GraphElement): boolean => {
-          if (start.type === 'Source') return true;
           if (start.type === 'Pool') {
-            const have = start.currentPoints ?? 0;
-            if (have > 0) {
-              start.currentPoints = have - 1;
-              return true;
-            }
+            return (start.currentPoints ?? 0) >= units;
           }
           return false;
         };
 
-        const deliverOne = (outConn: GraphElement) => {
+        const takeUnits = (start: GraphElement, units: number): number => {
+          if (units <= 0) return 0;
+          if (start.type === 'Source') {
+            // Conceptually infinite; we just say we took 'units'
+            return units;
+          }
+          if (start.type === 'Pool') {
+            const have = start.currentPoints ?? 0;
+            const used = Math.min(have, units);
+            start.currentPoints = have - used;
+            return used;
+          }
+          return 0;
+        };
+
+        const deliverUnits = (outConn: GraphElement, units: number) => {
+          if (units <= 0) return;
           const end = elementMap.get(outConn.connectedToEnd!);
           if (!end) return;
 
-          recordTransfer(transfers, outConn, 1);
+          // Visual tokens on Gate outputs
+          recordTransfer(transfers, outConn, units);
 
           if (outConn.type === 'State Connection') {
-            end.triggerCount = (end.triggerCount ?? 0) + 1;
+            // each unit is a separate trigger
+            end.triggerCount = (end.triggerCount ?? 0) + units;
             return;
           }
 
           if (end.type === 'Pool') {
             const cur = end.currentPoints ?? 0;
             const cap = end.max ?? Infinity;
-            if (cur < cap) end.currentPoints = cur + 1;
-            return;
+            end.currentPoints = Math.min(cur + units, cap);
           }
         };
 
-        // Run actions
+        // Run actions for this gate this tick
         for (let a = 0; a < actions; a++) {
-          // We'll track both the input element and the connection it came from,
-          // so we can record a visual transfer on that connection.
-          type InputUse = { conn: GraphElement; startEl: GraphElement };
-          const inputsToUse: InputUse[] = [];
+          if (pullMode === 'pull all') {
+            // For pull all: ALL incoming connections must supply their full label amount
+            const required: {
+              conn: GraphElement;
+              startEl: GraphElement;
+              units: number;
+            }[] = [];
 
-          if ((gate.pullMode ?? 'pull any') === 'pull all') {
             for (const ic of inputConns) {
-              const startEl = elementMap.get(ic.connectedToStart!);
-              if (startEl && canTakeOne(startEl)) {
-                inputsToUse.push({ conn: ic, startEl });
+              const startEl = ic.connectedToStart
+                ? elementMap.get(ic.connectedToStart)
+                : undefined;
+              if (!startEl) continue;
+
+              const units = parseConnectionLabel(ic.text);
+              if (units <= 0) continue;
+
+              required.push({ conn: ic, startEl, units });
+            }
+
+            if (required.length === 0) break;
+
+            const allAvailable = required.every(({ startEl, units }) =>
+              canTakeUnits(startEl, units)
+            );
+            if (!allAvailable) break; // can't satisfy label amounts → stop this gate for this tick
+
+            // Consume and route for each input connection
+            for (const { conn, startEl, units } of required) {
+              const taken = takeUnits(startEl, units);
+              if (taken <= 0) continue;
+
+              // Show Source/Pool → Gate tokens
+              recordTransfer(transfers, conn, taken);
+
+              // For EACH resource taken, choose outputs and send one unit
+              for (let i = 0; i < taken; i++) {
+                const chosenOutputs = chooseGateOutputs(gate, outputConns);
+                for (const outConn of chosenOutputs) {
+                  deliverUnits(outConn, 1);
+                }
               }
             }
-            // nothing available this action
-            if (inputsToUse.length === 0) break;
           } else {
-            // pull any
-            const bestConn = inputConns.find(ic => {
-              const se = elementMap.get(ic.connectedToStart!);
-              return !!se && canTakeOne(se);
-            });
-            if (!bestConn) break;
+            // pull any: pick ONE incoming connection whose source can satisfy its label amount
+            let selected: {
+              conn: GraphElement;
+              startEl: GraphElement;
+              units: number;
+            } | null = null;
 
-            const se = elementMap.get(bestConn.connectedToStart!)!;
-            inputsToUse.push({ conn: bestConn, startEl: se });
-          }
+            for (const ic of inputConns) {
+              const startEl = ic.connectedToStart
+                ? elementMap.get(ic.connectedToStart)
+                : undefined;
+              if (!startEl) continue;
 
-          // Consume & route
-          for (const { conn, startEl } of inputsToUse) {
-            if (!takeOne(startEl)) continue;
+              const units = parseConnectionLabel(ic.text);
+              if (units <= 0) continue;
 
-            // 👇 NEW: record a visual transfer on the *input* connection
-            recordTransfer(transfers, conn, 1);
+              if (canTakeUnits(startEl, units)) {
+                selected = { conn: ic, startEl, units };
+                break;
+              }
+            }
 
-            // Decide which outputs the token goes to
-            const chosenList = chooseGateOutputs(gate, outputConns);
-            for (const ch of chosenList) {
-              deliverOne(ch); // this still records transfers on Gate outputs
+            if (!selected) break; // no incoming connection can provide its label amount
+
+            const taken = takeUnits(selected.startEl, selected.units);
+            if (taken <= 0) continue;
+
+            // Show Source/Pool → Gate tokens
+            recordTransfer(transfers, selected.conn, taken);
+
+            // For EACH resource taken, choose outputs and send one unit
+            for (let i = 0; i < taken; i++) {
+              const chosenOutputs = chooseGateOutputs(gate, outputConns);
+              for (const outConn of chosenOutputs) {
+                deliverUnits(outConn, 1);
+              }
             }
           }
         }
