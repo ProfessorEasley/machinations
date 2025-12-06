@@ -1137,42 +1137,44 @@ const Canvas: React.FC<CanvasProps> = ({
 
         // Run actions
         for (let a = 0; a < actions; a++) {
-          // Build a list of inputs to consume from based on pullMode
-          let inputsToUse: GraphElement[] = [];
+          // We'll track both the input element and the connection it came from,
+          // so we can record a visual transfer on that connection.
+          type InputUse = { conn: GraphElement; startEl: GraphElement };
+          const inputsToUse: InputUse[] = [];
 
           if ((gate.pullMode ?? 'pull any') === 'pull all') {
             for (const ic of inputConns) {
               const startEl = elementMap.get(ic.connectedToStart!);
-              if (startEl && canTakeOne(startEl)) inputsToUse.push(startEl);
+              if (startEl && canTakeOne(startEl)) {
+                inputsToUse.push({ conn: ic, startEl });
+              }
             }
-            if (inputsToUse.length === 0) break; // nothing available this action
+            // nothing available this action
+            if (inputsToUse.length === 0) break;
           } else {
             // pull any
-            const best = inputConns.find(ic => {
+            const bestConn = inputConns.find(ic => {
               const se = elementMap.get(ic.connectedToStart!);
               return !!se && canTakeOne(se);
             });
-            if (!best) break;
-            const se = elementMap.get(best.connectedToStart!)!;
-            inputsToUse = [se];
+            if (!bestConn) break;
+
+            const se = elementMap.get(bestConn.connectedToStart!)!;
+            inputsToUse.push({ conn: bestConn, startEl: se });
           }
 
-          // Choose output once per resource taken
-          for (const startEl of inputsToUse) {
-            // Consume one unit
+          // Consume & route
+          for (const { conn, startEl } of inputsToUse) {
             if (!takeOne(startEl)) continue;
 
-            // Decide which output gets it
-            // NOTE: we give chooseGateOutput the *full* output list so labels compete
-            // Decide which outputs get it (may be multiple on overlap)
+            // 👇 NEW: record a visual transfer on the *input* connection
+            recordTransfer(transfers, conn, 1);
+
+            // Decide which outputs the token goes to
             const chosenList = chooseGateOutputs(gate, outputConns);
             for (const ch of chosenList) {
-              deliverOne(ch);
+              deliverOne(ch); // this still records transfers on Gate outputs
             }
-
-            // If no match and no else, nothing is delivered (token dropped)
-
-            // else: dropped on the floor (no match and no 'else')
           }
         }
 
