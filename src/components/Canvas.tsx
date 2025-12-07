@@ -221,6 +221,7 @@ interface MovingToken {
   toX: number;
   toY: number;
   started: boolean; // for CSS transition
+  color: string;
 }
 
 const recordTransfer = (
@@ -624,6 +625,7 @@ const Canvas: React.FC<CanvasProps> = ({
             toX: ex,
             toY: ey + offset,
             started: false,
+            color: conn.color || '#000000',
           });
 
           // remove token after it has finished travelling
@@ -5469,7 +5471,7 @@ const Canvas: React.FC<CanvasProps> = ({
             borderColor: '#ffffff',
             borderWidth: 1,
             borderStyle: 'solid',
-            backgroundColor: '#000000',
+            backgroundColor: token.color ?? '#000000',
             pointerEvents: 'none',
             transform: `translate(${token.started ? token.toX : token.fromX}px, ${token.started ? token.toY : token.fromY}px)`,
             transition: token.started
