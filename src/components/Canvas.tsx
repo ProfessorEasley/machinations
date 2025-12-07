@@ -496,6 +496,13 @@ const Canvas: React.FC<CanvasProps> = ({
   const elements = externalElements ?? internalElements;
   const selectedId = externalSelectedIds ?? internalSelectedIds;
 
+  // Keep the latest elements in a ref so we can use them in stable callbacks
+  const elementsRef = useRef<GraphElement[]>(elements);
+
+  useEffect(() => {
+    elementsRef.current = elements;
+  }, [elements]);
+
   // const setElements = useCallback(
   //   (
   //     newElements: GraphElement[] | ((prev: GraphElement[]) => GraphElement[])
@@ -869,22 +876,35 @@ const Canvas: React.FC<CanvasProps> = ({
   );
 
   const setElements = useCallback(
-    (
-      newElements: GraphElement[] | ((prev: GraphElement[]) => GraphElement[])
-    ) => {
-      const updatedElements =
-        typeof newElements === 'function' ? newElements(elements) : newElements;
-
-      const processedElements = applyDynamicResourceLabels(updatedElements);
-      updateStateConnectionVisualState(processedElements);
-
+    (updater: GraphElement[] | ((prev: GraphElement[]) => GraphElement[])) => {
       if (onElementsChange) {
-        onElementsChange(processedElements);
+        // ✅ Controlled mode: use latest from ref
+        const base = elementsRef.current;
+        const updated = typeof updater === 'function' ? updater(base) : updater;
+
+        const processed = applyDynamicResourceLabels(updated);
+        updateStateConnectionVisualState(processed);
+
+        onElementsChange(processed);
+        // Keep ref in sync with what we just sent up
+        elementsRef.current = processed;
       } else {
-        setInternalElements(processedElements);
+        // ✅ Internal mode: let React compose updates (auto + interactive)
+        setInternalElements(prev => {
+          const updated =
+            typeof updater === 'function' ? updater(prev) : updater;
+
+          const processed = applyDynamicResourceLabels(updated);
+          updateStateConnectionVisualState(processed);
+
+          // Keep ref in sync for the next update
+          elementsRef.current = processed;
+
+          return processed;
+        });
       }
     },
-    [elements, onElementsChange, updateStateConnectionVisualState]
+    [onElementsChange, updateStateConnectionVisualState]
   );
 
   // Optional: allow "d6", "6", or "1d6" in gate.text. Fallback to 6.
@@ -1026,44 +1046,44 @@ const Canvas: React.FC<CanvasProps> = ({
   /**
    * get current value of an element
    */
-  const getElementValue = (element: GraphElement | undefined): number => {
-    if (!element) {
-      // console.log('⚠️ [getElementValue] Element is undefined');
-      return 0;
-    }
+  // const getElementValue = (element: GraphElement | undefined): number => {
+  //   if (!element) {
+  //     // console.log('⚠️ [getElementValue] Element is undefined');
+  //     return 0;
+  //   }
 
-    //console.log('📈 [getElementValue] Getting value from:', {
-    // type: element.type,
-    // id: element.id,
-    // currentPoints: element.currentPoints,
-    // currentValue: element.currentValue,
-    // number: element.number,
-    // });
+  //   //console.log('📈 [getElementValue] Getting value from:', {
+  //   // type: element.type,
+  //   // id: element.id,
+  //   // currentPoints: element.currentPoints,
+  //   // currentValue: element.currentValue,
+  //   // number: element.number,
+  //   // });
 
-    switch (element.type) {
-      case 'Pool':
-        if (
-          element.currentPoints !== undefined &&
-          element.currentPoints !== null
-        ) {
-          return element.currentPoints;
-        }
-        return typeof element.number === 'string'
-          ? parseInt(element.number, 10) || 0
-          : element.number || 0;
+  //   switch (element.type) {
+  //     case 'Pool':
+  //       if (
+  //         element.currentPoints !== undefined &&
+  //         element.currentPoints !== null
+  //       ) {
+  //         return element.currentPoints;
+  //       }
+  //       return typeof element.number === 'string'
+  //         ? parseInt(element.number, 10) || 0
+  //         : element.number || 0;
 
-      case 'Register':
-        return element.currentValue || 0;
+  //     case 'Register':
+  //       return element.currentValue || 0;
 
-      case 'Source':
-        return typeof element.number === 'string'
-          ? parseInt(element.number, 10) || 0
-          : element.number || 0;
+  //     case 'Source':
+  //       return typeof element.number === 'string'
+  //         ? parseInt(element.number, 10) || 0
+  //         : element.number || 0;
 
-      default:
-        return 0;
-    }
-  };
+  //     default:
+  //       return 0;
+  //   }
+  // };
 
   const applyStateConnectionDelta = (
     target: GraphElement,
@@ -1260,22 +1280,33 @@ const Canvas: React.FC<CanvasProps> = ({
 
         // Activation check
         let isTriggerActive = false;
+
         if (activationType === 'automatic') {
-          if (pool.activation === 'automatic') isTriggerActive = true;
-        } else if (
-          pool.activation === 'passive' &&
-          consumePassiveTrigger(pool)
-        ) {
-          isTriggerActive = true;
+          if (pool.activation === 'automatic') {
+            isTriggerActive = true;
+          } else if (
+            pool.activation === 'passive' &&
+            consumePassiveTrigger(pool)
+          ) {
+            isTriggerActive = true;
+          }
         } else if (activationType === 'interactive') {
-          if (pool.activation === 'interactive') {
-            isTriggerActive =
-              !interactiveElementId || pool.id === interactiveElementId;
+          if (
+            pool.activation === 'interactive' &&
+            interactiveElementId === pool.id
+          ) {
+            // clicked interactive pool only
+            isTriggerActive = true;
           }
         } else if (activationType === 'onstart') {
-          if (pool.activation === 'onstart' && !pool.hasStarted)
+          if (pool.activation === 'onstart' && !pool.hasStarted) {
             isTriggerActive = true;
+          }
         }
+
+        // (you can now drop the activationType === 'interactive' branch, because we no
+        // longer call runSimulationTick('interactive', ...))
+
         // Passive pools only fire when triggered externally (not in this pass)
 
         if (!isTriggerActive) continue;
@@ -1457,75 +1488,75 @@ const Canvas: React.FC<CanvasProps> = ({
         }
 
         // Handle PUSH modes (push resources to outputs)
-        if (poolPullMode === 'push any' || poolPullMode === 'push all') {
-          if (outputConns.length === 0 || currentResources <= 0) continue;
+        // if (poolPullMode === 'push any' || poolPullMode === 'push all') {
+        //   if (outputConns.length === 0 || currentResources <= 0) continue;
 
-          // Parse amounts for output connections
-          const outputAmounts: number[] = outputConns.map(conn =>
-            parseConnectionLabel(conn.text)
-          );
-          const totalOutput = outputAmounts.reduce((sum, amt) => sum + amt, 0);
+        //   // Parse amounts for output connections
+        //   const outputAmounts: number[] = outputConns.map(conn =>
+        //     parseConnectionLabel(conn.text)
+        //   );
+        //   const totalOutput = outputAmounts.reduce((sum, amt) => sum + amt, 0);
 
-          if (poolPullMode === 'push all') {
-            // Push all: only push if all outputs can accept resources
-            const allCanAccept = outputConns.every((conn, idx) => {
-              const endEl = elementMap.get(conn.connectedToEnd!);
-              if (!endEl) return false;
-              const amount = outputAmounts[idx];
-              if (endEl.type === 'Drain') return true; // Drain always accepts
-              if (endEl.type === 'Pool') {
-                const max = endEl.max ?? Infinity;
-                return (endEl.currentPoints ?? 0) + amount <= max;
-              }
-              return false;
-            });
+        //   if (poolPullMode === 'push all') {
+        //     // Push all: only push if all outputs can accept resources
+        //     const allCanAccept = outputConns.every((conn, idx) => {
+        //       const endEl = elementMap.get(conn.connectedToEnd!);
+        //       if (!endEl) return false;
+        //       const amount = outputAmounts[idx];
+        //       if (endEl.type === 'Drain') return true; // Drain always accepts
+        //       if (endEl.type === 'Pool') {
+        //         const max = endEl.max ?? Infinity;
+        //         return (endEl.currentPoints ?? 0) + amount <= max;
+        //       }
+        //       return false;
+        //     });
 
-            if (allCanAccept && currentResources >= totalOutput) {
-              // Push to all outputs
-              outputConns.forEach((conn, idx) => {
-                const endEl = elementMap.get(conn.connectedToEnd!);
-                if (!endEl) return;
-                const amount = outputAmounts[idx];
-                if (endEl.type === 'Drain') {
-                  // Drain consumes, do nothing
-                } else if (endEl.type === 'Pool') {
-                  const max = endEl.max ?? Infinity;
-                  endEl.currentPoints = Math.min(
-                    (endEl.currentPoints ?? 0) + amount,
-                    max
-                  );
-                }
-              });
-              pool.currentPoints = Math.max(0, currentResources - totalOutput);
-            }
-          } else {
-            // Push any: push maximum possible, evenly distribute if needed
-            const available = currentResources;
-            if (available > 0 && totalOutput > 0) {
-              // Calculate how much we can actually push
-              // const actualAmount = Math.min(available, totalOutput);
-              // // Evenly distribute to all outputs
-              // const perOutput = Math.floor(actualAmount / outputConns.length);
-              // const remainder = actualAmount % outputConns.length;
-              // outputConns.forEach((conn, idx) => {
-              //   const endEl = elementMap.get(conn.connectedToEnd!);
-              //   if (!endEl) return;
-              //   const amount = perOutput + (idx < remainder ? 1 : 0);
-              //   if (amount <= 0) return;
-              //   if (endEl.type === 'Drain') {
-              //     // Drain consumes
-              //   } else if (endEl.type === 'Pool') {
-              //     const max = endEl.max ?? Infinity;
-              //     endEl.currentPoints = Math.min(
-              //       (endEl.currentPoints ?? 0) + amount,
-              //       max
-              //     );
-              //   }
-              // });
-              // pool.currentPoints = Math.max(0, available - actualAmount);
-            }
-          }
-        }
+        //     if (allCanAccept && currentResources >= totalOutput) {
+        //       // Push to all outputs
+        //       outputConns.forEach((conn, idx) => {
+        //         const endEl = elementMap.get(conn.connectedToEnd!);
+        //         if (!endEl) return;
+        //         const amount = outputAmounts[idx];
+        //         if (endEl.type === 'Drain') {
+        //           // Drain consumes, do nothing
+        //         } else if (endEl.type === 'Pool') {
+        //           const max = endEl.max ?? Infinity;
+        //           endEl.currentPoints = Math.min(
+        //             (endEl.currentPoints ?? 0) + amount,
+        //             max
+        //           );
+        //         }
+        //       });
+        //       pool.currentPoints = Math.max(0, currentResources - totalOutput);
+        //     }
+        //   } else {
+        //     // Push any: push maximum possible, evenly distribute if needed
+        //     const available = currentResources;
+        //     if (available > 0 && totalOutput > 0) {
+        //       // Calculate how much we can actually push
+        //       // const actualAmount = Math.min(available, totalOutput);
+        //       // // Evenly distribute to all outputs
+        //       // const perOutput = Math.floor(actualAmount / outputConns.length);
+        //       // const remainder = actualAmount % outputConns.length;
+        //       // outputConns.forEach((conn, idx) => {
+        //       //   const endEl = elementMap.get(conn.connectedToEnd!);
+        //       //   if (!endEl) return;
+        //       //   const amount = perOutput + (idx < remainder ? 1 : 0);
+        //       //   if (amount <= 0) return;
+        //       //   if (endEl.type === 'Drain') {
+        //       //     // Drain consumes
+        //       //   } else if (endEl.type === 'Pool') {
+        //       //     const max = endEl.max ?? Infinity;
+        //       //     endEl.currentPoints = Math.min(
+        //       //       (endEl.currentPoints ?? 0) + amount,
+        //       //       max
+        //       //     );
+        //       //   }
+        //       // });
+        //       // pool.currentPoints = Math.max(0, available - actualAmount);
+        //     }
+        //   }
+        // }
 
         if (activationType === 'onstart') pool.hasStarted = true;
       }
@@ -1536,22 +1567,33 @@ const Canvas: React.FC<CanvasProps> = ({
 
         // Activation gate check
         let isTriggerActive = false;
+
         if (activationType === 'automatic') {
-          if (gate.activation === 'automatic') isTriggerActive = true;
-        } else if (
-          gate.activation === 'passive' &&
-          consumePassiveTrigger(gate)
-        ) {
-          isTriggerActive = true;
-        } else {
-          if (gate.activation === activationType) isTriggerActive = true;
+          if (gate.activation === 'automatic') {
+            isTriggerActive = true;
+          } else if (
+            gate.activation === 'passive' &&
+            consumePassiveTrigger(gate)
+          ) {
+            isTriggerActive = true;
+          }
+        } else if (activationType === 'interactive') {
+          if (
+            gate.activation === 'interactive' &&
+            interactiveElementId === gate.id
+          ) {
+            // only the clicked interactive gate
+            isTriggerActive = true;
+          }
+        } else if (activationType === 'onstart') {
+          if (gate.activation === 'onstart' && !gate.hasStarted) {
+            isTriggerActive = true;
+          }
         }
 
         const canFire = activationType !== 'onstart' || !gate.hasStarted;
-        const isTarget =
-          !interactiveElementId || gate.id === interactiveElementId;
 
-        if (!(isTriggerActive && canFire && isTarget)) continue;
+        if (!isTriggerActive || !canFire) continue;
 
         // Collect inputs (resource connections ending at this gate)
         const inputConns = nextElements.filter(
@@ -1715,21 +1757,32 @@ const Canvas: React.FC<CanvasProps> = ({
 
         // Activation check - Source produces based on output streams
         let isTriggerActive = false;
-        if (activationType === 'automatic') {
-          if (source.activation === 'automatic') isTriggerActive = true;
-        } else if (
-          source.activation === 'passive' &&
-          consumePassiveTrigger(source)
-        ) {
-          isTriggerActive = true;
-        } else {
-          if (source.activation === activationType) isTriggerActive = true;
-        }
-        const canFire = activationType !== 'onstart' || !source.hasStarted;
-        const isTarget =
-          !interactiveElementId || source.id === interactiveElementId;
 
-        if (!(isTriggerActive && canFire && isTarget)) continue;
+        if (activationType === 'automatic') {
+          if (source.activation === 'automatic') {
+            isTriggerActive = true;
+          } else if (
+            source.activation === 'passive' &&
+            consumePassiveTrigger(source)
+          ) {
+            isTriggerActive = true;
+          }
+        } else if (activationType === 'interactive') {
+          if (
+            source.activation === 'interactive' &&
+            interactiveElementId === source.id
+          ) {
+            isTriggerActive = true;
+          }
+        } else if (activationType === 'onstart') {
+          if (source.activation === 'onstart' && !source.hasStarted) {
+            isTriggerActive = true;
+          }
+        }
+
+        const canFire = activationType !== 'onstart' || !source.hasStarted;
+
+        if (!isTriggerActive || !canFire) continue;
 
         // Collect output connections (resource connections starting at this source)
         const outputConns = nextElements.filter(
@@ -1770,86 +1823,38 @@ const Canvas: React.FC<CanvasProps> = ({
         if (activationType === 'onstart') source.hasStarted = true;
       }
 
-      // // --------- PASS 2.5: process Sources ----------
-      // for (const source of nextElements) {
-      //   if (source.type !== 'Source') continue;
-
-      //   // Activation check - Source produces based on output streams
-      //   let isTriggerActive = false;
-      //   if (activationType === 'automatic') {
-      //     if (source.activation === 'automatic') isTriggerActive = true;
-      //   } else if (
-      //     source.activation === 'passive' &&
-      //     consumePassiveTrigger(source)
-      //   ) {
-      //     isTriggerActive = true;
-      //   } else {
-      //     if (source.activation === activationType) isTriggerActive = true;
-      //   }
-      //   const canFire = activationType !== 'onstart' || !source.hasStarted;
-      //   const isTarget =
-      //     !interactiveElementId || source.id === interactiveElementId;
-
-      //   if (!(isTriggerActive && canFire && isTarget)) continue;
-
-      //   // Collect output connections (resource connections starting at this source)
-      //   const outputConns = nextElements.filter(
-      //     c => isResourceLikeConnection(c) && c.connectedToStart === source.id
-      //   );
-
-      //   if (outputConns.length === 0) {
-      //     if (activationType === 'onstart') source.hasStarted = true;
-      //     continue;
-      //   }
-
-      //   // Source produces resources equal to value of all output streams
-      //   // Each output connection label is evaluated separately (for random/fraction)
-      //   outputConns.forEach(outputConn => {
-      //     const amount = parseConnectionLabel(outputConn.text);
-      //     const endElement = elementMap.get(outputConn.connectedToEnd!);
-
-      //     if (!endElement) return;
-
-      //     // Check if this is a trigger output (marked with "*")
-      //     const isTrigger = isTriggerOutput(outputConn.text);
-
-      //     if (isTrigger) {
-      //       // Trigger output: activate the target element
-      //       endElement.triggerCount = (endElement.triggerCount ?? 0) + 1;
-      //     } else {
-      //       // Normal resource output
-      //       if (endElement.type === 'Pool') {
-      //         const current = endElement.currentPoints || 0;
-      //         const max = endElement.max ?? Infinity;
-      //         endElement.currentPoints = Math.min(current + amount, max);
-      //       }
-      //     }
-      //   });
-
-      //   if (activationType === 'onstart') source.hasStarted = true;
-      // }
-
       // --------- PASS 2.7: process Drains ----------
       for (const drain of nextElements) {
         if (drain.type !== 'Drain') continue;
 
         // Activation check
         let isTriggerActive = false;
-        if (activationType === 'automatic') {
-          if (drain.activation === 'automatic') isTriggerActive = true;
-        } else if (
-          drain.activation === 'passive' &&
-          consumePassiveTrigger(drain)
-        ) {
-          isTriggerActive = true;
-        } else {
-          if (drain.activation === activationType) isTriggerActive = true;
-        }
-        const canFire = activationType !== 'onstart' || !drain.hasStarted;
-        const isTarget =
-          !interactiveElementId || drain.id === interactiveElementId;
 
-        if (!(isTriggerActive && canFire && isTarget)) continue;
+        if (activationType === 'automatic') {
+          if (drain.activation === 'automatic') {
+            isTriggerActive = true;
+          } else if (
+            drain.activation === 'passive' &&
+            consumePassiveTrigger(drain)
+          ) {
+            isTriggerActive = true;
+          }
+        } else if (activationType === 'interactive') {
+          if (
+            drain.activation === 'interactive' &&
+            interactiveElementId === drain.id
+          ) {
+            isTriggerActive = true;
+          }
+        } else if (activationType === 'onstart') {
+          if (drain.activation === 'onstart' && !drain.hasStarted) {
+            isTriggerActive = true;
+          }
+        }
+
+        const canFire = activationType !== 'onstart' || !drain.hasStarted;
+
+        if (!isTriggerActive || !canFire) continue;
 
         // Collect input connections (resource connections ending at this drain)
         const inputConns = nextElements.filter(
@@ -1962,22 +1967,40 @@ const Canvas: React.FC<CanvasProps> = ({
         if (convertor.type !== 'Convertor') continue;
 
         // Activation check
+        // Activation check
         let isTriggerActive = false;
-        if (activationType === 'automatic') {
-          if (convertor.activation === 'automatic') isTriggerActive = true;
-        } else if (
-          convertor.activation === 'passive' &&
-          consumePassiveTrigger(convertor)
-        ) {
-          isTriggerActive = true;
-        } else {
-          if (convertor.activation === activationType) isTriggerActive = true;
-        }
-        const canFire = activationType !== 'onstart' || !convertor.hasStarted;
-        const isTarget =
-          !interactiveElementId || convertor.id === interactiveElementId;
 
-        if (!(isTriggerActive && canFire && isTarget)) continue;
+        if (activationType === 'automatic') {
+          if (convertor.activation === 'automatic') {
+            isTriggerActive = true;
+          } else if (
+            convertor.activation === 'passive' &&
+            consumePassiveTrigger(convertor)
+          ) {
+            isTriggerActive = true;
+          }
+        } else if (activationType === 'interactive') {
+          if (
+            convertor.activation === 'interactive' &&
+            interactiveElementId === convertor.id
+          ) {
+            isTriggerActive = true;
+          }
+        } else if (activationType === 'onstart') {
+          if (convertor.activation === 'onstart' && !convertor.hasStarted) {
+            isTriggerActive = true;
+          }
+        }
+
+        const canFire = activationType !== 'onstart' || !convertor.hasStarted;
+
+        if (!isTriggerActive || !canFire) continue;
+
+        // const canFire = activationType !== 'onstart' || !convertor.hasStarted;
+        // const isTarget =
+        //   !interactiveElementId || convertor.id === interactiveElementId;
+
+        // if (!(isTriggerActive && canFire && isTarget)) continue;
 
         // Initialize convertor storage if not exists
         if (!convertor.inputResources) {
@@ -2233,37 +2256,40 @@ const Canvas: React.FC<CanvasProps> = ({
 
         // Also check activation type (for automatic/passive/interactive/onstart)
         let isTriggerActive = false;
+
         if (activationType === 'automatic') {
-          if (trader.activation === 'automatic') isTriggerActive = true;
-        } else if (
-          trader.activation === 'passive' &&
-          consumePassiveTrigger(trader)
-        ) {
-          isTriggerActive = true;
-        } else {
-          if (trader.activation === activationType) isTriggerActive = true;
+          if (trader.activation === 'automatic') {
+            isTriggerActive = true;
+          } else if (
+            trader.activation === 'passive' &&
+            consumePassiveTrigger(trader)
+          ) {
+            isTriggerActive = true;
+          }
+        } else if (activationType === 'interactive') {
+          if (
+            trader.activation === 'interactive' &&
+            interactiveElementId === trader.id
+          ) {
+            isTriggerActive = true;
+          }
+        } else if (activationType === 'onstart') {
+          if (trader.activation === 'onstart' && !trader.hasStarted) {
+            isTriggerActive = true;
+          }
         }
+
         const canFire = activationType !== 'onstart' || !trader.hasStarted;
-        const isTarget =
-          !interactiveElementId || trader.id === interactiveElementId;
 
         // In Pull Any mode, always try to collect available resources (even if not fully activated)
-        // This allows the trader to accumulate resources over time
-        if (
-          trader.pullMode === 'pull any' &&
-          isTriggerActive &&
-          canFire &&
-          isTarget
-        ) {
+        if (trader.pullMode === 'pull any' && isTriggerActive && canFire) {
           collectResourcesForPullAny(trader, inputConns, elementMap);
         }
 
-        // Trader only processes trades if:
-        // - It is activated (by resources or trigger) AND
-        // - The activation type matches (automatic/passive/interactive/onstart) AND
-        // - It can fire (hasn't started yet for onstart) AND
-        // - It's the target (for interactive mode)
-        if (!(isActivated && isTriggerActive && canFire && isTarget)) {
+        // Trader only processes trades if both:
+        // - Logical activation (resources/trigger) and
+        // - Activation type matches + canFire
+        if (!(isActivated && isTriggerActive && canFire)) {
           if (activationType === 'onstart') trader.hasStarted = true;
           continue;
         }
@@ -2431,7 +2457,7 @@ const Canvas: React.FC<CanvasProps> = ({
       // console.log('✅ [PASS 5] Register calculation complete');
 
       // --------- PASS 6: Check EndConditions ----------
-      console.log('🎯 [PASS 6] Starting EndCondition check...');
+      // console.log('🎯 [PASS 6] Starting EndCondition check...');
       for (const endCondition of nextElements) {
         if (endCondition.type !== 'End Condition') continue;
 
@@ -2442,18 +2468,18 @@ const Canvas: React.FC<CanvasProps> = ({
             c.connectedToEnd === endCondition.id
         );
 
-        console.log('🎯 [EndCondition] Checking:', {
-          id: endCondition.id,
-          text: endCondition.text,
-          inputCount: inputConns.length,
-          currentInhibited: endCondition.inhibited,
-        });
+        // console.log('🎯 [EndCondition] Checking:', {
+        //   id: endCondition.id,
+        //   text: endCondition.text,
+        //   inputCount: inputConns.length,
+        //   currentInhibited: endCondition.inhibited,
+        // });
 
         // if no input connections, matain inhibited state
         if (inputConns.length === 0) {
-          console.log(
-            '⚠️ [EndCondition] No input connections, remaining inhibited'
-          );
+          // console.log(
+          //   '⚠️ [EndCondition] No input connections, remaining inhibited'
+          // );
           continue;
         }
 
@@ -2511,39 +2537,34 @@ const Canvas: React.FC<CanvasProps> = ({
           }
         }
 
-        console.log('🎯 [EndCondition] Condition details:', conditionDetails);
+        // console.log('🎯 [EndCondition] Condition details:', conditionDetails);
 
         // update inhibited state
         const wasInhibited = endCondition.inhibited;
         endCondition.inhibited = !allConditionsMet;
 
-        console.log('🎯 [EndCondition] Final state:', {
-          id: endCondition.id,
-          text: endCondition.text,
-          allConditionsMet: allConditionsMet,
-          wasInhibited: wasInhibited,
-          nowInhibited: endCondition.inhibited,
-        });
+        // Only fire "game-end" for automatic / onstart ticks
+        const shouldDispatchGameEnd =
+          activationType === 'automatic' || activationType === 'onstart';
 
-        // if changed from inhibited to not inhibited, trigger game end
         if (wasInhibited && !endCondition.inhibited) {
-          console.log('🎊🎊🎊 [EndCondition] VICTORY! Game Over!');
-          console.log('🎊 Victory condition:', endCondition.text || 'Unnamed');
           endCondition.isBlinking = true;
 
-          // send game end event
-          const gameEndEvent = new CustomEvent('game-end', {
-            detail: {
-              endConditionId: endCondition.id,
-              message: endCondition.text || 'Victory!',
-              timestamp: Date.now(),
-            },
-          });
-          document.dispatchEvent(gameEndEvent);
+          if (shouldDispatchGameEnd) {
+            const gameEndEvent = new CustomEvent('game-end', {
+              detail: {
+                endConditionId: endCondition.id,
+                message: endCondition.text || 'Victory!',
+                timestamp: Date.now(),
+              },
+            });
+            document.dispatchEvent(gameEndEvent);
+          }
+
           break;
         }
       }
-      console.log('✅ [PASS 6] EndCondition check complete');
+      // console.log('✅ [PASS 6] EndCondition check complete');
 
       applyDynamicResourceLabelsMutable(nextElements);
       updateStateConnectionVisualState(nextElements);
@@ -3128,18 +3149,35 @@ const Canvas: React.FC<CanvasProps> = ({
   };
 
   const handleInteractiveAction = (elementId: number) => {
+    console.log('🔥 Interactive tick for', elementId);
     setElements(currentElements => {
       const { nextElements, transfers } = runSimulationAndCollectTransfers(
         currentElements,
-        'interactive',
+        'interactive', // ⬅️ use a dedicated interactive tick
         elementId
       );
+
       if (transfers.length) {
         spawnMovingTokens(transfers, nextElements);
       }
+
       return nextElements;
     });
   };
+
+  // const handleInteractiveAction = (elementId: number) => {
+  //   setElements(currentElements => {
+  //     const { nextElements, transfers } = runSimulationAndCollectTransfers(
+  //       currentElements,
+  //       'interactive',
+  //       elementId
+  //     );
+  //     if (transfers.length) {
+  //       spawnMovingTokens(transfers, nextElements);
+  //     }
+  //     return nextElements;
+  //   });
+  // };
 
   useEffect(() => {
     let simulationInterval: NodeJS.Timeout | undefined;
