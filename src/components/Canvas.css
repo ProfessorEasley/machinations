@@ -224,6 +224,20 @@
   z-index: 2;
 }
 
+.greyed {
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+
+.connection-container.condition-pending .state-connection-line,
+.connection-container.condition-pending .connection-line {
+  stroke: #9c9c9c !important;
+}
+
+.connection-container.condition-pending .connection-label-text {
+  fill: #8a8a8a !important;
+}
+
 .connection-svg {
   position: absolute;
   left: 0;
@@ -507,4 +521,16 @@
 .canvas.game-ended .clickable-element {
   pointer-events: none;
   cursor: default !important;
+}
+
+.resource-token {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: black;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 5;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
 }
