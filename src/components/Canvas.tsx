@@ -216,12 +216,11 @@ interface ResourceTransfer {
 interface MovingToken {
   id: number;
   connectionId: number;
-  fromX: number;
-  fromY: number;
-  toX: number;
-  toY: number;
-  started: boolean; // for CSS transition
   color: string;
+  path: { x: number; y: number }[];
+  startTime: number;
+  currentX: number;
+  currentY: number;
 }
 
 const recordTransfer = (
@@ -287,6 +286,53 @@ const getClosestPointOnPolyline = (
   }
 
   return { point: closestPoint, distance: closestDistance };
+};
+
+const getPointOnPolylineAtT = (
+  points: { x: number; y: number }[],
+  t: number
+): { x: number; y: number } => {
+  if (points.length === 0) return { x: 0, y: 0 };
+  if (points.length === 1) return points[0];
+
+  const clampedT = Math.max(0, Math.min(1, t));
+
+  let totalLength = 0;
+  const segments: {
+    start: { x: number; y: number };
+    end: { x: number; y: number };
+    length: number;
+  }[] = [];
+
+  for (let i = 0; i < points.length - 1; i++) {
+    const start = points[i];
+    const end = points[i + 1];
+    const length = Math.hypot(end.x - start.x, end.y - start.y);
+    if (length === 0) continue;
+
+    segments.push({ start, end, length });
+    totalLength += length;
+  }
+
+  if (segments.length === 0) return points[0];
+
+  const target = clampedT * totalLength;
+  let traversed = 0;
+
+  for (const segment of segments) {
+    if (traversed + segment.length >= target) {
+      const remaining = target - traversed;
+      const localT = segment.length === 0 ? 0 : remaining / segment.length;
+      return {
+        x: segment.start.x + (segment.end.x - segment.start.x) * localT,
+        y: segment.start.y + (segment.end.y - segment.start.y) * localT,
+      };
+    }
+    traversed += segment.length;
+  }
+
+  const last = segments[segments.length - 1];
+  return last.end;
 };
 
 const RESOURCE_LABEL_EPSILON = 1e-6;
@@ -604,6 +650,8 @@ const Canvas: React.FC<CanvasProps> = ({
   const spawnMovingTokens = React.useCallback(
     (transfers: ResourceTransfer[], elementsSnapshot: GraphElement[]) => {
       const tokensToAdd: MovingToken[] = [];
+      const now =
+        typeof performance !== 'undefined' ? performance.now() : Date.now();
 
       for (const tr of transfers) {
         const conn = elementsSnapshot.find(
@@ -611,34 +659,41 @@ const Canvas: React.FC<CanvasProps> = ({
         );
         if (!conn) continue;
 
-        const sx = conn.startX ?? conn.x;
-        const sy = conn.startY ?? conn.y;
-        const ex = conn.endX ?? conn.x;
-        const ey = conn.endY ?? conn.y;
+        // Full polyline for this connection (start + points + end)
+        const basePolyline = getResourcePolylinePoints(conn);
+        if (basePolyline.length < 2) continue;
 
         // Don't spawn one dot per unit if it's huge — cap it for performance
         const unitsToShow = Math.min(tr.units, 3);
 
         for (let i = 0; i < unitsToShow; i++) {
           const id = nextTokenIdRef.current++;
-          // tiny perpendicular offset so multiple tokens don't sit exactly on top of each other
-          const offset = (i - (unitsToShow - 1) / 2) * 4;
+
+          // Slight offset so multiple tokens don't sit exactly on top of each other
+          let path = basePolyline;
+          if (unitsToShow > 1 && basePolyline.length >= 2) {
+            const offset = (i - (unitsToShow - 1) / 2) * 4;
+            const dx = basePolyline[1].x - basePolyline[0].x;
+            const dy = basePolyline[1].y - basePolyline[0].y;
+            const len = Math.hypot(dx, dy) || 1;
+            const nx = -dy / len;
+            const ny = dx / len;
+
+            path = basePolyline.map(p => ({
+              x: p.x + nx * offset,
+              y: p.y + ny * offset,
+            }));
+          }
 
           tokensToAdd.push({
             id,
             connectionId: tr.connectionId,
-            fromX: sx,
-            fromY: sy + offset,
-            toX: ex,
-            toY: ey + offset,
-            started: false,
             color: conn.color || '#000000',
+            path,
+            startTime: now,
+            currentX: path[0].x,
+            currentY: path[0].y,
           });
-
-          // remove token after it has finished travelling
-          setTimeout(() => {
-            setMovingTokens(prev => prev.filter(t => t.id !== id));
-          }, TOKEN_TRAVEL_TIME + 50);
         }
       }
 
@@ -650,16 +705,44 @@ const Canvas: React.FC<CanvasProps> = ({
   );
 
   useEffect(() => {
-    if (!movingTokens.some(t => !t.started)) return;
+    if (movingTokens.length === 0) return;
 
-    const timeout = setTimeout(() => {
-      setMovingTokens(prev =>
-        prev.map(t => (t.started ? t : { ...t, started: true }))
-      );
-    }, 16); // one frame
+    let animationFrameId: number;
 
-    return () => clearTimeout(timeout);
-  }, [movingTokens]);
+    const animate = (time: number) => {
+      const now =
+        time ||
+        (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+      setMovingTokens(prevTokens => {
+        if (prevTokens.length === 0) return prevTokens;
+
+        const updated: MovingToken[] = [];
+
+        for (const token of prevTokens) {
+          const elapsed = now - token.startTime;
+          const t = Math.min(1, elapsed / TOKEN_TRAVEL_TIME); // 0 → 1 over lifetime
+          const p = getPointOnPolylineAtT(token.path, t);
+
+          if (elapsed < TOKEN_TRAVEL_TIME + 50) {
+            updated.push({
+              ...token,
+              currentX: p.x,
+              currentY: p.y,
+            });
+          }
+        }
+
+        return updated;
+      });
+
+      animationFrameId = requestAnimationFrame(animate);
+    };
+
+    animationFrameId = requestAnimationFrame(animate);
+
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [movingTokens.length]);
 
   // if (!isRunning && hasSimulationStarted) {
   //   setHasSimulationStarted(false);
@@ -5500,21 +5583,17 @@ const Canvas: React.FC<CanvasProps> = ({
       {movingTokens.map(token => (
         <div
           key={token.id}
-          className="resource-token"
+          className="moving-token"
           style={{
             position: 'absolute',
-            width: 8,
-            height: 8,
+            // small radius: center the 8×8 dot on the point
+            left: token.currentX - 4,
+            top: token.currentY - 4,
+            width: 10,
+            height: 10,
             borderRadius: '50%',
-            borderColor: '#ffffff',
-            borderWidth: 1,
-            borderStyle: 'solid',
-            backgroundColor: token.color ?? '#000000',
+            backgroundColor: token.color || '#000000',
             pointerEvents: 'none',
-            transform: `translate(${token.started ? token.toX : token.fromX}px, ${token.started ? token.toY : token.fromY}px)`,
-            transition: token.started
-              ? `transform ${TOKEN_TRAVEL_TIME}ms linear`
-              : 'none',
           }}
         />
       ))}
