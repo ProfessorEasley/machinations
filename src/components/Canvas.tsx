@@ -129,6 +129,10 @@ interface CanvasProps {
   };
 }
 
+interface CustomWindow extends Window {
+  __GAME_ENDED__?: boolean;
+}
+
 type GraphElementType =
   | 'Text Label'
   | 'Group'
@@ -1328,7 +1332,7 @@ const Canvas: React.FC<CanvasProps> = ({
         }
       }
 
-      const targetConditionStates = new Map<number, boolean>();
+      // const targetConditionStates = new Map<number, boolean>();
 
       // =======================================================================
       // PASS 0.5: State Connections (Modifiers & Triggers)
@@ -2011,6 +2015,7 @@ const Canvas: React.FC<CanvasProps> = ({
               Math.min(Math.max(val, min), max)
             );
           } catch (e) {
+            console.log(e);
             register.currentValue = 0;
           }
         }
@@ -2065,8 +2070,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
           // ✅ STOP THE LOOP IMMEDIATELY
           if (typeof window !== 'undefined') {
-            // Hack to ensure the interval sees this immediately
-            (window as any).__GAME_ENDED__ = true;
+            (window as unknown as CustomWindow).__GAME_ENDED__ = true;
           }
 
           document.dispatchEvent(
@@ -2105,40 +2109,40 @@ const Canvas: React.FC<CanvasProps> = ({
   );
 
   // Helper function to collect resources for Pull Any mode
-  const collectResourcesForPullAny = (
-    trader: GraphElement,
-    inputConns: GraphElement[],
-    elementMap: Map<number, GraphElement>
-  ) => {
-    for (const inputConn of inputConns) {
-      const inputElement = inputConn.connectedToStart
-        ? elementMap.get(inputConn.connectedToStart)
-        : undefined;
-      if (
-        inputElement &&
-        inputElement.type === 'Pool' &&
-        (inputElement.currentPoints ?? 0) > 0
-      ) {
-        const amount = parseConnectionLabel(inputConn.text);
-        const available = Math.min(amount, inputElement.currentPoints ?? 0);
+  // const collectResourcesForPullAny = (
+  //   trader: GraphElement,
+  //   inputConns: GraphElement[],
+  //   elementMap: Map<number, GraphElement>
+  // ) => {
+  //   for (const inputConn of inputConns) {
+  //     const inputElement = inputConn.connectedToStart
+  //       ? elementMap.get(inputConn.connectedToStart)
+  //       : undefined;
+  //     if (
+  //       inputElement &&
+  //       inputElement.type === 'Pool' &&
+  //       (inputElement.currentPoints ?? 0) > 0
+  //     ) {
+  //       const amount = parseConnectionLabel(inputConn.text);
+  //       const available = Math.min(amount, inputElement.currentPoints ?? 0);
 
-        if (available > 0) {
-          inputElement.currentPoints =
-            (inputElement.currentPoints ?? 0) - available;
-          // Use connection ID as key to uniquely identify each input connection
-          const resourceKey = `conn_${inputConn.id}`;
-          const current = trader.traderInputs![resourceKey] || 0;
-          trader.traderInputs![resourceKey] = current + available;
-        }
-      } else if (inputElement && inputElement.type === 'Source') {
-        // Source has infinite resources, collect the amount specified
-        const amount = parseConnectionLabel(inputConn.text);
-        const resourceKey = `conn_${inputConn.id}`;
-        const current = trader.traderInputs![resourceKey] || 0;
-        trader.traderInputs![resourceKey] = current + amount;
-      }
-    }
-  };
+  //       if (available > 0) {
+  //         inputElement.currentPoints =
+  //           (inputElement.currentPoints ?? 0) - available;
+  //         // Use connection ID as key to uniquely identify each input connection
+  //         const resourceKey = `conn_${inputConn.id}`;
+  //         const current = trader.traderInputs![resourceKey] || 0;
+  //         trader.traderInputs![resourceKey] = current + available;
+  //       }
+  //     } else if (inputElement && inputElement.type === 'Source') {
+  //       // Source has infinite resources, collect the amount specified
+  //       const amount = parseConnectionLabel(inputConn.text);
+  //       const resourceKey = `conn_${inputConn.id}`;
+  //       const current = trader.traderInputs![resourceKey] || 0;
+  //       trader.traderInputs![resourceKey] = current + amount;
+  //     }
+  //   }
+  // };
 
   // Helper function for incomplete trader (behaves like convertor - can create/destroy resources)
   const processIncompleteTrader = (
@@ -2694,7 +2698,9 @@ const Canvas: React.FC<CanvasProps> = ({
   useEffect(() => {
     let simulationInterval: NodeJS.Timeout | undefined;
 
-    if (typeof window !== 'undefined') (window as any).__GAME_ENDED__ = false;
+    if (typeof window !== 'undefined') {
+      (window as unknown as CustomWindow).__GAME_ENDED__ = false;
+    }
 
     // =======================================================================
     // A. START: When "Run" is clicked
@@ -2767,7 +2773,7 @@ const Canvas: React.FC<CanvasProps> = ({
         // Just return to keep the current state frozen on screen.
         if (
           gameEndedRef.current ||
-          (typeof window !== 'undefined' && (window as any).__GAME_ENDED__)
+          (typeof window !== 'undefined' && (window as unknown as CustomWindow).__GAME_ENDED__)
         ) {
           return;
         }
