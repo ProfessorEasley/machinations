@@ -477,6 +477,69 @@ function applyDynamicResourceLabels(
   return clonedElements;
 }
 
+type LabelKind = 'prob' | 'cond' | 'interval' | 'else' | 'empty' | 'invalid';
+
+// replace your classifyLabel with this
+function classifyLabel(raw?: string): LabelKind {
+  const s0 = (raw ?? '').trim();
+  if (!s0) return 'empty';
+  if (s0.toLowerCase() === 'else') return 'else';
+  const s = s0.replace(/[–—]/g, '-'); // normalize en/em dashes
+
+  if (/^\d+\s*%$/.test(s)) return 'prob'; // "70%"
+  if (/^\d+(\.\d+)?$/.test(s)) return 'prob'; // "4"
+  if (/^(==|!=|>=|<=|>|<)\s*-?\d+(\.\d+)?$/.test(s)) return 'cond';
+  if (/^-?\d+(\.\d+)?\s*-\s*-?\d+(\.\d+)?$/.test(s)) return 'interval';
+  return 'invalid';
+}
+
+// replace your parseInterval with this
+function parseInterval(raw: string): [number, number] | null {
+  const norm = raw.trim().replace(/[–—]/g, '-');
+  const m = norm.match(/^\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\s*$/);
+  if (!m) return null;
+  const a = parseFloat(m[1]),
+    b = parseFloat(m[2]);
+  return a <= b ? [a, b] : [b, a]; // inclusive range
+}
+
+function parseCond(raw: string): ((v: number) => boolean) | null {
+  const m = raw.trim().match(/^(==|!=|>=|<=|>|<)\s*(-?\d+(?:\.\d+)?)$/);
+  if (!m) return null;
+  const op = m[1],
+    rhs = parseFloat(m[2]);
+  return (v: number) => {
+    switch (op) {
+      case '==':
+        return v === rhs;
+      case '!=':
+        return v !== rhs;
+      case '>=':
+        return v >= rhs;
+      case '<=':
+        return v <= rhs;
+      case '>':
+        return v > rhs;
+      case '<':
+        return v < rhs;
+      default:
+        return false;
+    }
+  };
+}
+
+function getIntervalWrapMax(outputs: GraphElement[]): number | null {
+  let hi = -Infinity;
+  for (const o of outputs) {
+    if (!o.text) continue;
+    if (classifyLabel(o.text) === 'interval') {
+      const rng = parseInterval(o.text);
+      if (rng) hi = Math.max(hi, rng[1]);
+    }
+  }
+  return isFinite(hi) ? hi : null;
+}
+
 const Canvas: React.FC<CanvasProps> = ({
   isRunning,
   selectedTool,
@@ -727,69 +790,6 @@ const Canvas: React.FC<CanvasProps> = ({
     return (label ?? '').trim().includes('*');
   }
 
-  type LabelKind = 'prob' | 'cond' | 'interval' | 'else' | 'empty' | 'invalid';
-
-  // replace your classifyLabel with this
-  function classifyLabel(raw?: string): LabelKind {
-    const s0 = (raw ?? '').trim();
-    if (!s0) return 'empty';
-    if (s0.toLowerCase() === 'else') return 'else';
-    const s = s0.replace(/[–—]/g, '-'); // normalize en/em dashes
-
-    if (/^\d+\s*%$/.test(s)) return 'prob'; // "70%"
-    if (/^\d+(\.\d+)?$/.test(s)) return 'prob'; // "4"
-    if (/^(==|!=|>=|<=|>|<)\s*-?\d+(\.\d+)?$/.test(s)) return 'cond';
-    if (/^-?\d+(\.\d+)?\s*-\s*-?\d+(\.\d+)?$/.test(s)) return 'interval';
-    return 'invalid';
-  }
-
-  // replace your parseInterval with this
-  function parseInterval(raw: string): [number, number] | null {
-    const norm = raw.trim().replace(/[–—]/g, '-');
-    const m = norm.match(/^\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\s*$/);
-    if (!m) return null;
-    const a = parseFloat(m[1]),
-      b = parseFloat(m[2]);
-    return a <= b ? [a, b] : [b, a]; // inclusive range
-  }
-
-  function parseCond(raw: string): ((v: number) => boolean) | null {
-    const m = raw.trim().match(/^(==|!=|>=|<=|>|<)\s*(-?\d+(?:\.\d+)?)$/);
-    if (!m) return null;
-    const op = m[1],
-      rhs = parseFloat(m[2]);
-    return (v: number) => {
-      switch (op) {
-        case '==':
-          return v === rhs;
-        case '!=':
-          return v !== rhs;
-        case '>=':
-          return v >= rhs;
-        case '<=':
-          return v <= rhs;
-        case '>':
-          return v > rhs;
-        case '<':
-          return v < rhs;
-        default:
-          return false;
-      }
-    };
-  }
-
-  function getIntervalWrapMax(outputs: GraphElement[]): number | null {
-    let hi = -Infinity;
-    for (const o of outputs) {
-      if (!o.text) continue;
-      if (classifyLabel(o.text) === 'interval') {
-        const rng = parseInterval(o.text);
-        if (rng) hi = Math.max(hi, rng[1]);
-      }
-    }
-    return isFinite(hi) ? hi : null;
-  }
-
   const evaluateStateCondition = useCallback(
     (
       connection: GraphElement,
@@ -824,7 +824,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
       return { evaluated: false, satisfied: false };
     },
-    [classifyLabel, parseCond, parseInterval]
+    []
   );
 
   const updateStateConnectionVisualState = useCallback(
@@ -3246,7 +3246,7 @@ const Canvas: React.FC<CanvasProps> = ({
     };
     // Ensure ALL dependencies used inside are listed.
     // If setIsRunning comes from props/context, add it too.
-  }, [isRunning, hasSimulationStarted, setElements, runSimulationTick]);
+  }, [isRunning, hasSimulationStarted]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -4019,6 +4019,8 @@ const Canvas: React.FC<CanvasProps> = ({
 
   // Click-to-place handler
   const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isRunning && selectedTool === 'Select') return;
+    
     // Don't clear selection if we just completed a box selection
     if (justCompletedBoxSelection) {
       setJustCompletedBoxSelection(false);
@@ -4059,6 +4061,8 @@ const Canvas: React.FC<CanvasProps> = ({
   };
 
   const handleCanvasMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isRunning) return;
+
     if (selectedTool === 'Select' && e.target === canvasRef.current) {
       setMouseDownOnCanvas(true);
       setIsSelectingBox(false);
