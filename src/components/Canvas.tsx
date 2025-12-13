@@ -4020,7 +4020,7 @@ const Canvas: React.FC<CanvasProps> = ({
   // Click-to-place handler
   const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (isRunning && selectedTool === 'Select') return;
-    
+
     // Don't clear selection if we just completed a box selection
     if (justCompletedBoxSelection) {
       setJustCompletedBoxSelection(false);
