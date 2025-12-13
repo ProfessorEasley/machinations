@@ -331,16 +331,29 @@ function getElementValue(element: GraphElement | undefined): number {
 
   if (element.type === 'Pool') {
     // ✅ Sum all colors to get true total
-    if (element.resourcesByColor && Object.keys(element.resourcesByColor).length > 0) {
-      return Object.values(element.resourcesByColor).reduce((sum, val) => sum + val, 0);
+    if (
+      element.resourcesByColor &&
+      Object.keys(element.resourcesByColor).length > 0
+    ) {
+      return Object.values(element.resourcesByColor).reduce(
+        (sum, val) => sum + val,
+        0
+      );
     }
-    return element.currentPoints ?? (typeof element.number === 'string' ? parseInt(element.number) : element.number || 0);
+    return (
+      element.currentPoints ??
+      (typeof element.number === 'string'
+        ? parseInt(element.number)
+        : element.number || 0)
+    );
   }
 
   if (element.type === 'Register') return element.currentValue || 0;
-  
+
   if (element.type === 'Source') {
-    return typeof element.number === 'string' ? parseInt(element.number) || 0 : element.number || 0;
+    return typeof element.number === 'string'
+      ? parseInt(element.number) || 0
+      : element.number || 0;
   }
 
   return 0;
@@ -694,9 +707,9 @@ const Canvas: React.FC<CanvasProps> = ({
             currentX: path[0].x,
             currentY: path[0].y,
           });
-  setTimeout(() => {
-              setMovingTokens(prev => prev.filter(t => t.id !== id));
-            }, TOKEN_TRAVEL_TIME + 50);
+          setTimeout(() => {
+            setMovingTokens(prev => prev.filter(t => t.id !== id));
+          }, TOKEN_TRAVEL_TIME + 50);
         }
       }
 
@@ -1135,43 +1148,46 @@ const Canvas: React.FC<CanvasProps> = ({
   ): void => {
     if (!delta || !target) return;
 
-  if (target.type === 'Pool') {
-    const max = target.max ?? Infinity;
-    
-    // ✅ FIX: Update the specific color wallet so it persists
-    if (!target.resourcesByColor) target.resourcesByColor = {};
-    
-    // Use the pool's defined color (or black) for the modifier
-    const colorKey = target.color || '#000000';
-    const currentVal = target.resourcesByColor[colorKey] || 0;
-    
-    // Calculate new total to check against MAX
-    const currentTotal = getElementValue(target); // Use our robust getter
-    const space = max - currentTotal;
-    
-    // Only add what fits (or remove whatever amount)
-    // If delta is negative, we can go down. If positive, check space.
-    let actualDelta = delta;
-    if (delta > 0) {
+    if (target.type === 'Pool') {
+      const max = target.max ?? Infinity;
+
+      // ✅ FIX: Update the specific color wallet so it persists
+      if (!target.resourcesByColor) target.resourcesByColor = {};
+
+      // Use the pool's defined color (or black) for the modifier
+      const colorKey = target.color || '#000000';
+      const currentVal = target.resourcesByColor[colorKey] || 0;
+
+      // Calculate new total to check against MAX
+      const currentTotal = getElementValue(target); // Use our robust getter
+      const space = max - currentTotal;
+
+      // Only add what fits (or remove whatever amount)
+      // If delta is negative, we can go down. If positive, check space.
+      let actualDelta = delta;
+      if (delta > 0) {
         actualDelta = Math.min(delta, space);
+      }
+
+      const nextVal = Math.max(0, currentVal + actualDelta);
+      target.resourcesByColor[colorKey] = nextVal;
+
+      // Update total for display immediately
+      target.currentPoints = Object.values(target.resourcesByColor).reduce(
+        (a, b) => a + b,
+        0
+      );
+      return;
     }
 
-    const nextVal = Math.max(0, currentVal + actualDelta);
-    target.resourcesByColor[colorKey] = nextVal;
-    
-    // Update total for display immediately
-    target.currentPoints = Object.values(target.resourcesByColor).reduce((a,b)=>a+b, 0);
-    return;
-  }
-
-  if (target.type === 'Register') {
-    const min = target.minValue ?? -Infinity;
-    const max = target.maxValue ?? Infinity;
-    const next = (target.currentValue ?? 0) + delta;
-    target.currentValue = Math.min(Math.max(next, min), max);
-    return;
-  }
-};
+    if (target.type === 'Register') {
+      const min = target.minValue ?? -Infinity;
+      const max = target.maxValue ?? Infinity;
+      const next = (target.currentValue ?? 0) + delta;
+      target.currentValue = Math.min(Math.max(next, min), max);
+      return;
+    }
+  };
 
   const runSimulationTick = useCallback(
     (
@@ -1200,19 +1216,30 @@ const Canvas: React.FC<CanvasProps> = ({
         const current = el.resourcesByColor[color] || 0;
         const next = Math.max(0, current + delta);
         el.resourcesByColor[color] = Math.round(next * 100) / 100;
-        
+
         // Sync total
-        el.currentPoints = Object.values(el.resourcesByColor).reduce((a, b) => a + b, 0);
+        el.currentPoints = Object.values(el.resourcesByColor).reduce(
+          (a, b) => a + b,
+          0
+        );
       };
 
-      const canTakeUnits = (start: GraphElement, units: number, color: string): boolean => {
+      const canTakeUnits = (
+        start: GraphElement,
+        units: number,
+        color: string
+      ): boolean => {
         if (units <= 0) return false;
-        if (start.type === 'Source') return true; 
+        if (start.type === 'Source') return true;
         if (start.type === 'Pool') return getResCount(start, color) >= units;
         return false;
       };
 
-      const takeUnits = (start: GraphElement, units: number, color: string): number => {
+      const takeUnits = (
+        start: GraphElement,
+        units: number,
+        color: string
+      ): number => {
         if (units <= 0) return 0;
         if (start.type === 'Source') return units;
         if (start.type === 'Pool') {
@@ -1230,7 +1257,8 @@ const Canvas: React.FC<CanvasProps> = ({
         if (!end) return;
 
         const color = normalizeColor(outConn.color);
-        if (transfers) transfers.push({ connectionId: outConn.id, units, color });
+        if (transfers)
+          transfers.push({ connectionId: outConn.id, units, color });
 
         if (outConn.type === 'State Connection') {
           end.triggerCount = (end.triggerCount ?? 0) + units;
@@ -1254,7 +1282,10 @@ const Canvas: React.FC<CanvasProps> = ({
           if (element.type === 'Pool') {
             if (!element.resourcesByColor) {
               element.resourcesByColor = {};
-              const startVal = typeof element.number === 'string' ? parseInt(element.number) || 0 : element.number || 0;
+              const startVal =
+                typeof element.number === 'string'
+                  ? parseInt(element.number) || 0
+                  : element.number || 0;
               if (startVal > 0) {
                 const poolColor = normalizeColor(element.color);
                 element.resourcesByColor[poolColor] = startVal;
@@ -1269,10 +1300,11 @@ const Canvas: React.FC<CanvasProps> = ({
             element.isBlinking = false;
           }
           // Init storage for advanced elements
-          if (element.type === 'Convertor' && !element.inputResources) element.inputResources = {};
+          if (element.type === 'Convertor' && !element.inputResources)
+            element.inputResources = {};
           if (element.type === 'Trader') {
-             if (!element.traderInputs) element.traderInputs = {};
-             if (!element.traderOutputs) element.traderOutputs = {};
+            if (!element.traderInputs) element.traderInputs = {};
+            if (!element.traderOutputs) element.traderOutputs = {};
           }
         }
       }
@@ -1302,7 +1334,12 @@ const Canvas: React.FC<CanvasProps> = ({
       // PASS 0.5: State Connections (Modifiers & Triggers)
       // =======================================================================
       for (const connection of nextElements) {
-        if (connection.type !== 'State Connection' || !connection.connectedToStart || !connection.connectedToEnd) continue;
+        if (
+          connection.type !== 'State Connection' ||
+          !connection.connectedToStart ||
+          !connection.connectedToEnd
+        )
+          continue;
 
         const startEl = elementMap.get(connection.connectedToStart);
         const endEl = elementMap.get(connection.connectedToEnd);
@@ -1310,7 +1347,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
         // SKIP End Conditions (Handled in Pass 6)
         if (endEl.type === 'End Condition') continue;
-        
+
         // SKIP Resource Connections (Handled by label parser later)
         if (endEl.type === 'Resource Connection') continue;
 
@@ -1322,10 +1359,14 @@ const Canvas: React.FC<CanvasProps> = ({
           const delta = parseConnectionLabel(rawLabel);
           applyStateConnectionDelta(endEl, delta);
         }
-        
+
         // Handle Triggers
         const labelLower = rawLabel.toLowerCase();
-        if (labelLower === 'trigger' || labelLower === 'fire' || startEl.type === 'Gate') {
+        if (
+          labelLower === 'trigger' ||
+          labelLower === 'fire' ||
+          startEl.type === 'Gate'
+        ) {
           endEl.triggerCount = (endEl.triggerCount ?? 0) + 1;
         }
       }
@@ -1375,95 +1416,117 @@ const Canvas: React.FC<CanvasProps> = ({
         let isTriggerActive = false;
         if (activationType === 'automatic') {
           if (pool.activation === 'automatic') isTriggerActive = true;
-          else if (pool.activation === 'passive' && consumePassiveTrigger(pool)) isTriggerActive = true;
+          else if (pool.activation === 'passive' && consumePassiveTrigger(pool))
+            isTriggerActive = true;
         } else if (activationType === 'interactive') {
-          if (pool.activation === 'interactive' && interactiveElementId === pool.id) isTriggerActive = true;
+          if (
+            pool.activation === 'interactive' &&
+            interactiveElementId === pool.id
+          )
+            isTriggerActive = true;
         } else if (activationType === 'onstart') {
-          if (pool.activation === 'onstart' && !pool.hasStarted) isTriggerActive = true;
+          if (pool.activation === 'onstart' && !pool.hasStarted)
+            isTriggerActive = true;
         }
 
         if (!isTriggerActive) continue;
 
         // PULL
-        const inputConns = nextElements.filter(c => isResourceLikeConnection(c) && c.connectedToEnd === pool.id);
+        const inputConns = nextElements.filter(
+          c => isResourceLikeConnection(c) && c.connectedToEnd === pool.id
+        );
         const validInputs = inputConns.filter(c => {
-            const start = elementMap.get(c.connectedToStart!);
-            return !start || start.type !== 'Source';
+          const start = elementMap.get(c.connectedToStart!);
+          return !start || start.type !== 'Source';
         });
 
-        const requirements = validInputs.map(conn => ({
+        const requirements = validInputs
+          .map(conn => ({
             conn,
             units: parseConnectionLabel(conn.text),
             color: normalizeColor(conn.color),
-            startEl: elementMap.get(conn.connectedToStart!)
-        })).filter(r => r.startEl && r.units > 0);
+            startEl: elementMap.get(conn.connectedToStart!),
+          }))
+          .filter(r => r.startEl && r.units > 0);
 
         if (pool.pullMode === 'pull all') {
-            if (requirements.every(r => canTakeUnits(r.startEl!, r.units, r.color))) {
-                requirements.forEach(r => {
-                    const taken = takeUnits(r.startEl!, r.units, r.color);
-                    const space = (pool.max ?? Infinity) - (pool.currentPoints ?? 0);
-                    const accepted = Math.min(taken, space);
-                    modResCount(pool, r.color, accepted);
-                    if(transfers) recordTransfer(transfers, r.conn, accepted);
-                });
-            }
+          if (
+            requirements.every(r => canTakeUnits(r.startEl!, r.units, r.color))
+          ) {
+            requirements.forEach(r => {
+              const taken = takeUnits(r.startEl!, r.units, r.color);
+              const space = (pool.max ?? Infinity) - (pool.currentPoints ?? 0);
+              const accepted = Math.min(taken, space);
+              modResCount(pool, r.color, accepted);
+              if (transfers) recordTransfer(transfers, r.conn, accepted);
+            });
+          }
         } else {
-            // pull any
-            for (const r of requirements) {
-                if (canTakeUnits(r.startEl!, r.units, r.color)) {
-                    const taken = takeUnits(r.startEl!, r.units, r.color);
-                    const space = (pool.max ?? Infinity) - (pool.currentPoints ?? 0);
-                    const accepted = Math.min(taken, space);
-                    modResCount(pool, r.color, accepted);
-                    if(transfers) recordTransfer(transfers, r.conn, accepted);
-                    break;
-                }
+          // pull any
+          for (const r of requirements) {
+            if (canTakeUnits(r.startEl!, r.units, r.color)) {
+              const taken = takeUnits(r.startEl!, r.units, r.color);
+              const space = (pool.max ?? Infinity) - (pool.currentPoints ?? 0);
+              const accepted = Math.min(taken, space);
+              modResCount(pool, r.color, accepted);
+              if (transfers) recordTransfer(transfers, r.conn, accepted);
+              break;
             }
+          }
         }
 
         // PUSH
         if (pool.pullMode === 'push any' || pool.pullMode === 'push all') {
-            const outputConns = nextElements.filter(c => isResourceLikeConnection(c) && c.connectedToStart === pool.id);
-            const outputs = outputConns.map(conn => ({
-                conn,
-                units: parseConnectionLabel(conn.text),
-                color: normalizeColor(conn.color),
-                endEl: elementMap.get(conn.connectedToEnd!)
-            })).filter(o => o.endEl && o.units > 0);
+          const outputConns = nextElements.filter(
+            c => isResourceLikeConnection(c) && c.connectedToStart === pool.id
+          );
+          const outputs = outputConns
+            .map(conn => ({
+              conn,
+              units: parseConnectionLabel(conn.text),
+              color: normalizeColor(conn.color),
+              endEl: elementMap.get(conn.connectedToEnd!),
+            }))
+            .filter(o => o.endEl && o.units > 0);
 
-            if (pool.pullMode === 'push all') {
-                const allAvail = outputs.every(o => getResCount(pool, o.color) >= o.units);
-                if (allAvail) {
-                    outputs.forEach(o => {
-                        let canDeliver = true;
-                        if(o.endEl!.type === 'Pool') {
-                            const cap = (o.endEl!.max ?? Infinity) - (o.endEl!.currentPoints ?? 0);
-                            if(cap < o.units) canDeliver = false;
-                        }
-                        if(canDeliver) {
-                            modResCount(pool, o.color, -o.units);
-                            if(o.endEl!.type === 'Pool') modResCount(o.endEl!, o.color, o.units);
-                            if(transfers) recordTransfer(transfers, o.conn, o.units);
-                        }
-                    });
+          if (pool.pullMode === 'push all') {
+            const allAvail = outputs.every(
+              o => getResCount(pool, o.color) >= o.units
+            );
+            if (allAvail) {
+              outputs.forEach(o => {
+                let canDeliver = true;
+                if (o.endEl!.type === 'Pool') {
+                  const cap =
+                    (o.endEl!.max ?? Infinity) - (o.endEl!.currentPoints ?? 0);
+                  if (cap < o.units) canDeliver = false;
                 }
-            } else {
-                for (const o of outputs) {
-                    if (getResCount(pool, o.color) >= o.units) {
-                        let canDeliver = true;
-                        if(o.endEl!.type === 'Pool') {
-                            const cap = (o.endEl!.max ?? Infinity) - (o.endEl!.currentPoints ?? 0);
-                            if(cap < o.units) canDeliver = false;
-                        }
-                        if(canDeliver) {
-                            modResCount(pool, o.color, -o.units);
-                            if(o.endEl!.type === 'Pool') modResCount(o.endEl!, o.color, o.units);
-                            if(transfers) recordTransfer(transfers, o.conn, o.units);
-                        }
-                    }
+                if (canDeliver) {
+                  modResCount(pool, o.color, -o.units);
+                  if (o.endEl!.type === 'Pool')
+                    modResCount(o.endEl!, o.color, o.units);
+                  if (transfers) recordTransfer(transfers, o.conn, o.units);
                 }
+              });
             }
+          } else {
+            for (const o of outputs) {
+              if (getResCount(pool, o.color) >= o.units) {
+                let canDeliver = true;
+                if (o.endEl!.type === 'Pool') {
+                  const cap =
+                    (o.endEl!.max ?? Infinity) - (o.endEl!.currentPoints ?? 0);
+                  if (cap < o.units) canDeliver = false;
+                }
+                if (canDeliver) {
+                  modResCount(pool, o.color, -o.units);
+                  if (o.endEl!.type === 'Pool')
+                    modResCount(o.endEl!, o.color, o.units);
+                  if (transfers) recordTransfer(transfers, o.conn, o.units);
+                }
+              }
+            }
+          }
         }
         if (activationType === 'onstart') pool.hasStarted = true;
       }
@@ -1475,54 +1538,74 @@ const Canvas: React.FC<CanvasProps> = ({
         if (gate.type !== 'Gate') continue;
         let isTriggerActive = false;
         if (activationType === 'automatic') {
-             if (gate.activation === 'automatic') isTriggerActive = true;
-             else if (gate.activation === 'passive' && consumePassiveTrigger(gate)) isTriggerActive = true;
+          if (gate.activation === 'automatic') isTriggerActive = true;
+          else if (gate.activation === 'passive' && consumePassiveTrigger(gate))
+            isTriggerActive = true;
         } else if (activationType === 'interactive') {
-             if (gate.activation === 'interactive' && interactiveElementId === gate.id) isTriggerActive = true;
+          if (
+            gate.activation === 'interactive' &&
+            interactiveElementId === gate.id
+          )
+            isTriggerActive = true;
         } else if (activationType === 'onstart') {
-             if (gate.activation === 'onstart' && !gate.hasStarted) isTriggerActive = true;
+          if (gate.activation === 'onstart' && !gate.hasStarted)
+            isTriggerActive = true;
         }
-        if (!isTriggerActive || (activationType !== 'onstart' && gate.hasStarted)) continue;
+        if (
+          !isTriggerActive ||
+          (activationType !== 'onstart' && gate.hasStarted)
+        )
+          continue;
 
-        const inputConns = nextElements.filter(c => isResourceLikeConnection(c) && c.connectedToEnd === gate.id);
-        const outputConns = nextElements.filter(c => (isResourceLikeConnection(c) || c.type === 'State Connection') && c.connectedToStart === gate.id);
+        const inputConns = nextElements.filter(
+          c => isResourceLikeConnection(c) && c.connectedToEnd === gate.id
+        );
+        const outputConns = nextElements.filter(
+          c =>
+            (isResourceLikeConnection(c) || c.type === 'State Connection') &&
+            c.connectedToStart === gate.id
+        );
         const actions = Math.max(1, gate.actions ?? 1);
 
-        for(let a=0; a<actions; a++) {
-            const inputs = inputConns.map(conn => ({
-                conn,
-                units: parseConnectionLabel(conn.text),
-                color: normalizeColor(conn.color),
-                startEl: elementMap.get(conn.connectedToStart!)
-            })).filter(i => i.startEl && i.units > 0);
+        for (let a = 0; a < actions; a++) {
+          const inputs = inputConns
+            .map(conn => ({
+              conn,
+              units: parseConnectionLabel(conn.text),
+              color: normalizeColor(conn.color),
+              startEl: elementMap.get(conn.connectedToStart!),
+            }))
+            .filter(i => i.startEl && i.units > 0);
 
-            if (gate.pullMode === 'pull all') {
-                const allAvail = inputs.every(i => canTakeUnits(i.startEl!, i.units, i.color));
-                if (!allAvail) break;
-                inputs.forEach(i => {
-                    const taken = takeUnits(i.startEl!, i.units, i.color);
-                    if (taken > 0) {
-                        if(transfers) recordTransfer(transfers, i.conn, taken);
-                        for(let k=0; k<taken; k++) {
-                            const chosen = chooseGateOutputs(gate, outputConns);
-                            chosen.forEach(out => deliverUnits(out, 1));
-                        }
-                    }
-                });
-            } else {
-                for (const i of inputs) {
-                    if (canTakeUnits(i.startEl!, i.units, i.color)) {
-                        const taken = takeUnits(i.startEl!, i.units, i.color);
-                        if (taken > 0) {
-                            if(transfers) recordTransfer(transfers, i.conn, taken);
-                            for(let k=0; k<taken; k++) {
-                                const chosen = chooseGateOutputs(gate, outputConns);
-                                chosen.forEach(out => deliverUnits(out, 1));
-                            }
-                        }
-                    }
+          if (gate.pullMode === 'pull all') {
+            const allAvail = inputs.every(i =>
+              canTakeUnits(i.startEl!, i.units, i.color)
+            );
+            if (!allAvail) break;
+            inputs.forEach(i => {
+              const taken = takeUnits(i.startEl!, i.units, i.color);
+              if (taken > 0) {
+                if (transfers) recordTransfer(transfers, i.conn, taken);
+                for (let k = 0; k < taken; k++) {
+                  const chosen = chooseGateOutputs(gate, outputConns);
+                  chosen.forEach(out => deliverUnits(out, 1));
                 }
+              }
+            });
+          } else {
+            for (const i of inputs) {
+              if (canTakeUnits(i.startEl!, i.units, i.color)) {
+                const taken = takeUnits(i.startEl!, i.units, i.color);
+                if (taken > 0) {
+                  if (transfers) recordTransfer(transfers, i.conn, taken);
+                  for (let k = 0; k < taken; k++) {
+                    const chosen = chooseGateOutputs(gate, outputConns);
+                    chosen.forEach(out => deliverUnits(out, 1));
+                  }
+                }
+              }
             }
+          }
         }
         if (activationType === 'onstart') gate.hasStarted = true;
       }
@@ -1534,21 +1617,35 @@ const Canvas: React.FC<CanvasProps> = ({
         if (source.type !== 'Source') continue;
         let isTriggerActive = false;
         if (activationType === 'automatic') {
-             if (source.activation === 'automatic') isTriggerActive = true;
-             else if (source.activation === 'passive' && consumePassiveTrigger(source)) isTriggerActive = true;
+          if (source.activation === 'automatic') isTriggerActive = true;
+          else if (
+            source.activation === 'passive' &&
+            consumePassiveTrigger(source)
+          )
+            isTriggerActive = true;
         } else if (activationType === 'interactive') {
-             if (source.activation === 'interactive' && interactiveElementId === source.id) isTriggerActive = true;
+          if (
+            source.activation === 'interactive' &&
+            interactiveElementId === source.id
+          )
+            isTriggerActive = true;
         } else if (activationType === 'onstart') {
-             if (source.activation === 'onstart' && !source.hasStarted) isTriggerActive = true;
+          if (source.activation === 'onstart' && !source.hasStarted)
+            isTriggerActive = true;
         }
-        
-        if (isTriggerActive && (activationType === 'onstart' ? !source.hasStarted : true)) {
-            const outputConns = nextElements.filter(c => isResourceLikeConnection(c) && c.connectedToStart === source.id);
-            outputConns.forEach(conn => {
-                const amount = parseConnectionLabel(conn.text);
-                if (amount > 0) deliverUnits(conn, amount);
-            });
-            if (activationType === 'onstart') source.hasStarted = true;
+
+        if (
+          isTriggerActive &&
+          (activationType === 'onstart' ? !source.hasStarted : true)
+        ) {
+          const outputConns = nextElements.filter(
+            c => isResourceLikeConnection(c) && c.connectedToStart === source.id
+          );
+          outputConns.forEach(conn => {
+            const amount = parseConnectionLabel(conn.text);
+            if (amount > 0) deliverUnits(conn, amount);
+          });
+          if (activationType === 'onstart') source.hasStarted = true;
         }
       }
 
@@ -1559,34 +1656,54 @@ const Canvas: React.FC<CanvasProps> = ({
         if (drain.type !== 'Drain') continue;
         let isTriggerActive = false;
         if (activationType === 'automatic') {
-             if (drain.activation === 'automatic') isTriggerActive = true;
-             else if (drain.activation === 'passive' && consumePassiveTrigger(drain)) isTriggerActive = true;
+          if (drain.activation === 'automatic') isTriggerActive = true;
+          else if (
+            drain.activation === 'passive' &&
+            consumePassiveTrigger(drain)
+          )
+            isTriggerActive = true;
         } else if (activationType === 'interactive') {
-             if (drain.activation === 'interactive' && interactiveElementId === drain.id) isTriggerActive = true;
+          if (
+            drain.activation === 'interactive' &&
+            interactiveElementId === drain.id
+          )
+            isTriggerActive = true;
         } else if (activationType === 'onstart') {
-             if (drain.activation === 'onstart' && !drain.hasStarted) isTriggerActive = true;
+          if (drain.activation === 'onstart' && !drain.hasStarted)
+            isTriggerActive = true;
         }
 
-        if (isTriggerActive && (activationType === 'onstart' ? !drain.hasStarted : true)) {
-            const inputConns = nextElements.filter(c => isResourceLikeConnection(c) && c.connectedToEnd === drain.id);
-            inputConns.forEach(conn => {
-                const startEl = elementMap.get(conn.connectedToStart!);
-                const amount = parseConnectionLabel(conn.text);
-                const color = normalizeColor(conn.color);
-                
-                if (startEl && amount > 0) {
-                    if (canTakeUnits(startEl, amount, color)) {
-                        const taken = takeUnits(startEl, amount, color);
-                        if(transfers) recordTransfer(transfers, conn, taken);
-                        const stateOuts = nextElements.filter(c => c.type === 'State Connection' && c.connectedToStart === drain.id && isTriggerOutput(c.text));
-                        stateOuts.forEach(out => {
-                            const target = elementMap.get(out.connectedToEnd!);
-                            if (target) target.triggerCount = (target.triggerCount ?? 0) + 1;
-                        });
-                    }
-                }
-            });
-            if (activationType === 'onstart') drain.hasStarted = true;
+        if (
+          isTriggerActive &&
+          (activationType === 'onstart' ? !drain.hasStarted : true)
+        ) {
+          const inputConns = nextElements.filter(
+            c => isResourceLikeConnection(c) && c.connectedToEnd === drain.id
+          );
+          inputConns.forEach(conn => {
+            const startEl = elementMap.get(conn.connectedToStart!);
+            const amount = parseConnectionLabel(conn.text);
+            const color = normalizeColor(conn.color);
+
+            if (startEl && amount > 0) {
+              if (canTakeUnits(startEl, amount, color)) {
+                const taken = takeUnits(startEl, amount, color);
+                if (transfers) recordTransfer(transfers, conn, taken);
+                const stateOuts = nextElements.filter(
+                  c =>
+                    c.type === 'State Connection' &&
+                    c.connectedToStart === drain.id &&
+                    isTriggerOutput(c.text)
+                );
+                stateOuts.forEach(out => {
+                  const target = elementMap.get(out.connectedToEnd!);
+                  if (target)
+                    target.triggerCount = (target.triggerCount ?? 0) + 1;
+                });
+              }
+            }
+          });
+          if (activationType === 'onstart') drain.hasStarted = true;
         }
       }
 
@@ -1599,19 +1716,33 @@ const Canvas: React.FC<CanvasProps> = ({
         let isTriggerActive = false;
         if (activationType === 'automatic') {
           if (convertor.activation === 'automatic') isTriggerActive = true;
-          else if (convertor.activation === 'passive' && consumePassiveTrigger(convertor)) isTriggerActive = true;
+          else if (
+            convertor.activation === 'passive' &&
+            consumePassiveTrigger(convertor)
+          )
+            isTriggerActive = true;
         } else if (activationType === 'interactive') {
-          if (convertor.activation === 'interactive' && interactiveElementId === convertor.id) isTriggerActive = true;
+          if (
+            convertor.activation === 'interactive' &&
+            interactiveElementId === convertor.id
+          )
+            isTriggerActive = true;
         } else if (activationType === 'onstart') {
-          if (convertor.activation === 'onstart' && !convertor.hasStarted) isTriggerActive = true;
+          if (convertor.activation === 'onstart' && !convertor.hasStarted)
+            isTriggerActive = true;
         }
 
         if (!isTriggerActive) continue;
 
         if (!convertor.inputResources) convertor.inputResources = {};
-        
-        const inputConns = nextElements.filter(c => isResourceLikeConnection(c) && c.connectedToEnd === convertor.id);
-        const outputConns = nextElements.filter(c => isResourceLikeConnection(c) && c.connectedToStart === convertor.id);
+
+        const inputConns = nextElements.filter(
+          c => isResourceLikeConnection(c) && c.connectedToEnd === convertor.id
+        );
+        const outputConns = nextElements.filter(
+          c =>
+            isResourceLikeConnection(c) && c.connectedToStart === convertor.id
+        );
 
         if (inputConns.length === 0 || outputConns.length === 0) {
           if (activationType === 'onstart') convertor.hasStarted = true;
@@ -1621,75 +1752,97 @@ const Canvas: React.FC<CanvasProps> = ({
         const actions = Math.max(1, convertor.actions ?? 1);
 
         for (let a = 0; a < actions; a++) {
-          const inputs = inputConns.map(conn => ({
+          const inputs = inputConns
+            .map(conn => ({
               conn,
               units: parseConnectionLabel(conn.text),
               color: normalizeColor(conn.color),
               key: conn.text || 'default',
-              startEl: elementMap.get(conn.connectedToStart!)
-          })).filter(i => i.units > 0);
+              startEl: elementMap.get(conn.connectedToStart!),
+            }))
+            .filter(i => i.units > 0);
 
-          const outputs = outputConns.map(conn => ({
+          const outputs = outputConns
+            .map(conn => ({
               conn,
               units: parseConnectionLabel(conn.text),
               color: normalizeColor(conn.color),
-              endEl: elementMap.get(conn.connectedToEnd!)
-          })).filter(o => o.units > 0);
+              endEl: elementMap.get(conn.connectedToEnd!),
+            }))
+            .filter(o => o.units > 0);
 
           let canConvert = true;
 
           if (convertor.pullMode === 'pull all') {
-             canConvert = inputs.every(i => {
-                 const stored = convertor.inputResources![i.key] || 0;
-                 if (stored >= i.units) return true;
-                 return i.startEl && canTakeUnits(i.startEl, i.units, i.color);
-             });
+            canConvert = inputs.every(i => {
+              const stored = convertor.inputResources![i.key] || 0;
+              if (stored >= i.units) return true;
+              return i.startEl && canTakeUnits(i.startEl, i.units, i.color);
+            });
           } else {
-             canConvert = inputs.some(i => {
-                 const stored = convertor.inputResources![i.key] || 0;
-                 if (stored >= i.units) return true;
-                 return i.startEl && canTakeUnits(i.startEl, i.units, i.color);
-             });
+            canConvert = inputs.some(i => {
+              const stored = convertor.inputResources![i.key] || 0;
+              if (stored >= i.units) return true;
+              return i.startEl && canTakeUnits(i.startEl, i.units, i.color);
+            });
           }
 
           if (canConvert) {
-             inputs.forEach(i => {
-                 let amountNeeded = i.units;
-                 const stored = convertor.inputResources![i.key] || 0;
-                 if (stored >= amountNeeded) {
-                     convertor.inputResources![i.key] = stored - amountNeeded;
-                     amountNeeded = 0;
-                 } else if (stored > 0) {
-                     amountNeeded -= stored;
-                     convertor.inputResources![i.key] = 0;
-                 }
+            inputs.forEach(i => {
+              let amountNeeded = i.units;
+              const stored = convertor.inputResources![i.key] || 0;
+              if (stored >= amountNeeded) {
+                convertor.inputResources![i.key] = stored - amountNeeded;
+                amountNeeded = 0;
+              } else if (stored > 0) {
+                amountNeeded -= stored;
+                convertor.inputResources![i.key] = 0;
+              }
 
-                 if (amountNeeded > 0 && i.startEl) {
-                     if (convertor.pullMode === 'pull all' || canTakeUnits(i.startEl, amountNeeded, i.color)) {
-                         const taken = takeUnits(i.startEl, amountNeeded, i.color);
-                         if (taken < amountNeeded && convertor.pullMode === 'pull any') {
-                             convertor.inputResources![i.key] = (convertor.inputResources![i.key] || 0) + taken;
-                         }
-                         if (taken > 0 && transfers) recordTransfer(transfers, i.conn, taken);
-                     }
-                 }
-             });
+              if (amountNeeded > 0 && i.startEl) {
+                if (
+                  convertor.pullMode === 'pull all' ||
+                  canTakeUnits(i.startEl, amountNeeded, i.color)
+                ) {
+                  const taken = takeUnits(i.startEl, amountNeeded, i.color);
+                  if (
+                    taken < amountNeeded &&
+                    convertor.pullMode === 'pull any'
+                  ) {
+                    convertor.inputResources![i.key] =
+                      (convertor.inputResources![i.key] || 0) + taken;
+                  }
+                  if (taken > 0 && transfers)
+                    recordTransfer(transfers, i.conn, taken);
+                }
+              }
+            });
 
-             outputs.forEach(o => deliverUnits(o.conn, o.units));
+            outputs.forEach(o => deliverUnits(o.conn, o.units));
           } else {
             if (convertor.pullMode === 'pull any') {
               for (const inputConn of inputConns) {
-                const inputElement = elementMap.get(inputConn.connectedToStart!);
+                const inputElement = elementMap.get(
+                  inputConn.connectedToStart!
+                );
                 const req = inputs.find(i => i.conn.id === inputConn.id);
                 if (!req) continue;
 
-                if (inputElement && inputElement.type === 'Pool' && getResCount(inputElement, req.color) > 0) {
-                  const available = Math.min(req.units, getResCount(inputElement, req.color));
+                if (
+                  inputElement &&
+                  inputElement.type === 'Pool' &&
+                  getResCount(inputElement, req.color) > 0
+                ) {
+                  const available = Math.min(
+                    req.units,
+                    getResCount(inputElement, req.color)
+                  );
                   if (available > 0) {
                     modResCount(inputElement, req.color, -available);
                     recordTransfer(transfers, inputConn, available);
                     const resourceKey = inputConn.text || 'default';
-                    convertor.inputResources![resourceKey] = (convertor.inputResources![resourceKey]||0) + available;
+                    convertor.inputResources![resourceKey] =
+                      (convertor.inputResources![resourceKey] || 0) + available;
                   }
                 }
               }
@@ -1707,9 +1860,15 @@ const Canvas: React.FC<CanvasProps> = ({
         if (!trader.traderInputs) trader.traderInputs = {};
         if (!trader.traderOutputs) trader.traderOutputs = {};
 
-        const inputConns = nextElements.filter(c => isResourceLikeConnection(c) && c.connectedToEnd === trader.id);
-        const outputConns = nextElements.filter(c => isResourceLikeConnection(c) && c.connectedToStart === trader.id);
-        const triggerConns = nextElements.filter(c => c.type === 'State Connection' && c.connectedToEnd === trader.id);
+        const inputConns = nextElements.filter(
+          c => isResourceLikeConnection(c) && c.connectedToEnd === trader.id
+        );
+        const outputConns = nextElements.filter(
+          c => isResourceLikeConnection(c) && c.connectedToStart === trader.id
+        );
+        const triggerConns = nextElements.filter(
+          c => c.type === 'State Connection' && c.connectedToEnd === trader.id
+        );
 
         if (inputConns.length === 0 || outputConns.length === 0) {
           if (activationType === 'onstart') trader.hasStarted = true;
@@ -1728,10 +1887,20 @@ const Canvas: React.FC<CanvasProps> = ({
         }
         if (!isActivated) {
           for (const inputConn of inputConns) {
-            const inputElement = inputConn.connectedToStart ? elementMap.get(inputConn.connectedToStart) : undefined;
+            const inputElement = inputConn.connectedToStart
+              ? elementMap.get(inputConn.connectedToStart)
+              : undefined;
             if (inputElement) {
-              if (inputElement.type === 'Source') { isActivated = true; break; } 
-              else if (inputElement.type === 'Pool' && (inputElement.currentPoints ?? 0) > 0) { isActivated = true; break; }
+              if (inputElement.type === 'Source') {
+                isActivated = true;
+                break;
+              } else if (
+                inputElement.type === 'Pool' &&
+                (inputElement.currentPoints ?? 0) > 0
+              ) {
+                isActivated = true;
+                break;
+              }
             }
           }
         }
@@ -1739,34 +1908,45 @@ const Canvas: React.FC<CanvasProps> = ({
         let isTriggerActive = false;
         if (activationType === 'automatic') {
           if (trader.activation === 'automatic') isTriggerActive = true;
-          else if (trader.activation === 'passive' && consumePassiveTrigger(trader)) isTriggerActive = true;
+          else if (
+            trader.activation === 'passive' &&
+            consumePassiveTrigger(trader)
+          )
+            isTriggerActive = true;
         } else if (activationType === 'interactive') {
-          if (trader.activation === 'interactive' && interactiveElementId === trader.id) isTriggerActive = true;
+          if (
+            trader.activation === 'interactive' &&
+            interactiveElementId === trader.id
+          )
+            isTriggerActive = true;
         } else if (activationType === 'onstart') {
-          if (trader.activation === 'onstart' && !trader.hasStarted) isTriggerActive = true;
+          if (trader.activation === 'onstart' && !trader.hasStarted)
+            isTriggerActive = true;
         }
 
         const canFire = activationType !== 'onstart' || !trader.hasStarted;
 
         if (trader.pullMode === 'pull any' && isTriggerActive && canFire) {
           for (const inputConn of inputConns) {
-             const inputElement = inputConn.connectedToStart ? elementMap.get(inputConn.connectedToStart) : undefined;
-             const amount = parseConnectionLabel(inputConn.text);
-             const color = normalizeColor(inputConn.color);
-             
-             if (inputElement && inputElement.type === 'Pool') {
-                 const avail = Math.min(amount, getResCount(inputElement, color));
-                 if (avail > 0) {
-                     modResCount(inputElement, color, -avail);
-                     const key = `conn_${inputConn.id}`;
-                     const current = trader.traderInputs![key] || 0;
-                     trader.traderInputs![key] = current + avail;
-                 }
-             } else if (inputElement && inputElement.type === 'Source') {
-                 const key = `conn_${inputConn.id}`;
-                 const current = trader.traderInputs![key] || 0;
-                 trader.traderInputs![key] = current + amount;
-             }
+            const inputElement = inputConn.connectedToStart
+              ? elementMap.get(inputConn.connectedToStart)
+              : undefined;
+            const amount = parseConnectionLabel(inputConn.text);
+            const color = normalizeColor(inputConn.color);
+
+            if (inputElement && inputElement.type === 'Pool') {
+              const avail = Math.min(amount, getResCount(inputElement, color));
+              if (avail > 0) {
+                modResCount(inputElement, color, -avail);
+                const key = `conn_${inputConn.id}`;
+                const current = trader.traderInputs![key] || 0;
+                trader.traderInputs![key] = current + avail;
+              }
+            } else if (inputElement && inputElement.type === 'Source') {
+              const key = `conn_${inputConn.id}`;
+              const current = trader.traderInputs![key] || 0;
+              trader.traderInputs![key] = current + amount;
+            }
           }
         }
 
@@ -1779,9 +1959,21 @@ const Canvas: React.FC<CanvasProps> = ({
 
         for (let a = 0; a < actions; a++) {
           if (isIncomplete) {
-            processIncompleteTrader(trader, inputConns, outputConns, elementMap, transfers);
+            processIncompleteTrader(
+              trader,
+              inputConns,
+              outputConns,
+              elementMap,
+              transfers
+            );
           } else {
-            processCompleteTrader(trader, inputConns, outputConns, elementMap, transfers);
+            processCompleteTrader(
+              trader,
+              inputConns,
+              outputConns,
+              elementMap,
+              transfers
+            );
           }
         }
         if (activationType === 'onstart') trader.hasStarted = true;
@@ -1793,27 +1985,34 @@ const Canvas: React.FC<CanvasProps> = ({
       for (const register of nextElements) {
         if (register.type !== 'Register') continue;
         if (register.interactive === true || register.interactive === 'true') {
-            if (register.currentValue === undefined) register.currentValue = register.startingValue || 0;
-            continue;
+          if (register.currentValue === undefined)
+            register.currentValue = register.startingValue || 0;
+          continue;
         }
-        const inputConns = nextElements.filter(c => c.type === 'State Connection' && c.connectedToEnd === register.id);
+        const inputConns = nextElements.filter(
+          c => c.type === 'State Connection' && c.connectedToEnd === register.id
+        );
         if (inputConns.length > 0 && register.formula) {
-            try {
-                const variables = new Array(23).fill(0);
-                for (const conn of inputConns) {
-                    const label = (conn.text || '').trim().toLowerCase();
-                    if (label.length === 1 && RegisterExpression.isVariable(label)) {
-                        const idx = label.charCodeAt(0) - 97;
-                        const src = elementMap.get(conn.connectedToStart!);
-                        variables[idx] = getElementValue(src);
-                    }
-                }
-                const postfix = RegisterExpression.toPostfix(register.formula);
-                const val = RegisterExpression.evaluate(postfix, variables);
-                const min = register.minValue ?? -9999;
-                const max = register.maxValue ?? 9999;
-                register.currentValue = Math.floor(Math.min(Math.max(val, min), max));
-            } catch (e) { register.currentValue = 0; }
+          try {
+            const variables = new Array(23).fill(0);
+            for (const conn of inputConns) {
+              const label = (conn.text || '').trim().toLowerCase();
+              if (label.length === 1 && RegisterExpression.isVariable(label)) {
+                const idx = label.charCodeAt(0) - 97;
+                const src = elementMap.get(conn.connectedToStart!);
+                variables[idx] = getElementValue(src);
+              }
+            }
+            const postfix = RegisterExpression.toPostfix(register.formula);
+            const val = RegisterExpression.evaluate(postfix, variables);
+            const min = register.minValue ?? -9999;
+            const max = register.maxValue ?? 9999;
+            register.currentValue = Math.floor(
+              Math.min(Math.max(val, min), max)
+            );
+          } catch (e) {
+            register.currentValue = 0;
+          }
         }
       }
 
@@ -1822,51 +2021,59 @@ const Canvas: React.FC<CanvasProps> = ({
       // =======================================================================
       for (const endCond of nextElements) {
         if (endCond.type !== 'End Condition') continue;
-        const inputConns = nextElements.filter(c => c.type === 'State Connection' && c.connectedToEnd === endCond.id);
+        const inputConns = nextElements.filter(
+          c => c.type === 'State Connection' && c.connectedToEnd === endCond.id
+        );
         if (inputConns.length === 0) continue;
 
         let allMet = true;
         for (const conn of inputConns) {
-            const startEl = elementMap.get(conn.connectedToStart!);
-            const label = (conn.text || '').trim();
-            const kind = classifyLabel(label);
-            
-            if (startEl && kind === 'cond') {
-                const fn = parseCond(label);
-                if (fn) {
-                    const val = getElementValue(startEl);
-                    const satisfied = fn(val);
-                    conn.conditionSatisfied = satisfied;
-                    conn.hasUnsatisfiedCondition = !satisfied;
-                    if (!satisfied) allMet = false;
-                }
-            } else if (startEl && kind === 'interval') {
-                const range = parseInterval(label);
-                if (range) {
-                    const val = getElementValue(startEl);
-                    const satisfied = val >= range[0] && val <= range[1];
-                    conn.conditionSatisfied = satisfied;
-                    conn.hasUnsatisfiedCondition = !satisfied;
-                    if (!satisfied) allMet = false;
-                }
+          const startEl = elementMap.get(conn.connectedToStart!);
+          const label = (conn.text || '').trim();
+          const kind = classifyLabel(label);
+
+          if (startEl && kind === 'cond') {
+            const fn = parseCond(label);
+            if (fn) {
+              const val = getElementValue(startEl);
+              const satisfied = fn(val);
+              conn.conditionSatisfied = satisfied;
+              conn.hasUnsatisfiedCondition = !satisfied;
+              if (!satisfied) allMet = false;
             }
+          } else if (startEl && kind === 'interval') {
+            const range = parseInterval(label);
+            if (range) {
+              const val = getElementValue(startEl);
+              const satisfied = val >= range[0] && val <= range[1];
+              conn.conditionSatisfied = satisfied;
+              conn.hasUnsatisfiedCondition = !satisfied;
+              if (!satisfied) allMet = false;
+            }
+          }
         }
-        
+
         const wasInhibited = endCond.inhibited;
         endCond.inhibited = !allMet;
-        
-        if (wasInhibited && !endCond.inhibited && (activationType === 'automatic' || activationType === 'onstart')) {
-            endCond.isBlinking = true;
-            
-            // ✅ STOP THE LOOP IMMEDIATELY
-            if (typeof window !== 'undefined') {
-                 // Hack to ensure the interval sees this immediately
-                 (window as any).__GAME_ENDED__ = true; 
-            }
-            
-            document.dispatchEvent(new CustomEvent('game-end', {
-                detail: { message: endCond.text || 'Victory!' }
-            }));
+
+        if (
+          wasInhibited &&
+          !endCond.inhibited &&
+          (activationType === 'automatic' || activationType === 'onstart')
+        ) {
+          endCond.isBlinking = true;
+
+          // ✅ STOP THE LOOP IMMEDIATELY
+          if (typeof window !== 'undefined') {
+            // Hack to ensure the interval sees this immediately
+            (window as any).__GAME_ENDED__ = true;
+          }
+
+          document.dispatchEvent(
+            new CustomEvent('game-end', {
+              detail: { message: endCond.text || 'Victory!' },
+            })
+          );
         }
       }
       // console.log('✅ [PASS 6] EndCondition check complete');
@@ -2510,27 +2717,44 @@ const Canvas: React.FC<CanvasProps> = ({
             conditionSatisfied: undefined,
             dynamicLabelLastDelta: 0,
           };
-          
+
           if (el.type === 'Pool') {
-            const startVal = typeof el.number === 'string' ? parseInt(el.number)||0 : el.number||0;
+            const startVal =
+              typeof el.number === 'string'
+                ? parseInt(el.number) || 0
+                : el.number || 0;
             const c = normalizeColor(el.color);
             const initialResources = startVal > 0 ? { [c]: startVal } : {};
-            return { ...baseReset, currentPoints: startVal, resourcesByColor: initialResources };
+            return {
+              ...baseReset,
+              currentPoints: startVal,
+              resourcesByColor: initialResources,
+            };
           }
-          if (el.type === 'Register') return { ...baseReset, currentValue: el.startingValue || 0 };
-          if (el.type === 'End Condition') return { ...baseReset, inhibited: true, isBlinking: false };
-          if (el.type === 'Convertor') return { ...baseReset, inputResources: {}, outputResources: {} };
-          if (el.type === 'Trader') return { ...baseReset, traderInputs: {}, traderOutputs: {} };
-          if (el.type === 'Resource Connection' && el.dynamicLabelBase !== undefined) {
-             return { ...baseReset, text: String(el.dynamicLabelBase) };
+          if (el.type === 'Register')
+            return { ...baseReset, currentValue: el.startingValue || 0 };
+          if (el.type === 'End Condition')
+            return { ...baseReset, inhibited: true, isBlinking: false };
+          if (el.type === 'Convertor')
+            return { ...baseReset, inputResources: {}, outputResources: {} };
+          if (el.type === 'Trader')
+            return { ...baseReset, traderInputs: {}, traderOutputs: {} };
+          if (
+            el.type === 'Resource Connection' &&
+            el.dynamicLabelBase !== undefined
+          ) {
+            return { ...baseReset, text: String(el.dynamicLabelBase) };
           }
           return baseReset;
         });
 
         // 2. Run the "OnStart" tick immediately on the clean elements
-        const { nextElements, transfers } = runSimulationAndCollectTransfers(resetElements, 'onstart');
+        const { nextElements, transfers } = runSimulationAndCollectTransfers(
+          resetElements,
+          'onstart'
+        );
         if (transfers.length) spawnMovingTokens(transfers, nextElements);
-        
+
         return nextElements;
       });
     }
@@ -2541,8 +2765,11 @@ const Canvas: React.FC<CanvasProps> = ({
       simulationInterval = setInterval(() => {
         // ✅ FREEZE LOGIC: If game ended, do NOT update elements, do NOT spawn tokens.
         // Just return to keep the current state frozen on screen.
-        if (gameEndedRef.current || (typeof window !== 'undefined' && (window as any).__GAME_ENDED__)) {
-           return; 
+        if (
+          gameEndedRef.current ||
+          (typeof window !== 'undefined' && (window as any).__GAME_ENDED__)
+        ) {
+          return;
         }
         try {
           // Add try...catch
@@ -2569,38 +2796,61 @@ const Canvas: React.FC<CanvasProps> = ({
     if (!isRunning && hasSimulationStarted) {
       console.log('--- Stopped ---');
       setHasSimulationStarted(false);
-      
+
       // ✅ VITAL FIX:
       // If the game ended due to Victory, DO NOT RESET the board.
       // We want to keep the "Victory" state visible (Frozen).
       // The Reset will happen automatically at the start of the *next* run (Block A).
       if (gameEndedRef.current) {
-          console.log('--- Game Over State Frozen (No Reset) ---');
-          return;
+        console.log('--- Game Over State Frozen (No Reset) ---');
+        return;
       }
 
       // If it was a manual stop (user clicked Stop), Reset immediately.
       console.log('--- Manual Stop: Resetting Board ---');
       setMovingTokens([]);
       setGameEnded(false);
-      
-      setElements(prev => prev.map(el => {
-          const baseReset = { ...el, hasStarted: false, triggerCount: 0, hasUnsatisfiedCondition: false, conditionSatisfied: undefined, dynamicLabelLastDelta: 0 };
+
+      setElements(prev =>
+        prev.map(el => {
+          const baseReset = {
+            ...el,
+            hasStarted: false,
+            triggerCount: 0,
+            hasUnsatisfiedCondition: false,
+            conditionSatisfied: undefined,
+            dynamicLabelLastDelta: 0,
+          };
           if (el.type === 'Pool') {
-            const startVal = typeof el.number === 'string' ? parseInt(el.number)||0 : el.number||0;
+            const startVal =
+              typeof el.number === 'string'
+                ? parseInt(el.number) || 0
+                : el.number || 0;
             const c = normalizeColor(el.color);
             const initialResources = startVal > 0 ? { [c]: startVal } : {};
-            return { ...baseReset, currentPoints: startVal, resourcesByColor: initialResources };
+            return {
+              ...baseReset,
+              currentPoints: startVal,
+              resourcesByColor: initialResources,
+            };
           }
-          if (el.type === 'Register') return { ...baseReset, currentValue: el.startingValue || 0 };
-          if (el.type === 'End Condition') return { ...baseReset, inhibited: true, isBlinking: false };
-          if (el.type === 'Convertor') return { ...baseReset, inputResources: {}, outputResources: {} };
-          if (el.type === 'Trader') return { ...baseReset, traderInputs: {}, traderOutputs: {} };
-          if (el.type === 'Resource Connection' && el.dynamicLabelBase !== undefined) {
-             return { ...baseReset, text: String(el.dynamicLabelBase) };
+          if (el.type === 'Register')
+            return { ...baseReset, currentValue: el.startingValue || 0 };
+          if (el.type === 'End Condition')
+            return { ...baseReset, inhibited: true, isBlinking: false };
+          if (el.type === 'Convertor')
+            return { ...baseReset, inputResources: {}, outputResources: {} };
+          if (el.type === 'Trader')
+            return { ...baseReset, traderInputs: {}, traderOutputs: {} };
+          if (
+            el.type === 'Resource Connection' &&
+            el.dynamicLabelBase !== undefined
+          ) {
+            return { ...baseReset, text: String(el.dynamicLabelBase) };
           }
           return baseReset;
-      }));
+        })
+      );
     }
 
     // D. Cleanup:
@@ -2611,7 +2861,13 @@ const Canvas: React.FC<CanvasProps> = ({
     };
     // Ensure ALL dependencies used inside are listed.
     // If setIsRunning comes from props/context, add it too.
-  }, [isRunning, hasSimulationStarted, setElements, runSimulationAndCollectTransfers, spawnMovingTokens]);
+  }, [
+    isRunning,
+    hasSimulationStarted,
+    setElements,
+    runSimulationAndCollectTransfers,
+    spawnMovingTokens,
+  ]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
