@@ -1126,48 +1126,6 @@ const Canvas: React.FC<CanvasProps> = ({
     }
   }
 
-  /**
-   * get current value of an element
-   */
-  // const getElementValue = (element: GraphElement | undefined): number => {
-  //   if (!element) {
-  //     // console.log('⚠️ [getElementValue] Element is undefined');
-  //     return 0;
-  //   }
-
-  //   //console.log('📈 [getElementValue] Getting value from:', {
-  //   // type: element.type,
-  //   // id: element.id,
-  //   // currentPoints: element.currentPoints,
-  //   // currentValue: element.currentValue,
-  //   // number: element.number,
-  //   // });
-
-  //   switch (element.type) {
-  //     case 'Pool':
-  //       if (
-  //         element.currentPoints !== undefined &&
-  //         element.currentPoints !== null
-  //       ) {
-  //         return element.currentPoints;
-  //       }
-  //       return typeof element.number === 'string'
-  //         ? parseInt(element.number, 10) || 0
-  //         : element.number || 0;
-
-  //     case 'Register':
-  //       return element.currentValue || 0;
-
-  //     case 'Source':
-  //       return typeof element.number === 'string'
-  //         ? parseInt(element.number, 10) || 0
-  //         : element.number || 0;
-
-  //     default:
-  //       return 0;
-  //   }
-  // };
-
   const applyStateConnectionDelta = (
     target: GraphElement,
     delta: number
@@ -1569,77 +1527,6 @@ const Canvas: React.FC<CanvasProps> = ({
             }
           }
         }
-
-        // Handle PUSH modes (push resources to outputs)
-        // if (poolPullMode === 'push any' || poolPullMode === 'push all') {
-        //   if (outputConns.length === 0 || currentResources <= 0) continue;
-
-        //   // Parse amounts for output connections
-        //   const outputAmounts: number[] = outputConns.map(conn =>
-        //     parseConnectionLabel(conn.text)
-        //   );
-        //   const totalOutput = outputAmounts.reduce((sum, amt) => sum + amt, 0);
-
-        //   if (poolPullMode === 'push all') {
-        //     // Push all: only push if all outputs can accept resources
-        //     const allCanAccept = outputConns.every((conn, idx) => {
-        //       const endEl = elementMap.get(conn.connectedToEnd!);
-        //       if (!endEl) return false;
-        //       const amount = outputAmounts[idx];
-        //       if (endEl.type === 'Drain') return true; // Drain always accepts
-        //       if (endEl.type === 'Pool') {
-        //         const max = endEl.max ?? Infinity;
-        //         return (endEl.currentPoints ?? 0) + amount <= max;
-        //       }
-        //       return false;
-        //     });
-
-        //     if (allCanAccept && currentResources >= totalOutput) {
-        //       // Push to all outputs
-        //       outputConns.forEach((conn, idx) => {
-        //         const endEl = elementMap.get(conn.connectedToEnd!);
-        //         if (!endEl) return;
-        //         const amount = outputAmounts[idx];
-        //         if (endEl.type === 'Drain') {
-        //           // Drain consumes, do nothing
-        //         } else if (endEl.type === 'Pool') {
-        //           const max = endEl.max ?? Infinity;
-        //           endEl.currentPoints = Math.min(
-        //             (endEl.currentPoints ?? 0) + amount,
-        //             max
-        //           );
-        //         }
-        //       });
-        //       pool.currentPoints = Math.max(0, currentResources - totalOutput);
-        //     }
-        //   } else {
-        //     // Push any: push maximum possible, evenly distribute if needed
-        //     const available = currentResources;
-        //     if (available > 0 && totalOutput > 0) {
-        //       // Calculate how much we can actually push
-        //       // const actualAmount = Math.min(available, totalOutput);
-        //       // // Evenly distribute to all outputs
-        //       // const perOutput = Math.floor(actualAmount / outputConns.length);
-        //       // const remainder = actualAmount % outputConns.length;
-        //       // outputConns.forEach((conn, idx) => {
-        //       //   const endEl = elementMap.get(conn.connectedToEnd!);
-        //       //   if (!endEl) return;
-        //       //   const amount = perOutput + (idx < remainder ? 1 : 0);
-        //       //   if (amount <= 0) return;
-        //       //   if (endEl.type === 'Drain') {
-        //       //     // Drain consumes
-        //       //   } else if (endEl.type === 'Pool') {
-        //       //     const max = endEl.max ?? Infinity;
-        //       //     endEl.currentPoints = Math.min(
-        //       //       (endEl.currentPoints ?? 0) + amount,
-        //       //       max
-        //       //     );
-        //       //   }
-        //       // });
-        //       // pool.currentPoints = Math.max(0, available - actualAmount);
-        //     }
-        //   }
-        // }
 
         if (activationType === 'onstart') pool.hasStarted = true;
       }
