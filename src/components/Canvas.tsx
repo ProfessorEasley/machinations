@@ -2773,7 +2773,8 @@ const Canvas: React.FC<CanvasProps> = ({
         // Just return to keep the current state frozen on screen.
         if (
           gameEndedRef.current ||
-          (typeof window !== 'undefined' && (window as unknown as CustomWindow).__GAME_ENDED__)
+          (typeof window !== 'undefined' &&
+            (window as unknown as CustomWindow).__GAME_ENDED__)
         ) {
           return;
         }
