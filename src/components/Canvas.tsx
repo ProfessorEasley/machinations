@@ -537,68 +537,127 @@ const recordTransfer = (
   });
 };
 
-type LabelKind = 'prob' | 'cond' | 'interval' | 'else' | 'empty' | 'invalid';
+  // ---------- Gate helpers ----------
+  const randInt = (min: number, max: number) =>
+    Math.floor(Math.random() * (max - min + 1)) + min;
 
-// replace your classifyLabel with this
-function classifyLabel(raw?: string): LabelKind {
-  const s0 = (raw ?? '').trim();
-  if (!s0) return 'empty';
-  if (s0.toLowerCase() === 'else') return 'else';
-  const s = s0.replace(/[–—]/g, '-'); // normalize en/em dashes
+  // ---------- Label parsing utilities ----------
+  /**
+   * Parse a connection label to get the resource amount.
+   * Supports:
+   * - Simple number: "5" -> 5
+   * - Random range: "2-5" or "2-8" -> random value in range
+   * - Fraction: "1/2" or "3/4" -> random based on probability
+   * - Default: empty or invalid -> 1
+   */
+  function parseConnectionLabel(label?: string): number {
+    const s = (label ?? '').trim();
+    if (!s) return 1;
 
-  if (/^\d+\s*%$/.test(s)) return 'prob'; // "70%"
-  if (/^\d+(\.\d+)?$/.test(s)) return 'prob'; // "4"
-  if (/^(==|!=|>=|<=|>|<)\s*-?\d+(\.\d+)?$/.test(s)) return 'cond';
-  if (/^-?\d+(\.\d+)?\s*-\s*-?\d+(\.\d+)?$/.test(s)) return 'interval';
-  return 'invalid';
-}
-
-// replace your parseInterval with this
-function parseInterval(raw: string): [number, number] | null {
-  const norm = raw.trim().replace(/[–—]/g, '-');
-  const m = norm.match(/^\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\s*$/);
-  if (!m) return null;
-  const a = parseFloat(m[1]),
-    b = parseFloat(m[2]);
-  return a <= b ? [a, b] : [b, a]; // inclusive range
-}
-
-function parseCond(raw: string): ((v: number) => boolean) | null {
-  const m = raw.trim().match(/^(==|!=|>=|<=|>|<)\s*(-?\d+(?:\.\d+)?)$/);
-  if (!m) return null;
-  const op = m[1],
-    rhs = parseFloat(m[2]);
-  return (v: number) => {
-    switch (op) {
-      case '==':
-        return v === rhs;
-      case '!=':
-        return v !== rhs;
-      case '>=':
-        return v >= rhs;
-      case '<=':
-        return v <= rhs;
-      case '>':
-        return v >= rhs;
-      case '<':
-        return v < rhs;
-      default:
-        return false;
+    // Check for random range (e.g., "2-5")
+    const rangeMatch = s.match(/^(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)$/);
+    if (rangeMatch) {
+      const min = parseFloat(rangeMatch[1]);
+      const max = parseFloat(rangeMatch[2]);
+      if (!isNaN(min) && !isNaN(max)) {
+        return randInt(
+          Math.floor(Math.min(min, max)),
+          Math.floor(Math.max(min, max))
+        );
+      }
     }
-  };
-}
 
-function getIntervalWrapMax(outputs: GraphElement[]): number | null {
-  let hi = -Infinity;
-  for (const o of outputs) {
-    if (!o.text) continue;
-    if (classifyLabel(o.text) === 'interval') {
-      const rng = parseInterval(o.text);
-      if (rng) hi = Math.max(hi, rng[1]);
+    // Check for fraction (e.g., "1/2", "3/4")
+    const fractionMatch = s.match(/^(\d+)\/(\d+)$/);
+    if (fractionMatch) {
+      const num = parseInt(fractionMatch[1], 10);
+      const den = parseInt(fractionMatch[2], 10);
+      if (!isNaN(num) && !isNaN(den) && den > 0) {
+        // Return num with probability num/den, 0 otherwise
+        return Math.random() < num / den ? num : 0;
+      }
     }
+
+    // Check for simple number
+    const num = parseFloat(s);
+    if (!isNaN(num)) {
+      return Math.floor(num);
+    }
+
+    // Default to 1 if can't parse
+    return 1;
   }
-  return isFinite(hi) ? hi : null;
-}
+
+   /**
+   * Check if a connection label represents a trigger output (marked with "*")
+   */
+  function isTriggerOutput(label?: string): boolean {
+    return (label ?? '').trim().includes('*');
+  }
+
+  type LabelKind = 'prob' | 'cond' | 'interval' | 'else' | 'empty' | 'invalid';
+
+  // replace your classifyLabel with this
+  function classifyLabel(raw?: string): LabelKind {
+    const s0 = (raw ?? '').trim();
+    if (!s0) return 'empty';
+    if (s0.toLowerCase() === 'else') return 'else';
+    const s = s0.replace(/[–—]/g, '-'); // normalize en/em dashes
+
+    if (/^\d+\s*%$/.test(s)) return 'prob'; // "70%"
+    if (/^\d+(\.\d+)?$/.test(s)) return 'prob'; // "4"
+    if (/^(==|!=|>=|<=|>|<)\s*-?\d+(\.\d+)?$/.test(s)) return 'cond';
+    if (/^-?\d+(\.\d+)?\s*-\s*-?\d+(\.\d+)?$/.test(s)) return 'interval';
+    return 'invalid';
+  }
+
+
+  // replace your parseInterval with this
+  function parseInterval(raw: string): [number, number] | null {
+    const norm = raw.trim().replace(/[–—]/g, '-');
+    const m = norm.match(/^\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\s*$/);
+    if (!m) return null;
+    const a = parseFloat(m[1]),
+      b = parseFloat(m[2]);
+    return a <= b ? [a, b] : [b, a]; // inclusive range
+  }
+
+  function parseCond(raw: string): ((v: number) => boolean) | null {
+    const m = raw.trim().match(/^(==|!=|>=|<=|>|<)\s*(-?\d+(?:\.\d+)?)$/);
+    if (!m) return null;
+    const op = m[1],
+      rhs = parseFloat(m[2]);
+    return (v: number) => {
+      switch (op) {
+        case '==':
+          return v === rhs;
+        case '!=':
+          return v !== rhs;
+        case '>=':
+          return v >= rhs;
+        case '<=':
+          return v <= rhs;
+        case '>':
+          return v >= rhs;
+        case '<':
+          return v < rhs;
+        default:
+          return false;
+      }
+    };
+  }
+
+  function getIntervalWrapMax(outputs: GraphElement[]): number | null {
+    let hi = -Infinity;
+    for (const o of outputs) {
+      if (!o.text) continue;
+      if (classifyLabel(o.text) === 'interval') {
+        const rng = parseInterval(o.text);
+        if (rng) hi = Math.max(hi, rng[1]);
+      }
+    }
+    return isFinite(hi) ? hi : null;
+  }
 
 const Canvas: React.FC<CanvasProps> = ({
   isRunning,
@@ -834,64 +893,6 @@ const Canvas: React.FC<CanvasProps> = ({
   //   );
   //   setMovingTokens([]); // ⬅️ add this
   // }
-
-  // ---------- Gate helpers ----------
-  const randInt = (min: number, max: number) =>
-    Math.floor(Math.random() * (max - min + 1)) + min;
-
-  // ---------- Label parsing utilities ----------
-  /**
-   * Parse a connection label to get the resource amount.
-   * Supports:
-   * - Simple number: "5" -> 5
-   * - Random range: "2-5" or "2-8" -> random value in range
-   * - Fraction: "1/2" or "3/4" -> random based on probability
-   * - Default: empty or invalid -> 1
-   */
-  function parseConnectionLabel(label?: string): number {
-    const s = (label ?? '').trim();
-    if (!s) return 1;
-
-    // Check for random range (e.g., "2-5")
-    const rangeMatch = s.match(/^(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)$/);
-    if (rangeMatch) {
-      const min = parseFloat(rangeMatch[1]);
-      const max = parseFloat(rangeMatch[2]);
-      if (!isNaN(min) && !isNaN(max)) {
-        return randInt(
-          Math.floor(Math.min(min, max)),
-          Math.floor(Math.max(min, max))
-        );
-      }
-    }
-
-    // Check for fraction (e.g., "1/2", "3/4")
-    const fractionMatch = s.match(/^(\d+)\/(\d+)$/);
-    if (fractionMatch) {
-      const num = parseInt(fractionMatch[1], 10);
-      const den = parseInt(fractionMatch[2], 10);
-      if (!isNaN(num) && !isNaN(den) && den > 0) {
-        // Return num with probability num/den, 0 otherwise
-        return Math.random() < num / den ? num : 0;
-      }
-    }
-
-    // Check for simple number
-    const num = parseFloat(s);
-    if (!isNaN(num)) {
-      return Math.floor(num);
-    }
-
-    // Default to 1 if can't parse
-    return 1;
-  }
-
-  /**
-   * Check if a connection label represents a trigger output (marked with "*")
-   */
-  function isTriggerOutput(label?: string): boolean {
-    return (label ?? '').trim().includes('*');
-  }
 
   const evaluateStateCondition = useCallback(
     (
@@ -2108,6 +2109,22 @@ const Canvas: React.FC<CanvasProps> = ({
     [runSimulationTick]
   );
 
+  const setElementsRef = useRef(setElements);
+  const spawnMovingTokensRef = useRef(spawnMovingTokens);
+  const runSimulationRef = useRef(runSimulationAndCollectTransfers);
+
+  useEffect(() => {
+    setElementsRef.current = setElements;
+  }, [setElements]);
+
+  useEffect(() => {
+    spawnMovingTokensRef.current = spawnMovingTokens;
+  }, [spawnMovingTokens]);
+
+  useEffect(() => {
+    runSimulationRef.current = runSimulationAndCollectTransfers;
+  }, [runSimulationAndCollectTransfers]);
+
   // Helper function to collect resources for Pull Any mode
   // const collectResourcesForPullAny = (
   //   trader: GraphElement,
@@ -2713,7 +2730,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
       // 1. FORCE RESET ELEMENTS (Clean slate before starting)
       // This handles the case where we "Froze" the board on the previous Game Over
-      setElements(prev => {
+      setElementsRef.current(prev => {
         const resetElements = prev.map(el => {
           const baseReset = {
             ...el,
@@ -2755,7 +2772,7 @@ const Canvas: React.FC<CanvasProps> = ({
         });
 
         // 2. Run the "OnStart" tick immediately on the clean elements
-        const { nextElements, transfers } = runSimulationAndCollectTransfers(
+        const { nextElements, transfers } = runSimulationRef.current(
           resetElements,
           'onstart'
         );
@@ -2780,11 +2797,11 @@ const Canvas: React.FC<CanvasProps> = ({
         }
         try {
           // Add try...catch
-          setElements(currentElements => {
+          setElementsRef.current(currentElements => {
             const { nextElements, transfers } =
-              runSimulationAndCollectTransfers(currentElements, 'automatic');
+              runSimulationRef.current(currentElements, 'automatic');
             if (transfers.length) {
-              spawnMovingTokens(transfers, nextElements);
+              spawnMovingTokensRef.current(transfers, nextElements);
             }
             return nextElements;
           });
@@ -2818,7 +2835,7 @@ const Canvas: React.FC<CanvasProps> = ({
       setMovingTokens([]);
       setGameEnded(false);
 
-      setElements(prev =>
+      setElementsRef.current(prev =>
         prev.map(el => {
           const baseReset = {
             ...el,
@@ -3642,8 +3659,6 @@ const Canvas: React.FC<CanvasProps> = ({
 
   // Click-to-place handler
   const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (isRunning && selectedTool === 'Select') return;
-
     // Don't clear selection if we just completed a box selection
     if (justCompletedBoxSelection) {
       setJustCompletedBoxSelection(false);
@@ -3684,8 +3699,6 @@ const Canvas: React.FC<CanvasProps> = ({
   };
 
   const handleCanvasMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (isRunning) return;
-
     if (selectedTool === 'Select' && e.target === canvasRef.current) {
       setMouseDownOnCanvas(true);
       setIsSelectingBox(false);
