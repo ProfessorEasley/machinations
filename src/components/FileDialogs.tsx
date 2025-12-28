@@ -2,6 +2,19 @@ import React, { useState, useRef } from 'react';
 import { fileService, type FileData } from '../services/fileService';
 import type { GraphElement } from '../types/graph';
 
+type ImportXmlResult =
+  | { success: true; data: FileData }
+  | { success: false; error?: string };
+
+type FileServiceWithXml = typeof fileService & {
+  importXml: (xml: string, name?: string) => ImportXmlResult;
+};
+
+const hasImportXml = (svc: typeof fileService): svc is FileServiceWithXml => {
+  const candidate = (svc as unknown as { importXml?: unknown }).importXml;
+  return typeof candidate === 'function';
+};
+
 interface FileDialogProps {
   isOpen: boolean;
   onClose: () => void;
@@ -28,6 +41,8 @@ const FileDialogs: React.FC<FileDialogProps> = ({
   const [fileContent, setFileContent] = useState('');
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [xmlImportError, setXmlImportError] = useState('');
+  const xmlFileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = () => {
     setError('');
@@ -155,6 +170,46 @@ const FileDialogs: React.FC<FileDialogProps> = ({
     }
   };
 
+  const handleXmlImportClick = () => {
+    setError('');
+    setXmlImportError('');
+    xmlFileInputRef.current?.click();
+  };
+
+  const handleXmlFileChosen = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+    // allow selecting the same file again
+    event.target.value = '';
+
+    if (!file) return;
+
+    setError('');
+    setXmlImportError('');
+
+    try {
+      const xmlText = await file.text();
+
+      if (!hasImportXml(fileService)) {
+        throw new Error(
+          'fileService.importXml is not implemented yet. Add it to fileService.'
+        );
+      }
+
+      const result = fileService.importXml(xmlText, file.name);
+      if (!result.success)
+        throw new Error(result.error || 'Failed to import XML');
+
+      onFileOperation(result.data);
+      handleClose();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setXmlImportError(msg);
+      setError(`XML Import Error: ${msg}`);
+    }
+  };
+
   const handleExportSVG = () => {
     const currentFile = fileService.getCurrentFile();
     if (currentFile) {
@@ -235,6 +290,14 @@ const FileDialogs: React.FC<FileDialogProps> = ({
 
           {error && <div className="error-message">{error}</div>}
 
+          <input
+            ref={xmlFileInputRef}
+            type="file"
+            accept=".xml,text/xml,application/xml"
+            style={{ display: 'none' }}
+            onChange={handleXmlFileChosen}
+          />
+
           {(type === 'new' || type === 'saveAs') && (
             <div className="form-group">
               <label htmlFor="fileName">File Name:</label>
@@ -251,6 +314,20 @@ const FileDialogs: React.FC<FileDialogProps> = ({
 
           {type === 'import' && (
             <>
+              <button
+                type="button"
+                className="confirm-button"
+                onClick={handleXmlImportClick}
+              >
+                Import XML…
+              </button>
+
+              {xmlImportError && (
+                <div className="error-message">
+                  <b>XML Import Error:</b> {xmlImportError}
+                </div>
+              )}
+
               <div className="form-group">
                 <label htmlFor="fileUpload">Upload File:</label>
                 <input

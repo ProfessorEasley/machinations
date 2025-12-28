@@ -32,9 +32,9 @@
   height: 100%;
   width: 100%;
   background-image:
-    linear-gradient(#eee 1px, transparent 1px),
-    linear-gradient(90deg, #eee 1px, transparent 1px);
-  background-size: 20px 20px;
+    linear-gradient(#aaaaaa 1px, transparent 1px),
+    linear-gradient(90deg, #aaaaaa 1px, transparent 1px);
+  background-size: 40px 40px;
   position: relative;
 }
 

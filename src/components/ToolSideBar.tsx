@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './ToolSideBar.css';
 
 type GraphElementType =
@@ -300,6 +300,41 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
   const canCopy = selectedElements.length > 0;
   const canPaste = clipboard.length > 0;
   const canDelete = selectedElements.length > 0;
+  const xmlFileInputRef = useRef<HTMLInputElement>(null);
+  const [xmlImportError, setXmlImportError] = useState<string>('');
+
+  const handleXmlImportClick = useCallback(() => {
+    setXmlImportError('');
+    xmlFileInputRef.current?.click();
+  }, []);
+
+  const handleXmlFileChosen = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+
+      // allow picking the same file again
+      event.target.value = '';
+
+      if (!file) return;
+
+      try {
+        setXmlImportError('');
+        const xmlText = await file.text();
+
+        // ✅ Send XML to whoever actually imports (Canvas/app state/etc.)
+        // Make sure your Canvas (or parent) listens for this event.
+        document.dispatchEvent(
+          new CustomEvent('canvas-import-xml', {
+            detail: { xmlText, fileName: file.name },
+          })
+        );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setXmlImportError(msg);
+      }
+    },
+    []
+  );
 
   //edit
   // Edit operation handlers
@@ -529,17 +564,25 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
       case 'File':
         return (
           <>
-            {fileTools.map(tool => (
-              <button
-                key={tool}
-                className={selectedTool === tool ? 'selected' : ''}
-                onClick={() => setSelectedTool(tool)}
-              >
-                {tool}
-              </button>
-            ))}
+            {fileTools.map(tool => {
+              const isImport = tool.startsWith('Import');
+
+              return (
+                <button
+                  key={tool}
+                  className={selectedTool === tool ? 'selected' : ''}
+                  onClick={() => {
+                    setSelectedTool(tool);
+                    if (isImport) handleXmlImportClick();
+                  }}
+                >
+                  {tool}
+                </button>
+              );
+            })}
           </>
         );
+
       case 'Run':
         return (
           <>
@@ -3295,6 +3338,29 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
       <div className="machinations-label">Machinations</div>
 
       {renderPropertiesPanel()}
+      <input
+        ref={xmlFileInputRef}
+        type="file"
+        accept=".xml,text/xml,application/xml"
+        style={{ display: 'none' }}
+        onChange={handleXmlFileChosen}
+      />
+
+      {xmlImportError && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 8,
+            left: 8,
+            zIndex: 9999,
+            background: 'white',
+            padding: 8,
+            border: '1px solid #ccc',
+          }}
+        >
+          <b>XML Import Error:</b> {xmlImportError}
+        </div>
+      )}
     </div>
   );
 };
