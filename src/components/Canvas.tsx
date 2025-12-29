@@ -212,6 +212,532 @@ interface GraphElement {
   currentPoints?: number;
   hasStarted?: boolean;
   inhibited?: boolean;
+
+  // Artificial Intelligence node script (from XML import + toolProperties)
+  script?: string;
+}
+
+// ------------------------------
+// XML Import (Upload + Parse)
+// ------------------------------
+
+type XmlImportResult = {
+  elements: GraphElement[];
+  warnings: string[];
+};
+
+const isProbablyXmlFile = (f: File) => {
+  const nameOk = f.name.toLowerCase().endsWith('.xml');
+  const typeOk = (f.type || '').toLowerCase().includes('xml');
+  return nameOk || typeOk;
+};
+
+const attrAny = (el: Element, names: string[]): string | undefined => {
+  for (const n of names) {
+    const v = el.getAttribute(n);
+    if (v != null && String(v).trim() !== '') return String(v);
+  }
+  return undefined;
+};
+
+const numAttrAny = (
+  el: Element,
+  names: string[],
+  fallback?: number
+): number | undefined => {
+  const raw = attrAny(el, names);
+  if (raw == null) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+const textAny = (el: Element, names: string[]): string | undefined => {
+  const a = attrAny(el, names);
+  if (a != null) return a;
+  // also allow <label> or <text> children
+  for (const tag of names) {
+    const child = el.querySelector(tag);
+    if (child && child.textContent && child.textContent.trim()) {
+      return child.textContent.trim();
+    }
+  }
+  const t = el.textContent?.trim();
+  return t ? t : undefined;
+};
+
+const normalizeActivation = (
+  raw?: string
+): GraphElement['activation'] | undefined => {
+  if (!raw) return undefined;
+  const s = raw.trim().toLowerCase();
+  if (s === 'passive') return 'passive';
+  if (s === 'interactive') return 'interactive';
+  if (s === 'automatic') return 'automatic';
+  if (s === 'onstart' || s === 'on start') return 'onstart';
+  return undefined;
+};
+
+const normalizePullMode = (
+  raw?: string
+): GraphElement['pullMode'] | undefined => {
+  if (!raw) return undefined;
+  const s = raw.trim().toLowerCase().replace(/[_]+/g, ' ');
+  if (s === 'pull any') return 'pull any';
+  if (s === 'pull all') return 'pull all';
+  if (s === 'push any') return 'push any';
+  if (s === 'push all') return 'push all';
+  return undefined;
+};
+
+const normalizeGateType = (
+  raw?: string
+): GraphElement['gateType'] | undefined => {
+  if (!raw) return undefined;
+  const s = raw.trim().toLowerCase();
+  if (s === 'deterministic') return 'deterministic';
+  if (s === 'dice') return 'dice';
+  if (s === 'skill') return 'skill';
+  if (s === 'multiplayer') return 'multiplayer';
+  if (s === 'strategy') return 'strategy';
+  return undefined;
+};
+
+const normalizeGraphElementType = (
+  raw?: string
+): GraphElementType | undefined => {
+  if (!raw) return undefined;
+  const s = raw.trim().toLowerCase();
+
+  // common aliases
+  if (s === 'text label' || s === 'textlabel' || s === 'label' || s === 'text')
+    return 'Text Label';
+  if (s === 'group') return 'Group';
+  if (s === 'chart') return 'Chart';
+  if (s === 'pool') return 'Pool';
+  if (s === 'gate') return 'Gate';
+  if (
+    s === 'resource connection' ||
+    s === 'resourceconnection' ||
+    s === 'resource'
+  )
+    return 'Resource Connection';
+  if (s === 'state connection' || s === 'stateconnection' || s === 'state')
+    return 'State Connection';
+  if (s === 'source') return 'Source';
+  if (s === 'drain') return 'Drain';
+  if (s === 'convertor' || s === 'converter') return 'Convertor';
+  if (s === 'trader') return 'Trader';
+  if (s === 'delay') return 'Delay';
+  if (s === 'register') return 'Register';
+  if (s === 'end condition' || s === 'endcondition') return 'End Condition';
+  if (
+    s === 'artificial intelligence' ||
+    s === 'ai' ||
+    s === 'artifical intelligence'
+  )
+    return 'Artifical Intelligence'; // (your union spelling)
+
+  return undefined;
+};
+
+const tagNameToType = (tag: string): GraphElementType | undefined => {
+  const t = tag.toLowerCase();
+  return normalizeGraphElementType(
+    t.replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim()
+  );
+};
+
+const parsePointsAttr = (raw?: string): { x: number; y: number }[] => {
+  if (!raw) return [];
+  // supports:
+  // "x1,y1 x2,y2 x3,y3"
+  // or "x1 y1; x2 y2; ..."
+  const cleaned = raw.trim().replace(/;/g, ' ');
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+
+  const pts: { x: number; y: number }[] = [];
+  for (const p of parts) {
+    const m = p.split(',');
+    if (m.length === 2) {
+      const x = Number(m[0]);
+      const y = Number(m[1]);
+      if (Number.isFinite(x) && Number.isFinite(y)) pts.push({ x, y });
+    }
+  }
+  return pts;
+};
+
+const parseChildPoints = (el: Element): { x: number; y: number }[] => {
+  const pts: { x: number; y: number }[] = [];
+  const pointEls = Array.from(el.querySelectorAll('point, pt, waypoint'));
+  for (const p of pointEls) {
+    const x = numAttrAny(p, ['x', 'cx', 'px']);
+    const y = numAttrAny(p, ['y', 'cy', 'py']);
+    if (x != null && y != null) pts.push({ x, y });
+  }
+  return pts;
+};
+
+// stable-ish string -> number (32-bit)
+const hashToInt = (s: string): number => {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  // keep positive, within safe int
+  return h >>> 0 || 1;
+};
+
+const coerceId = (raw: string | undefined, fallback: number): number => {
+  if (!raw) return fallback;
+  const trimmed = raw.trim();
+  if (/^\d+$/.test(trimmed)) {
+    const n = Number(trimmed);
+    return Number.isFinite(n) ? n : fallback;
+  }
+  return hashToInt(trimmed);
+};
+
+function parseGraphFromXml(xmlText: string): XmlImportResult {
+  if (typeof DOMParser === 'undefined') {
+    throw new Error('XML parsing is not available in this environment.');
+  }
+
+  const warnings: string[] = [];
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlText, 'text/xml');
+
+  // detect parsererror
+  const perr = doc.getElementsByTagName('parsererror')[0];
+  if (perr) {
+    throw new Error(
+      `Invalid XML: ${perr.textContent?.trim() || 'parsererror'}`
+    );
+  }
+
+  // 1) Collect "node" elements
+  const nodeCandidates = Array.from(
+    doc.querySelectorAll(
+      [
+        // generic schemas
+        'element',
+        'node',
+        'item',
+
+        // tag-based schemas (common)
+        'pool',
+        'gate',
+        'source',
+        'drain',
+        'convertor',
+        'converter',
+        'trader',
+        'delay',
+        'register',
+        'endCondition',
+        'end-condition',
+        'textLabel',
+        'text-label',
+        'group',
+        'ai',
+        'artificialIntelligence',
+        'artificalIntelligence',
+      ].join(',')
+    )
+  );
+
+  // 2) Collect "connection" elements
+  const connCandidates = Array.from(
+    doc.querySelectorAll(
+      [
+        'connection',
+        'edge',
+        'link',
+        'resourceConnection',
+        'resource-connection',
+        'stateConnection',
+        'state-connection',
+      ].join(',')
+    )
+  );
+
+  // First pass: build id map for nodes (rawId -> numeric)
+  const rawNodeIdToNumeric = new Map<string, number>();
+  const usedIds = new Set<number>();
+  let nextFallbackId = 1;
+
+  const nodeElements: GraphElement[] = [];
+  const rawIdKeyForNode = (el: Element, fallbackKey: string) =>
+    attrAny(el, ['id', 'uid', 'key', 'name']) ?? fallbackKey;
+
+  for (const el of nodeCandidates) {
+    const rawType =
+      attrAny(el, ['type', 'kind', 'class']) ?? tagNameToType(el.tagName);
+    const type = normalizeGraphElementType(rawType);
+
+    // only accept if it maps to a real GraphElementType and is NOT a connection type
+    if (!type) continue;
+    if (type === 'Resource Connection' || type === 'State Connection') continue;
+
+    const rawKey = rawIdKeyForNode(el, `node_${nextFallbackId}`);
+    let id = coerceId(
+      attrAny(el, ['id', 'uid', 'key', 'name']),
+      nextFallbackId
+    );
+
+    // dedupe ids
+    while (usedIds.has(id)) id += 1;
+    usedIds.add(id);
+
+    rawNodeIdToNumeric.set(rawKey, id);
+
+    const x =
+      numAttrAny(el, ['x', 'posX', 'cx', 'left']) ??
+      numAttrAny(el, ['px', 'screenX']) ??
+      100;
+    const y =
+      numAttrAny(el, ['y', 'posY', 'cy', 'top']) ??
+      numAttrAny(el, ['py', 'screenY']) ??
+      100;
+
+    const color = attrAny(el, ['color', 'stroke', 'borderColor']);
+    const thickness = numAttrAny(el, [
+      'thickness',
+      'strokeWidth',
+      'borderWidth',
+    ]);
+    const label = textAny(el, ['text', 'label', 'title', 'name']);
+
+    const activation = normalizeActivation(attrAny(el, ['activation', 'mode']));
+    const pullMode = normalizePullMode(
+      attrAny(el, ['pullMode', 'pull', 'pushMode'])
+    );
+    const gateType = normalizeGateType(
+      attrAny(el, ['gateType', 'typeMode', 'gate'])
+    );
+
+    const number = numAttrAny(el, [
+      'number',
+      'value',
+      'start',
+      'startingValue',
+    ]);
+    const max = numAttrAny(el, ['max', 'cap', 'limit']);
+    const displayLimit = numAttrAny(el, ['displayLimit', 'display', 'showMax']);
+    const actions = numAttrAny(el, ['actions', 'actionCount']);
+
+    const formula = attrAny(el, ['formula', 'expr', 'expression']);
+    const minValue = numAttrAny(el, ['minValue', 'min']);
+    const maxValue = numAttrAny(el, ['maxValue', 'max']); // (ok: only relevant for Register)
+    const interactiveRaw = attrAny(el, ['interactive']);
+    const interactive =
+      interactiveRaw != null
+        ? interactiveRaw.trim().toLowerCase() === 'true'
+        : undefined;
+
+    const step = numAttrAny(el, ['step']);
+    const startingValue = numAttrAny(el, ['startingValue', 'startValue']);
+
+    const script = textAny(el, ['script']);
+
+    const base: GraphElement = {
+      id,
+      type,
+      x,
+      y,
+      text: label,
+      color,
+      thickness,
+      activation,
+      pullMode,
+      gateType,
+      actions: actions != null ? Math.max(1, actions) : undefined,
+      number: number != null ? Math.floor(number) : undefined,
+      max: max != null ? Math.floor(max) : undefined,
+      displayLimit: displayLimit != null ? Math.floor(displayLimit) : undefined,
+
+      // Register-specific
+      formula: type === 'Register' ? (formula ?? '') : undefined,
+      minValue: type === 'Register' ? (minValue ?? -9999) : undefined,
+      maxValue: type === 'Register' ? (maxValue ?? 9999) : undefined,
+      interactive: type === 'Register' ? (interactive ?? false) : undefined,
+      startingValue: type === 'Register' ? (startingValue ?? 0) : undefined,
+      step: type === 'Register' ? (step ?? 1) : undefined,
+
+      ...(type === 'Artifical Intelligence' ? { script: script ?? '' } : {}),
+    };
+
+    // Pool initialization (keep it consistent with your runtime)
+    if (type === 'Pool') {
+      const startVal = base.number ?? 0;
+      const c = base.color || '#000000';
+      base.resourcesByColor = startVal > 0 ? { [c]: startVal } : {};
+      base.currentPoints = startVal;
+    }
+
+    // Register initialization
+    if (type === 'Register') {
+      const sv = base.startingValue ?? 0;
+      base.currentValue = base.interactive ? sv : 0;
+    }
+
+    // End condition defaults
+    if (type === 'End Condition') {
+      base.inhibited = true;
+      base.isBlinking = false;
+    }
+
+    nodeElements.push(base);
+    nextFallbackId += 1;
+  }
+
+  if (nodeElements.length === 0) {
+    warnings.push(
+      'No node elements recognized. Your XML schema may need mapping tweaks.'
+    );
+  }
+
+  // Helper: resolve a reference id string to numeric id
+  const resolveRefToId = (raw?: string): number | undefined => {
+    if (!raw) return undefined;
+    const trimmed = raw.trim();
+    // try direct numeric
+    if (/^\d+$/.test(trimmed)) return Number(trimmed);
+
+    // try rawKey map
+    const mapped = rawNodeIdToNumeric.get(trimmed);
+    if (mapped != null) return mapped;
+
+    // try hash fallback
+    const h = hashToInt(trimmed);
+    // only accept if that hashed id exists
+    if (nodeElements.some(n => n.id === h)) return h;
+
+    return undefined;
+  };
+
+  const nodeById = new Map<number, GraphElement>(
+    nodeElements.map(n => [n.id, n])
+  );
+
+  // Second pass: parse connections
+  const connElements: GraphElement[] = [];
+  let connFallbackId = Math.max(1, ...nodeElements.map(n => n.id)) + 1;
+
+  for (const el of connCandidates) {
+    const rawType =
+      attrAny(el, ['type', 'kind', 'class']) ?? tagNameToType(el.tagName);
+    const type = normalizeGraphElementType(rawType);
+
+    if (!type) continue;
+
+    // Only accept actual connection types
+    // const isResource =
+    //   type === 'Resource Connection' ||
+    //   el.tagName.toLowerCase().includes('resource');
+    const isState =
+      type === 'State Connection' || el.tagName.toLowerCase().includes('state');
+
+    const connType: GraphElementType = isState
+      ? 'State Connection'
+      : 'Resource Connection';
+
+    const idRaw = attrAny(el, ['id', 'uid', 'key']);
+    let id = coerceId(idRaw, connFallbackId);
+    while (usedIds.has(id)) id += 1;
+    usedIds.add(id);
+
+    const fromRaw = attrAny(el, [
+      'from',
+      'start',
+      'source',
+      'startId',
+      'fromId',
+      'a',
+    ]);
+    const toRaw = attrAny(el, ['to', 'end', 'target', 'endId', 'toId', 'b']);
+
+    const connectedToStart = resolveRefToId(fromRaw);
+    const connectedToEnd = resolveRefToId(toRaw);
+
+    const color = attrAny(el, ['color', 'stroke']);
+    const thickness = numAttrAny(el, ['thickness', 'strokeWidth']);
+    const label = textAny(el, ['text', 'label']);
+
+    // points: attr or child points
+    const ptsFromAttr = parsePointsAttr(
+      attrAny(el, ['points', 'path', 'polyline'])
+    );
+    const ptsFromChildren = parseChildPoints(el);
+    const allPts = ptsFromChildren.length > 0 ? ptsFromChildren : ptsFromAttr;
+
+    // Determine start/end coords.
+    // If XML provides explicit endpoints use them, else fallback to connected node centers.
+    const explicitStartX = numAttrAny(el, ['startX', 'x1', 'sx']);
+    const explicitStartY = numAttrAny(el, ['startY', 'y1', 'sy']);
+    const explicitEndX = numAttrAny(el, ['endX', 'x2', 'ex']);
+    const explicitEndY = numAttrAny(el, ['endY', 'y2', 'ey']);
+
+    const startNode = connectedToStart
+      ? nodeById.get(connectedToStart)
+      : undefined;
+    const endNode = connectedToEnd ? nodeById.get(connectedToEnd) : undefined;
+
+    const startX = explicitStartX ?? allPts[0]?.x ?? startNode?.x ?? 50;
+    const startY = explicitStartY ?? allPts[0]?.y ?? startNode?.y ?? 50;
+    const endX =
+      explicitEndX ?? allPts[allPts.length - 1]?.x ?? endNode?.x ?? 200;
+    const endY =
+      explicitEndY ?? allPts[allPts.length - 1]?.y ?? endNode?.y ?? 200;
+
+    // If points include endpoints, strip them to fit your internal representation:
+    // you store startX/startY/endX/endY separately, and `points` is intermediate only.
+    let intermediate: { x: number; y: number }[] | undefined = undefined;
+    if (allPts.length >= 2) {
+      // best-effort removal of first/last if they match endpoints
+      const body = allPts.slice(0);
+      if (body.length >= 1) body.shift();
+      if (body.length >= 1) body.pop();
+      intermediate = body.length ? body : undefined;
+    }
+
+    const conn: GraphElement = {
+      id,
+      type: connType,
+      x: startX,
+      y: startY,
+      startX,
+      startY,
+      endX,
+      endY,
+      points: intermediate,
+      text: label,
+      color,
+      thickness,
+      connectedToStart,
+      connectedToEnd,
+    };
+
+    // If connection endpoints couldn’t be resolved, keep but warn.
+    if (!connectedToStart || !connectedToEnd) {
+      warnings.push(
+        `Connection ${idRaw ?? id} missing endpoint mapping (from="${fromRaw}", to="${toRaw}").`
+      );
+    }
+
+    connElements.push(conn);
+    connFallbackId += 1;
+  }
+
+  if (connElements.length === 0) {
+    warnings.push(
+      'No connection elements recognized. If your XML uses different tags/attrs, add them to connCandidates / endpoint attrs.'
+    );
+  }
+
+  // Final: return combined
+  return { elements: [...nodeElements, ...connElements], warnings };
 }
 
 interface ResourceTransfer {
@@ -537,6 +1063,224 @@ const recordTransfer = (
   });
 };
 
+const randInt = (min: number, max: number) =>
+  Math.floor(Math.random() * (max - min + 1)) + min;
+
+// Supports: "5", "2-5", "1/2", default 1
+function parseConnectionLabel(label?: string): number {
+  const s = (label ?? '').trim();
+  if (!s) return 1;
+
+  const rangeMatch = s.match(/^(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)$/);
+  if (rangeMatch) {
+    const min = parseFloat(rangeMatch[1]);
+    const max = parseFloat(rangeMatch[2]);
+    if (!isNaN(min) && !isNaN(max)) {
+      return randInt(
+        Math.floor(Math.min(min, max)),
+        Math.floor(Math.max(min, max))
+      );
+    }
+  }
+
+  const fractionMatch = s.match(/^(\d+)\/(\d+)$/);
+  if (fractionMatch) {
+    const num = parseInt(fractionMatch[1], 10);
+    const den = parseInt(fractionMatch[2], 10);
+    if (!isNaN(num) && !isNaN(den) && den > 0) {
+      return Math.random() < num / den ? num : 0;
+    }
+  }
+
+  const num = parseFloat(s);
+  if (!isNaN(num)) return Math.floor(num);
+
+  return 1;
+}
+
+function isTriggerOutput(label?: string): boolean {
+  return (label ?? '').trim().includes('*');
+}
+
+type LabelKind = 'prob' | 'cond' | 'interval' | 'else' | 'empty' | 'invalid';
+
+function classifyLabel(raw?: string): LabelKind {
+  const s0 = (raw ?? '').trim();
+  if (!s0) return 'empty';
+  if (s0.toLowerCase() === 'else') return 'else';
+  const s = s0.replace(/[–—]/g, '-');
+
+  if (/^\d+\s*%$/.test(s)) return 'prob';
+  if (/^\d+(\.\d+)?$/.test(s)) return 'prob';
+  if (/^(==|!=|>=|<=|>|<)\s*-?\d+(\.\d+)?$/.test(s)) return 'cond';
+  if (/^-?\d+(\.\d+)?\s*-\s*-?\d+(\.\d+)?$/.test(s)) return 'interval';
+  return 'invalid';
+}
+
+function parseInterval(raw: string): [number, number] | null {
+  const norm = raw.trim().replace(/[–—]/g, '-');
+  const m = norm.match(/^\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\s*$/);
+  if (!m) return null;
+  const a = parseFloat(m[1]);
+  const b = parseFloat(m[2]);
+  return a <= b ? [a, b] : [b, a];
+}
+
+function parseCond(raw: string): ((v: number) => boolean) | null {
+  const m = raw.trim().match(/^(==|!=|>=|<=|>|<)\s*(-?\d+(?:\.\d+)?)$/);
+  if (!m) return null;
+  const op = m[1];
+  const rhs = parseFloat(m[2]);
+  return (v: number) => {
+    switch (op) {
+      case '==':
+        return v === rhs;
+      case '!=':
+        return v !== rhs;
+      case '>=':
+        return v >= rhs;
+      case '<=':
+        return v <= rhs;
+      case '>':
+        return v > rhs;
+      case '<':
+        return v < rhs;
+      default:
+        return false;
+    }
+  };
+}
+
+function getIntervalWrapMax(outputs: GraphElement[]): number | null {
+  let hi = -Infinity;
+  for (const o of outputs) {
+    if (!o.text) continue;
+    if (classifyLabel(o.text) === 'interval') {
+      const rng = parseInterval(o.text);
+      if (rng) hi = Math.max(hi, rng[1]);
+    }
+  }
+  return isFinite(hi) ? hi : null;
+}
+
+function getDiceSides(gate: GraphElement, outputs: GraphElement[]): number {
+  const t = (gate.text ?? '').trim().toLowerCase();
+  const m1 = t.match(/^d\s*(\d+)$/);
+  const m2 = t.match(/^(\d+)\s*d\s*(\d+)$/);
+  if (m1) return Math.max(2, parseInt(m1[1], 10));
+  if (m2) return Math.max(2, parseInt(m2[2], 10));
+  const wrap = getIntervalWrapMax(outputs);
+  if (wrap && wrap >= 2) return wrap;
+  return 6;
+}
+
+function generateGateValue(
+  gate: GraphElement,
+  outputs: GraphElement[]
+): number {
+  if (gate.gateType === 'dice') {
+    const sides = getDiceSides(gate, outputs);
+    return randInt(1, sides);
+  }
+
+  const wrapMax = getIntervalWrapMax(outputs);
+  const prev = gate.lastGateValue ?? 0;
+  const next = prev + 1;
+
+  if (wrapMax && wrapMax >= 1) {
+    return ((next - 1) % wrapMax) + 1;
+  }
+  return next;
+}
+
+function chooseGateOutputs(
+  gate: GraphElement,
+  outputs: GraphElement[]
+): GraphElement[] {
+  if (outputs.length === 0) return [];
+
+  const kinds = outputs.map(o => classifyLabel(o.text));
+  const hasRealCondition = kinds.some(k => k === 'cond' || k === 'interval');
+
+  if (hasRealCondition) {
+    const v = generateGateValue(gate, outputs);
+    gate.lastGateValue = v;
+
+    const matches: number[] = [];
+    for (let i = 0; i < outputs.length; i++) {
+      const o = outputs[i];
+      const kind = kinds[i];
+      if (!o.text) continue;
+
+      if (kind === 'cond') {
+        const fn = parseCond(o.text);
+        if (fn && fn(v)) matches.push(i);
+      } else if (kind === 'interval') {
+        const pair = parseInterval(o.text);
+        if (pair && v >= pair[0] && v <= pair[1]) matches.push(i);
+      }
+    }
+
+    if (matches.length === 0) {
+      const elseIdx = kinds.findIndex(k => k === 'else');
+      return elseIdx >= 0 ? [outputs[elseIdx]] : [];
+    }
+
+    return matches.map(i => outputs[i]);
+  }
+
+  const isPercent = outputs.some(
+    (o, i) => kinds[i] === 'prob' && /%$/.test((o.text ?? '').trim())
+  );
+  const elseIdx = kinds.findIndex(k => k === 'else');
+
+  if (isPercent) {
+    let sumPercent = 0;
+    const weights = outputs.map((o, i) => {
+      const s = (o.text ?? '').trim();
+      if (kinds[i] === 'prob' && /%$/.test(s)) {
+        const w = Math.max(0, parseInt(s, 10) || 0);
+        sumPercent += w;
+        return w;
+      }
+      return 0;
+    });
+
+    if (elseIdx >= 0) {
+      const rem = Math.max(0, 100 - sumPercent);
+      weights[elseIdx] = rem;
+      sumPercent += rem;
+    }
+
+    if (sumPercent <= 0) return elseIdx >= 0 ? [outputs[elseIdx]] : [];
+
+    let r = Math.random() * sumPercent;
+    for (let i = 0; i < outputs.length; i++) {
+      r -= weights[i];
+      if (r <= 0 && weights[i] > 0) return [outputs[i]];
+    }
+    return [outputs[outputs.length - 1]];
+  }
+
+  const weights = outputs.map((o, i) => {
+    const s = (o.text ?? '').trim();
+    if (kinds[i] === 'prob' && !/%$/.test(s))
+      return Math.max(0, parseFloat(s) || 0);
+    if (kinds[i] === 'empty') return 1;
+    return 0;
+  });
+
+  const total = weights.reduce((a, b) => a + b, 0);
+  if (total <= 0) return elseIdx >= 0 ? [outputs[elseIdx]] : [];
+
+  let r = Math.random() * total;
+  for (let i = 0; i < outputs.length; i++) {
+    r -= weights[i];
+    if (r <= 0 && weights[i] > 0) return [outputs[i]];
+  }
+  return [outputs[outputs.length - 1]];
+}
+
 const Canvas: React.FC<CanvasProps> = ({
   isRunning,
   selectedTool,
@@ -773,8 +1517,8 @@ const Canvas: React.FC<CanvasProps> = ({
   // }
 
   // ---------- Gate helpers ----------
-  const randInt = (min: number, max: number) =>
-    Math.floor(Math.random() * (max - min + 1)) + min;
+  // const randInt = (min: number, max: number) =>
+  //   Math.floor(Math.random() * (max - min + 1)) + min;
 
   // ---------- Label parsing utilities ----------
   /**
@@ -785,113 +1529,113 @@ const Canvas: React.FC<CanvasProps> = ({
    * - Fraction: "1/2" or "3/4" -> random based on probability
    * - Default: empty or invalid -> 1
    */
-  function parseConnectionLabel(label?: string): number {
-    const s = (label ?? '').trim();
-    if (!s) return 1;
+  // function parseConnectionLabel(label?: string): number {
+  //   const s = (label ?? '').trim();
+  //   if (!s) return 1;
 
-    // Check for random range (e.g., "2-5")
-    const rangeMatch = s.match(/^(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)$/);
-    if (rangeMatch) {
-      const min = parseFloat(rangeMatch[1]);
-      const max = parseFloat(rangeMatch[2]);
-      if (!isNaN(min) && !isNaN(max)) {
-        return randInt(
-          Math.floor(Math.min(min, max)),
-          Math.floor(Math.max(min, max))
-        );
-      }
-    }
+  //   // Check for random range (e.g., "2-5")
+  //   const rangeMatch = s.match(/^(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)$/);
+  //   if (rangeMatch) {
+  //     const min = parseFloat(rangeMatch[1]);
+  //     const max = parseFloat(rangeMatch[2]);
+  //     if (!isNaN(min) && !isNaN(max)) {
+  //       return randInt(
+  //         Math.floor(Math.min(min, max)),
+  //         Math.floor(Math.max(min, max))
+  //       );
+  //     }
+  //   }
 
-    // Check for fraction (e.g., "1/2", "3/4")
-    const fractionMatch = s.match(/^(\d+)\/(\d+)$/);
-    if (fractionMatch) {
-      const num = parseInt(fractionMatch[1], 10);
-      const den = parseInt(fractionMatch[2], 10);
-      if (!isNaN(num) && !isNaN(den) && den > 0) {
-        // Return num with probability num/den, 0 otherwise
-        return Math.random() < num / den ? num : 0;
-      }
-    }
+  //   // Check for fraction (e.g., "1/2", "3/4")
+  //   const fractionMatch = s.match(/^(\d+)\/(\d+)$/);
+  //   if (fractionMatch) {
+  //     const num = parseInt(fractionMatch[1], 10);
+  //     const den = parseInt(fractionMatch[2], 10);
+  //     if (!isNaN(num) && !isNaN(den) && den > 0) {
+  //       // Return num with probability num/den, 0 otherwise
+  //       return Math.random() < num / den ? num : 0;
+  //     }
+  //   }
 
-    // Check for simple number
-    const num = parseFloat(s);
-    if (!isNaN(num)) {
-      return Math.floor(num);
-    }
+  //   // Check for simple number
+  //   const num = parseFloat(s);
+  //   if (!isNaN(num)) {
+  //     return Math.floor(num);
+  //   }
 
-    // Default to 1 if can't parse
-    return 1;
-  }
+  //   // Default to 1 if can't parse
+  //   return 1;
+  // }
 
   /**
    * Check if a connection label represents a trigger output (marked with "*")
    */
-  function isTriggerOutput(label?: string): boolean {
-    return (label ?? '').trim().includes('*');
-  }
+  // function isTriggerOutput(label?: string): boolean {
+  //   return (label ?? '').trim().includes('*');
+  // }
 
-  type LabelKind = 'prob' | 'cond' | 'interval' | 'else' | 'empty' | 'invalid';
+  // type LabelKind = 'prob' | 'cond' | 'interval' | 'else' | 'empty' | 'invalid';
 
   // replace your classifyLabel with this
-  function classifyLabel(raw?: string): LabelKind {
-    const s0 = (raw ?? '').trim();
-    if (!s0) return 'empty';
-    if (s0.toLowerCase() === 'else') return 'else';
-    const s = s0.replace(/[–—]/g, '-'); // normalize en/em dashes
+  // function classifyLabel(raw?: string): LabelKind {
+  //   const s0 = (raw ?? '').trim();
+  //   if (!s0) return 'empty';
+  //   if (s0.toLowerCase() === 'else') return 'else';
+  //   const s = s0.replace(/[–—]/g, '-'); // normalize en/em dashes
 
-    if (/^\d+\s*%$/.test(s)) return 'prob'; // "70%"
-    if (/^\d+(\.\d+)?$/.test(s)) return 'prob'; // "4"
-    if (/^(==|!=|>=|<=|>|<)\s*-?\d+(\.\d+)?$/.test(s)) return 'cond';
-    if (/^-?\d+(\.\d+)?\s*-\s*-?\d+(\.\d+)?$/.test(s)) return 'interval';
-    return 'invalid';
-  }
+  //   if (/^\d+\s*%$/.test(s)) return 'prob'; // "70%"
+  //   if (/^\d+(\.\d+)?$/.test(s)) return 'prob'; // "4"
+  //   if (/^(==|!=|>=|<=|>|<)\s*-?\d+(\.\d+)?$/.test(s)) return 'cond';
+  //   if (/^-?\d+(\.\d+)?\s*-\s*-?\d+(\.\d+)?$/.test(s)) return 'interval';
+  //   return 'invalid';
+  // }
 
   // replace your parseInterval with this
-  function parseInterval(raw: string): [number, number] | null {
-    const norm = raw.trim().replace(/[–—]/g, '-');
-    const m = norm.match(/^\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\s*$/);
-    if (!m) return null;
-    const a = parseFloat(m[1]),
-      b = parseFloat(m[2]);
-    return a <= b ? [a, b] : [b, a]; // inclusive range
-  }
+  // function parseInterval(raw: string): [number, number] | null {
+  //   const norm = raw.trim().replace(/[–—]/g, '-');
+  //   const m = norm.match(/^\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\s*$/);
+  //   if (!m) return null;
+  //   const a = parseFloat(m[1]),
+  //     b = parseFloat(m[2]);
+  //   return a <= b ? [a, b] : [b, a]; // inclusive range
+  // }
 
-  function parseCond(raw: string): ((v: number) => boolean) | null {
-    const m = raw.trim().match(/^(==|!=|>=|<=|>|<)\s*(-?\d+(?:\.\d+)?)$/);
-    if (!m) return null;
-    const op = m[1],
-      rhs = parseFloat(m[2]);
-    return (v: number) => {
-      switch (op) {
-        case '==':
-          return v === rhs;
-        case '!=':
-          return v !== rhs;
-        case '>=':
-          return v >= rhs;
-        case '<=':
-          return v <= rhs;
-        case '>':
-          return v >= rhs;
-        case '<':
-          return v < rhs;
-        default:
-          return false;
-      }
-    };
-  }
+  // function parseCond(raw: string): ((v: number) => boolean) | null {
+  //   const m = raw.trim().match(/^(==|!=|>=|<=|>|<)\s*(-?\d+(?:\.\d+)?)$/);
+  //   if (!m) return null;
+  //   const op = m[1],
+  //     rhs = parseFloat(m[2]);
+  //   return (v: number) => {
+  //     switch (op) {
+  //       case '==':
+  //         return v === rhs;
+  //       case '!=':
+  //         return v !== rhs;
+  //       case '>=':
+  //         return v >= rhs;
+  //       case '<=':
+  //         return v <= rhs;
+  //       case '>':
+  //         return v > rhs;
+  //       case '<':
+  //         return v < rhs;
+  //       default:
+  //         return false;
+  //     }
+  //   };
+  // }
 
-  function getIntervalWrapMax(outputs: GraphElement[]): number | null {
-    let hi = -Infinity;
-    for (const o of outputs) {
-      if (!o.text) continue;
-      if (classifyLabel(o.text) === 'interval') {
-        const rng = parseInterval(o.text);
-        if (rng) hi = Math.max(hi, rng[1]);
-      }
-    }
-    return isFinite(hi) ? hi : null;
-  }
+  // function getIntervalWrapMax(outputs: GraphElement[]): number | null {
+  //   let hi = -Infinity;
+  //   for (const o of outputs) {
+  //     if (!o.text) continue;
+  //     if (classifyLabel(o.text) === 'interval') {
+  //       const rng = parseInterval(o.text);
+  //       if (rng) hi = Math.max(hi, rng[1]);
+  //     }
+  //   }
+  //   return isFinite(hi) ? hi : null;
+  // }
 
   const evaluateStateCondition = useCallback(
     (
@@ -1010,40 +1754,121 @@ const Canvas: React.FC<CanvasProps> = ({
     [onElementsChange, updateStateConnectionVisualState]
   );
 
+  // ------------------------------
+  // XML Import wiring (inside Canvas)
+  // ------------------------------
+  const xmlFileInputRef = useRef<HTMLInputElement>(null);
+  const [xmlImportError, setXmlImportError] = useState<string | null>(null);
+
+  const importXmlText = useCallback(
+    (xmlText: string) => {
+      setXmlImportError(null);
+
+      const { elements: imported, warnings } = parseGraphFromXml(xmlText);
+
+      if (warnings.length) {
+        console.warn('XML import warnings:', warnings);
+      }
+
+      // stop any running visuals/state
+      setMovingTokens([]);
+      setGameEnded(false);
+      gameEndedRef.current = false;
+
+      // load the imported diagram
+      setElements(imported);
+      setSelectedId([]);
+    },
+    [setElements, setSelectedId]
+  );
+
+  const handleXmlFileChosen = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      try {
+        const file = e.target.files?.[0];
+        // allow re-upload same file
+        e.target.value = '';
+
+        if (!file) return;
+        if (!isProbablyXmlFile(file)) {
+          throw new Error('Please select an .xml file.');
+        }
+
+        const text = await file.text();
+        importXmlText(text);
+      } catch (err) {
+        const msg =
+          err instanceof Error ? err.message : 'Failed to import XML.';
+        console.error(err);
+        setXmlImportError(msg);
+      }
+    },
+    [importXmlText]
+  );
+
+  const openXmlPicker = useCallback(() => {
+    xmlFileInputRef.current?.click();
+  }, []);
+
+  // Optional: allow other UI (TopBar) to trigger it via event
+  useEffect(() => {
+    const onImport = (ev: Event) => {
+      const ce = ev as CustomEvent<{ xmlText?: string; fileName?: string }>;
+
+      // If sidebar provided the XML text, import immediately
+      if (ce.detail?.xmlText) {
+        importXmlText(ce.detail.xmlText);
+        return;
+      }
+
+      // Otherwise fallback to file picker
+      openXmlPicker();
+    };
+
+    document.addEventListener('canvas-import-xml', onImport as EventListener);
+
+    return () => {
+      document.removeEventListener(
+        'canvas-import-xml',
+        onImport as EventListener
+      );
+    };
+  }, [openXmlPicker, importXmlText]);
+
   // Optional: allow "d6", "6", or "1d6" in gate.text. Fallback to 6.
-  function getDiceSides(gate: GraphElement, outputs: GraphElement[]): number {
-    const t = (gate.text ?? '').trim().toLowerCase();
-    const m1 = t.match(/^d\s*(\d+)$/);
-    const m2 = t.match(/^(\d+)\s*d\s*(\d+)$/);
-    if (m1) return Math.max(2, parseInt(m1[1], 10));
-    if (m2) return Math.max(2, parseInt(m2[2], 10));
-    const wrap = getIntervalWrapMax(outputs);
-    if (wrap && wrap >= 2) return wrap; // sensible default from labels
-    return 6; // final fallback
-  }
+  // function getDiceSides(gate: GraphElement, outputs: GraphElement[]): number {
+  //   const t = (gate.text ?? '').trim().toLowerCase();
+  //   const m1 = t.match(/^d\s*(\d+)$/);
+  //   const m2 = t.match(/^(\d+)\s*d\s*(\d+)$/);
+  //   if (m1) return Math.max(2, parseInt(m1[1], 10));
+  //   if (m2) return Math.max(2, parseInt(m2[2], 10));
+  //   const wrap = getIntervalWrapMax(outputs);
+  //   if (wrap && wrap >= 2) return wrap; // sensible default from labels
+  //   return 6; // final fallback
+  // }
 
   // change signature to accept outputs
-  function generateGateValue(
-    gate: GraphElement,
-    outputs: GraphElement[]
-  ): number {
-    // Random (dice) mode
-    if (gate.gateType === 'dice') {
-      const sides = getDiceSides(gate, outputs);
-      return randInt(1, sides); // 1..sides
-    }
+  // function generateGateValue(
+  //   gate: GraphElement,
+  //   outputs: GraphElement[]
+  // ): number {
+  //   // Random (dice) mode
+  //   if (gate.gateType === 'dice') {
+  //     const sides = getDiceSides(gate, outputs);
+  //     return randInt(1, sides); // 1..sides
+  //   }
 
-    // Deterministic: cycle and wrap at the highest interval upper bound (if any)
-    const wrapMax = getIntervalWrapMax(outputs);
-    const prev = gate.lastGateValue ?? 0;
-    const next = prev + 1;
+  //   // Deterministic: cycle and wrap at the highest interval upper bound (if any)
+  //   const wrapMax = getIntervalWrapMax(outputs);
+  //   const prev = gate.lastGateValue ?? 0;
+  //   const next = prev + 1;
 
-    if (wrapMax && wrapMax >= 1) {
-      const wrapped = ((next - 1) % wrapMax) + 1; // 1..wrapMax
-      return wrapped;
-    }
-    return next; // no intervals -> monotone counter, no wrap
-  }
+  //   if (wrapMax && wrapMax >= 1) {
+  //     const wrapped = ((next - 1) % wrapMax) + 1; // 1..wrapMax
+  //     return wrapped;
+  //   }
+  //   return next; // no intervals -> monotone counter, no wrap
+  // }
 
   /**
    * Choose one output connection given labels.
@@ -1052,99 +1877,99 @@ const Canvas: React.FC<CanvasProps> = ({
    *  - If any '%' are present, '%'-labels are used and 'else' gets (100 - sum%).
    *  - If no '%', numeric weights & empty labels (weight 1) are used. 'else' has weight 0 by default.
    */
-  function chooseGateOutputs(
-    gate: GraphElement,
-    outputs: GraphElement[]
-  ): GraphElement[] {
-    if (outputs.length === 0) return [];
+  // function chooseGateOutputs(
+  //   gate: GraphElement,
+  //   outputs: GraphElement[]
+  // ): GraphElement[] {
+  //   if (outputs.length === 0) return [];
 
-    const kinds = outputs.map(o => classifyLabel(o.text));
-    const hasRealCondition = kinds.some(k => k === 'cond' || k === 'interval');
+  //   const kinds = outputs.map(o => classifyLabel(o.text));
+  //   const hasRealCondition = kinds.some(k => k === 'cond' || k === 'interval');
 
-    // ---------- Condition / Interval mode ----------
-    if (hasRealCondition) {
-      const v = generateGateValue(gate, outputs); // NOTE: uses outputs
-      gate.lastGateValue = v;
+  //   // ---------- Condition / Interval mode ----------
+  //   if (hasRealCondition) {
+  //     const v = generateGateValue(gate, outputs); // NOTE: uses outputs
+  //     gate.lastGateValue = v;
 
-      const matches: number[] = [];
-      for (let i = 0; i < outputs.length; i++) {
-        const o = outputs[i];
-        const kind = kinds[i];
-        if (!o.text) continue;
+  //     const matches: number[] = [];
+  //     for (let i = 0; i < outputs.length; i++) {
+  //       const o = outputs[i];
+  //       const kind = kinds[i];
+  //       if (!o.text) continue;
 
-        if (kind === 'cond') {
-          const fn = parseCond(o.text);
-          if (fn && fn(v)) matches.push(i);
-        } else if (kind === 'interval') {
-          const pair = parseInterval(o.text!);
-          if (pair && v >= pair[0] && v <= pair[1]) matches.push(i);
-        }
-      }
+  //       if (kind === 'cond') {
+  //         const fn = parseCond(o.text);
+  //         if (fn && fn(v)) matches.push(i);
+  //       } else if (kind === 'interval') {
+  //         const pair = parseInterval(o.text!);
+  //         if (pair && v >= pair[0] && v <= pair[1]) matches.push(i);
+  //       }
+  //     }
 
-      if (matches.length === 0) {
-        const elseIdx = kinds.findIndex(k => k === 'else');
-        return elseIdx >= 0 ? [outputs[elseIdx]] : [];
-      }
+  //     if (matches.length === 0) {
+  //       const elseIdx = kinds.findIndex(k => k === 'else');
+  //       return elseIdx >= 0 ? [outputs[elseIdx]] : [];
+  //     }
 
-      // IMPORTANT: If labels overlap, duplicate to *every* match.
-      // (This makes overlaps work even if the gate's pullMode is 'pull any'.)
-      if (matches.length > 1) {
-        return matches.map(i => outputs[i]);
-      }
+  //     // IMPORTANT: If labels overlap, duplicate to *every* match.
+  //     // (This makes overlaps work even if the gate's pullMode is 'pull any'.)
+  //     if (matches.length > 1) {
+  //       return matches.map(i => outputs[i]);
+  //     }
 
-      // Single match
-      return [outputs[matches[0]]];
-    }
+  //     // Single match
+  //     return [outputs[matches[0]]];
+  //   }
 
-    // ---------- Probability mode (unchanged: pick ONE) ----------
-    const isPercent = outputs.some(
-      (o, i) => kinds[i] === 'prob' && /%$/.test((o.text ?? '').trim())
-    );
-    const elseIdx = kinds.findIndex(k => k === 'else');
+  //   // ---------- Probability mode (unchanged: pick ONE) ----------
+  //   const isPercent = outputs.some(
+  //     (o, i) => kinds[i] === 'prob' && /%$/.test((o.text ?? '').trim())
+  //   );
+  //   const elseIdx = kinds.findIndex(k => k === 'else');
 
-    if (isPercent) {
-      let sumPercent = 0;
-      const weights = outputs.map((o, i) => {
-        const s = (o.text ?? '').trim();
-        if (kinds[i] === 'prob' && /%$/.test(s)) {
-          const w = Math.max(0, parseInt(s, 10) || 0);
-          sumPercent += w;
-          return w;
-        }
-        return 0;
-      });
-      if (elseIdx >= 0) {
-        const rem = Math.max(0, 100 - sumPercent);
-        weights[elseIdx] = rem;
-        sumPercent += rem;
-      }
-      if (sumPercent <= 0) return elseIdx >= 0 ? [outputs[elseIdx]] : [];
+  //   if (isPercent) {
+  //     let sumPercent = 0;
+  //     const weights = outputs.map((o, i) => {
+  //       const s = (o.text ?? '').trim();
+  //       if (kinds[i] === 'prob' && /%$/.test(s)) {
+  //         const w = Math.max(0, parseInt(s, 10) || 0);
+  //         sumPercent += w;
+  //         return w;
+  //       }
+  //       return 0;
+  //     });
+  //     if (elseIdx >= 0) {
+  //       const rem = Math.max(0, 100 - sumPercent);
+  //       weights[elseIdx] = rem;
+  //       sumPercent += rem;
+  //     }
+  //     if (sumPercent <= 0) return elseIdx >= 0 ? [outputs[elseIdx]] : [];
 
-      let r = Math.random() * sumPercent;
-      for (let i = 0; i < outputs.length; i++) {
-        r -= weights[i];
-        if (r <= 0 && weights[i] > 0) return [outputs[i]];
-      }
-      return [outputs[outputs.length - 1]];
-    } else {
-      const weights = outputs.map((o, i) => {
-        const s = (o.text ?? '').trim();
-        if (kinds[i] === 'prob' && !/%$/.test(s))
-          return Math.max(0, parseFloat(s) || 0);
-        if (kinds[i] === 'empty') return 1;
-        return 0; // else/invalid default 0
-      });
-      const total = weights.reduce((a, b) => a + b, 0);
-      if (total <= 0) return elseIdx >= 0 ? [outputs[elseIdx]] : [];
+  //     let r = Math.random() * sumPercent;
+  //     for (let i = 0; i < outputs.length; i++) {
+  //       r -= weights[i];
+  //       if (r <= 0 && weights[i] > 0) return [outputs[i]];
+  //     }
+  //     return [outputs[outputs.length - 1]];
+  //   } else {
+  //     const weights = outputs.map((o, i) => {
+  //       const s = (o.text ?? '').trim();
+  //       if (kinds[i] === 'prob' && !/%$/.test(s))
+  //         return Math.max(0, parseFloat(s) || 0);
+  //       if (kinds[i] === 'empty') return 1;
+  //       return 0; // else/invalid default 0
+  //     });
+  //     const total = weights.reduce((a, b) => a + b, 0);
+  //     if (total <= 0) return elseIdx >= 0 ? [outputs[elseIdx]] : [];
 
-      let r = Math.random() * total;
-      for (let i = 0; i < outputs.length; i++) {
-        r -= weights[i];
-        if (r <= 0 && weights[i] > 0) return [outputs[i]];
-      }
-      return [outputs[outputs.length - 1]];
-    }
-  }
+  //     let r = Math.random() * total;
+  //     for (let i = 0; i < outputs.length; i++) {
+  //       r -= weights[i];
+  //       if (r <= 0 && weights[i] > 0) return [outputs[i]];
+  //     }
+  //     return [outputs[outputs.length - 1]];
+  //   }
+  // }
 
   const applyStateConnectionDelta = (
     target: GraphElement,
@@ -1323,14 +2148,14 @@ const Canvas: React.FC<CanvasProps> = ({
         }
       }
 
-      for (const resetEl of nextElements) {
-        if (resetEl.type === 'State Connection') {
-          resetEl.conditionSatisfied = undefined;
-        }
-        if (resetEl.hasUnsatisfiedCondition) {
-          resetEl.hasUnsatisfiedCondition = false;
-        }
-      }
+      // for (const resetEl of nextElements) {
+      //   if (resetEl.type === 'State Connection') {
+      //     resetEl.conditionSatisfied = undefined;
+      //   }
+      //   if (resetEl.hasUnsatisfiedCondition) {
+      //     resetEl.hasUnsatisfiedCondition = false;
+      //   }
+      // }
 
       // const targetConditionStates = new Map<number, boolean>();
 
@@ -2953,7 +3778,7 @@ const Canvas: React.FC<CanvasProps> = ({
         );
 
         setElements(prev => [...prev, ...pastedElements]);
-        setSelectedId(pastedElements.map((el: { id: GraphElement }) => el.id));
+        setSelectedId(pastedElements.map((el: GraphElement) => el.id));
         setPasteCount(prev => prev + 1);
         console.log('Pasted elements with offset:', offset);
       }
@@ -3532,9 +4357,27 @@ const Canvas: React.FC<CanvasProps> = ({
   };
 
   // Handle dropping a tool onto the canvas
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
     if (isRunning) return;
     e.preventDefault();
+
+    // 1) If user dropped a file, prefer XML import
+    const files = Array.from(e.dataTransfer.files ?? []);
+    const xmlFile = files.find(isProbablyXmlFile);
+    if (xmlFile) {
+      try {
+        const text = await xmlFile.text();
+        importXmlText(text);
+      } catch (err) {
+        const msg =
+          err instanceof Error ? err.message : 'Failed to import XML.';
+        console.error(err);
+        setXmlImportError(msg);
+      }
+      return;
+    }
+
+    // 2) Otherwise, keep your existing tool drop behavior
     const tool = e.dataTransfer.getData('tool') as GraphElementType;
     if (tool) {
       placeElement(tool, e.clientX, e.clientY, e.currentTarget);
@@ -5143,6 +5986,29 @@ const Canvas: React.FC<CanvasProps> = ({
           }}
         />
       ))}
+      <input
+        ref={xmlFileInputRef}
+        type="file"
+        accept=".xml,text/xml,application/xml"
+        style={{ display: 'none' }}
+        onChange={handleXmlFileChosen}
+      />
+
+      {xmlImportError && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 8,
+            left: 8,
+            zIndex: 9999,
+            background: 'white',
+            padding: 8,
+            border: '1px solid #ccc',
+          }}
+        >
+          <b>XML Import Error:</b> {xmlImportError}
+        </div>
+      )}
     </div>
   );
 };
