@@ -3501,8 +3501,10 @@ const Canvas: React.FC<CanvasProps> = ({
         try {
           // Add try...catch
           setElementsRef.current(currentElements => {
-            const { nextElements, transfers } =
-              runSimulationRef.current(currentElements, 'automatic');
+            const { nextElements, transfers } = runSimulationRef.current(
+              currentElements,
+              'automatic'
+            );
             if (transfers.length) {
               spawnMovingTokensRef.current(transfers, nextElements);
             }
@@ -3588,10 +3590,7 @@ const Canvas: React.FC<CanvasProps> = ({
     };
     // Ensure ALL dependencies used inside are listed.
     // If setIsRunning comes from props/context, add it too.
-  }, [
-    isRunning,
-    hasSimulationStarted
-  ]);
+  }, [isRunning, hasSimulationStarted]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
