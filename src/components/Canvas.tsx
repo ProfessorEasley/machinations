@@ -468,12 +468,6 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
   };
 
   const registerElementKeys = (el: Element, assignedId: number) => {
-    // any explicit IDs / keys
-    addXmlKey(attrAny(el, ['id']), assignedId);
-    addXmlKey(attrAny(el, ['uid']), assignedId);
-    addXmlKey(attrAny(el, ['key']), assignedId);
-    addXmlKey(attrAny(el, ['name']), assignedId);
-
     // ✅ ordinal reference support (1-based)
     addXmlKey(String(assignedId), assignedId);
   };
@@ -482,7 +476,7 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
   // STEP 2: Sequential ID assignment state (1..n) across ALL elements
   // ------------------------------------------------------------------
 
-  let nextSequentialId = 1;
+  let nextSequentialId = 0;
 
   // Map any node reference tokens in XML -> our assigned node id
   // (supports id/uid/key/name AND also numeric node-index references)
@@ -652,13 +646,6 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
 
       nodeElements.push(base);
 
-      // Map node reference keys -> assignedId
-      addNodeKey(attrAny(el, ['id']), assignedId);
-      addNodeKey(attrAny(el, ['uid']), assignedId);
-      addNodeKey(attrAny(el, ['key']), assignedId);
-      addNodeKey(attrAny(el, ['name']), assignedId);
-
-      // ALSO support schemas where connections use node ordinal ("start=12")
       addNodeKey(String(nodeOrdinal), assignedId);
       nodeIndexToId[nodeOrdinal] = assignedId;
       nodeOrdinal++;
@@ -767,32 +754,38 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
     const endNode =
       connectedToEnd != null ? nodeById.get(connectedToEnd) : undefined;
 
-    const startX =
-      stub.explicitStartX ?? stub.allPts[0]?.x ?? startNode?.x ?? 50;
-    const startY =
-      stub.explicitStartY ?? stub.allPts[0]?.y ?? startNode?.y ?? 50;
-    const endX =
-      stub.explicitEndX ??
-      stub.allPts[stub.allPts.length - 1]?.x ??
-      endNode?.x ??
-      200;
-    const endY =
-      stub.explicitEndY ??
-      stub.allPts[stub.allPts.length - 1]?.y ??
-      endNode?.y ??
-      200;
+    // Treat XML <point> children as INTERMEDIATE waypoints
+    const EPS = 5; // px tolerance in case endpoints are also included as points
+    const startAnchor = startNode ? { x: startNode.x, y: startNode.y } : null;
+    const endAnchor = endNode ? { x: endNode.x, y: endNode.y } : null;
 
-    // intermediate points only (strip endpoints)
-    let intermediate: { x: number; y: number }[] | undefined = undefined;
-    if (stub.allPts.length >= 2) {
-      const body = stub.allPts.slice(0);
-      body.shift();
-      body.pop();
-      intermediate = body.length ? body : undefined;
+    const pts = stub.allPts.slice(); // candidate intermediate points
+
+    // If schema includes endpoints inside <point>, strip them when they're basically on the node
+    if (startAnchor && pts.length) {
+      const d0 = Math.hypot(pts[0].x - startAnchor.x, pts[0].y - startAnchor.y);
+      if (d0 <= EPS) pts.shift();
+    }
+    if (endAnchor && pts.length) {
+      const last = pts[pts.length - 1];
+      const d1 = Math.hypot(last.x - endAnchor.x, last.y - endAnchor.y);
+      if (d1 <= EPS) pts.pop();
     }
 
+    // Endpoints come from the actual start/end elements (or explicit coords if present)
+    const fallbackFirst = stub.allPts[0];
+    const fallbackLast = stub.allPts[stub.allPts.length - 1];
+
+    const startX =
+      stub.explicitStartX ?? startAnchor?.x ?? fallbackFirst?.x ?? 50;
+    const startY =
+      stub.explicitStartY ?? startAnchor?.y ?? fallbackFirst?.y ?? 50;
+
+    const endX = stub.explicitEndX ?? endAnchor?.x ?? fallbackLast?.x ?? 200;
+    const endY = stub.explicitEndY ?? endAnchor?.y ?? fallbackLast?.y ?? 200;
+
     const conn: GraphElement = {
-      id: stub.id, // ✅ already sequential in XML order
+      id: stub.id,
       type: stub.connType,
       x: startX,
       y: startY,
@@ -800,13 +793,14 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
       startY,
       endX,
       endY,
-      points: intermediate,
+      points: pts.length ? pts : undefined, // ✅ keep ALL intermediate points
       text: stub.label,
       color: stub.color,
       thickness: stub.thickness,
       connectedToStart,
       connectedToEnd,
     };
+
     console.log(stub.id, connectedToStart, connectedToEnd);
 
     if (connectedToStart == null || connectedToEnd == null) {
