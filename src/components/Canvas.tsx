@@ -473,13 +473,14 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
 
   for (const el of nodeCandidates) {
     const rawType =
-      attrAny(el, ['type', 'kind', 'class']) ?? tagNameToType(el.tagName);
+      attrAny(el, ['symbol', 'type', 'kind', 'class']) ??
+      tagNameToType(el.tagName);
+    console.log('rawType for node:', rawType);
     const type = normalizeGraphElementType(rawType);
 
     // only accept if it maps to a real GraphElementType and is NOT a connection type
     if (!type) continue;
     if (type === 'Resource Connection' || type === 'State Connection') continue;
-
     const rawKey = rawIdKeyForNode(el, `node_${nextFallbackId}`);
     let id = coerceId(
       attrAny(el, ['id', 'uid', 'key', 'name']),
@@ -1765,7 +1766,6 @@ const Canvas: React.FC<CanvasProps> = ({
       setXmlImportError(null);
 
       const { elements: imported, warnings } = parseGraphFromXml(xmlText);
-
       if (warnings.length) {
         console.warn('XML import warnings:', warnings);
       }
