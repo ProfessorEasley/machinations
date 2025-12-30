@@ -378,26 +378,26 @@ const parseChildPoints = (el: Element): { x: number; y: number }[] => {
   return pts;
 };
 
-// stable-ish string -> number (32-bit)
-const hashToInt = (s: string): number => {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  // keep positive, within safe int
-  return h >>> 0 || 1;
-};
+// // stable-ish string -> number (32-bit)
+// const hashToInt = (s: string): number => {
+//   let h = 2166136261;
+//   for (let i = 0; i < s.length; i++) {
+//     h ^= s.charCodeAt(i);
+//     h = Math.imul(h, 16777619);
+//   }
+//   // keep positive, within safe int
+//   return h >>> 0 || 1;
+// };
 
-const coerceId = (raw: string | undefined, fallback: number): number => {
-  if (!raw) return fallback;
-  const trimmed = raw.trim();
-  if (/^\d+$/.test(trimmed)) {
-    const n = Number(trimmed);
-    return Number.isFinite(n) ? n : fallback;
-  }
-  return hashToInt(trimmed);
-};
+// const coerceId = (raw: string | undefined, fallback: number): number => {
+//   if (!raw) return fallback;
+//   const trimmed = raw.trim();
+//   if (/^\d+$/.test(trimmed)) {
+//     const n = Number(trimmed);
+//     return Number.isFinite(n) ? n : fallback;
+//   }
+//   return hashToInt(trimmed);
+// };
 
 function parseGraphFromXml(xmlText: string): XmlImportResult {
   if (typeof DOMParser === 'undefined') {
@@ -416,238 +416,262 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
     );
   }
 
-  // 1) Collect "node" elements
-  const nodeCandidates = Array.from(
-    doc.querySelectorAll(
-      [
-        // generic schemas
-        'element',
-        'node',
-        'item',
+  // ------------------------------------------------------------------
+  // STEP 1: Collect node+connection candidates IN ONE query (doc order)
+  // ------------------------------------------------------------------
+  const NODE_TAGS = [
+    'element',
+    'node',
+    'item',
+    'pool',
+    'gate',
+    'source',
+    'drain',
+    'convertor',
+    'converter',
+    'trader',
+    'delay',
+    'register',
+    'endCondition',
+    'end-condition',
+    'textLabel',
+    'text-label',
+    'group',
+    'ai',
+    'artificialIntelligence',
+    'artificalIntelligence',
+  ];
 
-        // tag-based schemas (common)
-        'pool',
-        'gate',
-        'source',
-        'drain',
-        'convertor',
-        'converter',
-        'trader',
-        'delay',
-        'register',
-        'endCondition',
-        'end-condition',
-        'textLabel',
-        'text-label',
-        'group',
-        'ai',
-        'artificialIntelligence',
-        'artificalIntelligence',
-      ].join(',')
-    )
+  const CONN_TAGS = [
+    'connection',
+    'edge',
+    'link',
+    'resourceConnection',
+    'resource-connection',
+    'stateConnection',
+    'state-connection',
+  ];
+
+  const CANDIDATE_SELECTOR = [...NODE_TAGS, ...CONN_TAGS].join(',');
+  const orderedCandidates = Array.from(
+    doc.querySelectorAll(CANDIDATE_SELECTOR)
   );
 
-  // 2) Collect "connection" elements
-  const connCandidates = Array.from(
-    doc.querySelectorAll(
-      [
-        'connection',
-        'edge',
-        'link',
-        'resourceConnection',
-        'resource-connection',
-        'stateConnection',
-        'state-connection',
-      ].join(',')
-    )
-  );
+  // ✅ shared for nodes + connections
+  const xmlRefToId = new Map<string, number>();
 
-  // First pass: build id map for nodes (rawId -> numeric)
-  const rawNodeIdToNumeric = new Map<string, number>();
-  const usedIds = new Set<number>();
-  let nextFallbackId = 1;
+  const addXmlKey = (key: string | undefined, id: number) => {
+    if (!key) return;
+    const t = key.trim();
+    if (!t) return;
+    if (!xmlRefToId.has(t)) xmlRefToId.set(t, id);
+  };
+
+  const registerElementKeys = (el: Element, assignedId: number) => {
+    // any explicit IDs / keys
+    addXmlKey(attrAny(el, ['id']), assignedId);
+    addXmlKey(attrAny(el, ['uid']), assignedId);
+    addXmlKey(attrAny(el, ['key']), assignedId);
+    addXmlKey(attrAny(el, ['name']), assignedId);
+
+    // ✅ ordinal reference support (1-based)
+    addXmlKey(String(assignedId), assignedId);
+  };
+
+  // ------------------------------------------------------------------
+  // STEP 2: Sequential ID assignment state (1..n) across ALL elements
+  // ------------------------------------------------------------------
+
+  let nextSequentialId = 1;
+
+  // Map any node reference tokens in XML -> our assigned node id
+  // (supports id/uid/key/name AND also numeric node-index references)
+  const nodeKeyToId = new Map<string, number>();
+  const nodeIndexToId: number[] = []; // nodeOrdinal -> assigned nodeId
 
   const nodeElements: GraphElement[] = [];
-  const rawIdKeyForNode = (el: Element, fallbackKey: string) =>
-    attrAny(el, ['id', 'uid', 'key', 'name']) ?? fallbackKey;
 
-  for (const el of nodeCandidates) {
+  type ConnStub = {
+    id: number;
+    connType: GraphElementType;
+    fromRaw?: string;
+    toRaw?: string;
+    color?: string;
+    thickness?: number;
+    label?: string;
+    allPts: { x: number; y: number }[];
+    explicitStartX?: number;
+    explicitStartY?: number;
+    explicitEndX?: number;
+    explicitEndY?: number;
+    idRaw?: string;
+  };
+
+  const connStubs: ConnStub[] = [];
+
+  const addNodeKey = (key: string | undefined, nodeId: number) => {
+    if (!key) return;
+    const t = key.trim();
+    if (!t) return;
+    if (!nodeKeyToId.has(t)) nodeKeyToId.set(t, nodeId);
+  };
+
+  let nodeOrdinal = 0;
+
+  // ------------------------------------------------------------------
+  // STEP 3: One pass over orderedCandidates (top->bottom in XML),
+  // assign IDs sequentially to nodes + connections.
+  // ------------------------------------------------------------------
+  for (const el of orderedCandidates) {
     const rawType =
       attrAny(el, ['symbol', 'type', 'kind', 'class']) ??
       tagNameToType(el.tagName);
-    console.log('rawType for node:', rawType);
     const type = normalizeGraphElementType(rawType);
-
-    // only accept if it maps to a real GraphElementType and is NOT a connection type
-    if (!type) continue;
-    if (type === 'Resource Connection' || type === 'State Connection') continue;
-    const rawKey = rawIdKeyForNode(el, `node_${nextFallbackId}`);
-    let id = coerceId(
-      attrAny(el, ['id', 'uid', 'key', 'name']),
-      nextFallbackId
-    );
-
-    // dedupe ids
-    while (usedIds.has(id)) id += 1;
-    usedIds.add(id);
-
-    rawNodeIdToNumeric.set(rawKey, id);
-
-    const x =
-      numAttrAny(el, ['x', 'posX', 'cx', 'left']) ??
-      numAttrAny(el, ['px', 'screenX']) ??
-      100;
-    const y =
-      numAttrAny(el, ['y', 'posY', 'cy', 'top']) ??
-      numAttrAny(el, ['py', 'screenY']) ??
-      100;
-
-    const color = attrAny(el, ['color', 'stroke', 'borderColor']);
-    const thickness = numAttrAny(el, [
-      'thickness',
-      'strokeWidth',
-      'borderWidth',
-    ]);
-    const label = textAny(el, ['text', 'label', 'title', 'name']);
-
-    const activation = normalizeActivation(attrAny(el, ['activation', 'mode']));
-    const pullMode = normalizePullMode(
-      attrAny(el, ['pullMode', 'pull', 'pushMode'])
-    );
-    const gateType = normalizeGateType(
-      attrAny(el, ['gateType', 'typeMode', 'gate'])
-    );
-
-    const number = numAttrAny(el, [
-      'number',
-      'value',
-      'start',
-      'startingValue',
-    ]);
-    const max = numAttrAny(el, ['max', 'cap', 'limit']);
-    const displayLimit = numAttrAny(el, ['displayLimit', 'display', 'showMax']);
-    const actions = numAttrAny(el, ['actions', 'actionCount']);
-
-    const formula = attrAny(el, ['formula', 'expr', 'expression']);
-    const minValue = numAttrAny(el, ['minValue', 'min']);
-    const maxValue = numAttrAny(el, ['maxValue', 'max']); // (ok: only relevant for Register)
-    const interactiveRaw = attrAny(el, ['interactive']);
-    const interactive =
-      interactiveRaw != null
-        ? interactiveRaw.trim().toLowerCase() === 'true'
-        : undefined;
-
-    const step = numAttrAny(el, ['step']);
-    const startingValue = numAttrAny(el, ['startingValue', 'startValue']);
-
-    const script = textAny(el, ['script']);
-
-    const base: GraphElement = {
-      id,
-      type,
-      x,
-      y,
-      text: label,
-      color,
-      thickness,
-      activation,
-      pullMode,
-      gateType,
-      actions: actions != null ? Math.max(1, actions) : undefined,
-      number: number != null ? Math.floor(number) : undefined,
-      max: max != null ? Math.floor(max) : undefined,
-      displayLimit: displayLimit != null ? Math.floor(displayLimit) : undefined,
-
-      // Register-specific
-      formula: type === 'Register' ? (formula ?? '') : undefined,
-      minValue: type === 'Register' ? (minValue ?? -9999) : undefined,
-      maxValue: type === 'Register' ? (maxValue ?? 9999) : undefined,
-      interactive: type === 'Register' ? (interactive ?? false) : undefined,
-      startingValue: type === 'Register' ? (startingValue ?? 0) : undefined,
-      step: type === 'Register' ? (step ?? 1) : undefined,
-
-      ...(type === 'Artifical Intelligence' ? { script: script ?? '' } : {}),
-    };
-
-    // Pool initialization (keep it consistent with your runtime)
-    if (type === 'Pool') {
-      const startVal = base.number ?? 0;
-      const c = base.color || '#000000';
-      base.resourcesByColor = startVal > 0 ? { [c]: startVal } : {};
-      base.currentPoints = startVal;
-    }
-
-    // Register initialization
-    if (type === 'Register') {
-      const sv = base.startingValue ?? 0;
-      base.currentValue = base.interactive ? sv : 0;
-    }
-
-    // End condition defaults
-    if (type === 'End Condition') {
-      base.inhibited = true;
-      base.isBlinking = false;
-    }
-
-    nodeElements.push(base);
-    nextFallbackId += 1;
-  }
-
-  if (nodeElements.length === 0) {
-    warnings.push(
-      'No node elements recognized. Your XML schema may need mapping tweaks.'
-    );
-  }
-
-  // Helper: resolve a reference id string to numeric id
-  const resolveRefToId = (raw?: string): number | undefined => {
-    if (!raw) return undefined;
-    const trimmed = raw.trim();
-    // try direct numeric
-    if (/^\d+$/.test(trimmed)) return Number(trimmed);
-
-    // try rawKey map
-    const mapped = rawNodeIdToNumeric.get(trimmed);
-    if (mapped != null) return mapped;
-
-    // try hash fallback
-    const h = hashToInt(trimmed);
-    // only accept if that hashed id exists
-    if (nodeElements.some(n => n.id === h)) return h;
-
-    return undefined;
-  };
-
-  const nodeById = new Map<number, GraphElement>(
-    nodeElements.map(n => [n.id, n])
-  );
-
-  // Second pass: parse connections
-  const connElements: GraphElement[] = [];
-  let connFallbackId = Math.max(1, ...nodeElements.map(n => n.id)) + 1;
-
-  for (const el of connCandidates) {
-    const rawType =
-      attrAny(el, ['type', 'kind', 'class']) ?? tagNameToType(el.tagName);
-    const type = normalizeGraphElementType(rawType);
-
     if (!type) continue;
 
-    // Only accept actual connection types
-    // const isResource =
-    //   type === 'Resource Connection' ||
-    //   el.tagName.toLowerCase().includes('resource');
-    const isState =
-      type === 'State Connection' || el.tagName.toLowerCase().includes('state');
+    const tagLower = el.tagName.toLowerCase();
+
+    const isConnection =
+      type === 'Resource Connection' ||
+      type === 'State Connection' ||
+      tagLower === 'connection' ||
+      tagLower === 'edge' ||
+      tagLower === 'link' ||
+      tagLower.includes('connection');
+
+    const assignedId = nextSequentialId++;
+    registerElementKeys(el, assignedId);
+
+    // ---------------- NODE ----------------
+    if (!isConnection) {
+      // (defensive) skip if it somehow maps to connection types
+      // if (type === 'Resource Connection' || type === 'State Connection') continue;
+
+      const x =
+        numAttrAny(el, ['x', 'posX', 'cx', 'left']) ??
+        numAttrAny(el, ['px', 'screenX']) ??
+        100;
+      const y =
+        numAttrAny(el, ['y', 'posY', 'cy', 'top']) ??
+        numAttrAny(el, ['py', 'screenY']) ??
+        100;
+
+      const color = attrAny(el, ['color', 'stroke', 'borderColor']);
+      const thickness = numAttrAny(el, [
+        'thickness',
+        'strokeWidth',
+        'borderWidth',
+      ]);
+      const label = textAny(el, ['text', 'label', 'title', 'name']);
+
+      const activation = normalizeActivation(
+        attrAny(el, ['activation', 'mode'])
+      );
+      const pullMode = normalizePullMode(
+        attrAny(el, ['pullMode', 'pull', 'pushMode'])
+      );
+      const gateType = normalizeGateType(
+        attrAny(el, ['gateType', 'typeMode', 'gate'])
+      );
+
+      const number = numAttrAny(el, [
+        'number',
+        'value',
+        'start',
+        'startingValue',
+      ]);
+      const max = numAttrAny(el, ['max', 'cap', 'limit']);
+      const displayLimit = numAttrAny(el, [
+        'displayLimit',
+        'display',
+        'showMax',
+      ]);
+      const actions = numAttrAny(el, ['actions', 'actionCount']);
+
+      const formula = attrAny(el, ['formula', 'expr', 'expression']);
+      const minValue = numAttrAny(el, ['minValue', 'min']);
+      const maxValue = numAttrAny(el, ['maxValue', 'max']);
+      const interactiveRaw = attrAny(el, ['interactive']);
+      const interactive =
+        interactiveRaw != null
+          ? interactiveRaw.trim().toLowerCase() === 'true'
+          : undefined;
+
+      const step = numAttrAny(el, ['step']);
+      const startingValue = numAttrAny(el, ['startingValue', 'startValue']);
+
+      const script = textAny(el, ['script']);
+
+      const base: GraphElement = {
+        id: assignedId,
+        type,
+        x,
+        y,
+        text: label,
+        color,
+        thickness,
+        activation,
+        pullMode,
+        gateType,
+        actions: actions != null ? Math.max(1, actions) : undefined,
+        number: number != null ? Math.floor(number) : undefined,
+        max: max != null ? Math.floor(max) : undefined,
+        displayLimit:
+          displayLimit != null ? Math.floor(displayLimit) : undefined,
+
+        // Register-specific
+        formula: type === 'Register' ? (formula ?? '') : undefined,
+        minValue: type === 'Register' ? (minValue ?? -9999) : undefined,
+        maxValue: type === 'Register' ? (maxValue ?? 9999) : undefined,
+        interactive: type === 'Register' ? (interactive ?? false) : undefined,
+        startingValue: type === 'Register' ? (startingValue ?? 0) : undefined,
+        step: type === 'Register' ? (step ?? 1) : undefined,
+
+        ...(type === 'Artifical Intelligence' ? { script: script ?? '' } : {}),
+      };
+
+      // Pool init
+      if (type === 'Pool') {
+        const startVal = base.number ?? 0;
+        const c = base.color || '#000000';
+        base.resourcesByColor = startVal > 0 ? { [c]: startVal } : {};
+        base.currentPoints = startVal;
+      }
+
+      // Register init
+      if (type === 'Register') {
+        const sv = base.startingValue ?? 0;
+        base.currentValue = base.interactive ? sv : 0;
+      }
+
+      // End condition defaults
+      if (type === 'End Condition') {
+        base.inhibited = true;
+        base.isBlinking = false;
+      }
+
+      nodeElements.push(base);
+
+      // Map node reference keys -> assignedId
+      addNodeKey(attrAny(el, ['id']), assignedId);
+      addNodeKey(attrAny(el, ['uid']), assignedId);
+      addNodeKey(attrAny(el, ['key']), assignedId);
+      addNodeKey(attrAny(el, ['name']), assignedId);
+
+      // ALSO support schemas where connections use node ordinal ("start=12")
+      addNodeKey(String(nodeOrdinal), assignedId);
+      nodeIndexToId[nodeOrdinal] = assignedId;
+      nodeOrdinal++;
+
+      continue;
+    }
+
+    // ---------------- CONNECTION ----------------
+    const isState = type === 'State Connection' || tagLower.includes('state');
 
     const connType: GraphElementType = isState
       ? 'State Connection'
       : 'Resource Connection';
-
-    const idRaw = attrAny(el, ['id', 'uid', 'key']);
-    let id = coerceId(idRaw, connFallbackId);
-    while (usedIds.has(id)) id += 1;
-    usedIds.add(id);
 
     const fromRaw = attrAny(el, [
       'from',
@@ -659,53 +683,117 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
     ]);
     const toRaw = attrAny(el, ['to', 'end', 'target', 'endId', 'toId', 'b']);
 
-    const connectedToStart = resolveRefToId(fromRaw);
-    const connectedToEnd = resolveRefToId(toRaw);
-
     const color = attrAny(el, ['color', 'stroke']);
     const thickness = numAttrAny(el, ['thickness', 'strokeWidth']);
     const label = textAny(el, ['text', 'label']);
 
-    // points: attr or child points
     const ptsFromAttr = parsePointsAttr(
       attrAny(el, ['points', 'path', 'polyline'])
     );
     const ptsFromChildren = parseChildPoints(el);
     const allPts = ptsFromChildren.length > 0 ? ptsFromChildren : ptsFromAttr;
 
-    // Determine start/end coords.
-    // If XML provides explicit endpoints use them, else fallback to connected node centers.
     const explicitStartX = numAttrAny(el, ['startX', 'x1', 'sx']);
     const explicitStartY = numAttrAny(el, ['startY', 'y1', 'sy']);
     const explicitEndX = numAttrAny(el, ['endX', 'x2', 'ex']);
     const explicitEndY = numAttrAny(el, ['endY', 'y2', 'ey']);
 
-    const startNode = connectedToStart
-      ? nodeById.get(connectedToStart)
-      : undefined;
-    const endNode = connectedToEnd ? nodeById.get(connectedToEnd) : undefined;
+    const dumpAttrs = (el: Element) =>
+      Array.from(el.attributes)
+        .map(a => `${a.name}="${a.value}"`)
+        .join(' ');
 
-    const startX = explicitStartX ?? allPts[0]?.x ?? startNode?.x ?? 50;
-    const startY = explicitStartY ?? allPts[0]?.y ?? startNode?.y ?? 50;
+    if (!fromRaw || !toRaw) {
+      console.warn('Missing endpoints on:', el.tagName, dumpAttrs(el));
+    }
+
+    connStubs.push({
+      id: assignedId,
+      connType,
+      fromRaw,
+      toRaw,
+      color,
+      thickness,
+      label,
+      allPts,
+      explicitStartX,
+      explicitStartY,
+      explicitEndX,
+      explicitEndY,
+      idRaw: attrAny(el, ['id', 'uid', 'key']),
+    });
+  }
+
+  if (nodeElements.length === 0) {
+    warnings.push(
+      'No node elements recognized. Your XML schema may need mapping tweaks.'
+    );
+  }
+
+  // ------------------------------------------------------------------
+  // STEP 4: Resolve connection endpoints AFTER we know all node ids,
+  // while keeping connection ids already assigned in XML order.
+  // ------------------------------------------------------------------
+  const resolveRefToId = (raw?: string): number | undefined => {
+    if (!raw) return undefined;
+    const t = raw.trim();
+    if (!t) return undefined;
+
+    const mapped = xmlRefToId.get(t);
+    if (mapped != null) return mapped;
+
+    // numeric fallback (try 0-based then 1-based)
+    if (/^\d+$/.test(t)) {
+      const n = Number(t);
+      if (Number.isFinite(n))
+        return xmlRefToId.get(String(n)) ?? xmlRefToId.get(String(n - 1));
+    }
+
+    return undefined;
+  };
+
+  const nodeById = new Map<number, GraphElement>(
+    nodeElements.map(n => [n.id, n])
+  );
+
+  const connElements: GraphElement[] = [];
+
+  for (const stub of connStubs) {
+    const connectedToStart = resolveRefToId(stub.fromRaw);
+    const connectedToEnd = resolveRefToId(stub.toRaw);
+
+    const startNode =
+      connectedToStart != null ? nodeById.get(connectedToStart) : undefined;
+    const endNode =
+      connectedToEnd != null ? nodeById.get(connectedToEnd) : undefined;
+
+    const startX =
+      stub.explicitStartX ?? stub.allPts[0]?.x ?? startNode?.x ?? 50;
+    const startY =
+      stub.explicitStartY ?? stub.allPts[0]?.y ?? startNode?.y ?? 50;
     const endX =
-      explicitEndX ?? allPts[allPts.length - 1]?.x ?? endNode?.x ?? 200;
+      stub.explicitEndX ??
+      stub.allPts[stub.allPts.length - 1]?.x ??
+      endNode?.x ??
+      200;
     const endY =
-      explicitEndY ?? allPts[allPts.length - 1]?.y ?? endNode?.y ?? 200;
+      stub.explicitEndY ??
+      stub.allPts[stub.allPts.length - 1]?.y ??
+      endNode?.y ??
+      200;
 
-    // If points include endpoints, strip them to fit your internal representation:
-    // you store startX/startY/endX/endY separately, and `points` is intermediate only.
+    // intermediate points only (strip endpoints)
     let intermediate: { x: number; y: number }[] | undefined = undefined;
-    if (allPts.length >= 2) {
-      // best-effort removal of first/last if they match endpoints
-      const body = allPts.slice(0);
-      if (body.length >= 1) body.shift();
-      if (body.length >= 1) body.pop();
+    if (stub.allPts.length >= 2) {
+      const body = stub.allPts.slice(0);
+      body.shift();
+      body.pop();
       intermediate = body.length ? body : undefined;
     }
 
     const conn: GraphElement = {
-      id,
-      type: connType,
+      id: stub.id, // ✅ already sequential in XML order
+      type: stub.connType,
       x: startX,
       y: startY,
       startX,
@@ -713,32 +801,34 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
       endX,
       endY,
       points: intermediate,
-      text: label,
-      color,
-      thickness,
+      text: stub.label,
+      color: stub.color,
+      thickness: stub.thickness,
       connectedToStart,
       connectedToEnd,
     };
+    console.log(stub.id, connectedToStart, connectedToEnd);
 
-    // If connection endpoints couldn’t be resolved, keep but warn.
-    if (!connectedToStart || !connectedToEnd) {
+    if (connectedToStart == null || connectedToEnd == null) {
       warnings.push(
-        `Connection ${idRaw ?? id} missing endpoint mapping (from="${fromRaw}", to="${toRaw}").`
+        `Connection ${stub.idRaw ?? stub.id} missing endpoint mapping (from="${stub.fromRaw}", to="${stub.toRaw}").`
       );
     }
 
     connElements.push(conn);
-    connFallbackId += 1;
   }
 
   if (connElements.length === 0) {
     warnings.push(
-      'No connection elements recognized. If your XML uses different tags/attrs, add them to connCandidates / endpoint attrs.'
+      'No connection elements recognized. If your XML uses different tags/attrs, add them to selectors / endpoint attrs.'
     );
   }
-
   // Final: return combined
-  return { elements: [...nodeElements, ...connElements], warnings };
+  // return { elements: [...nodeElements, ...connElements], warnings };
+  return {
+    elements: [...nodeElements, ...connElements].sort((a, b) => a.id - b.id),
+    warnings,
+  };
 }
 
 interface ResourceTransfer {
@@ -977,7 +1067,9 @@ function applyDynamicResourceLabelsMutable(elementsList: GraphElement[]): void {
 
   const stateConnections = elementsList.filter(
     el =>
-      el.type === 'State Connection' && el.connectedToStart && el.connectedToEnd
+      el.type === 'State Connection' &&
+      el.connectedToStart != null &&
+      el.connectedToEnd != null
   );
 
   if (stateConnections.length === 0) return;
@@ -1383,21 +1475,10 @@ const Canvas: React.FC<CanvasProps> = ({
     x: number;
     y: number;
   } | null>(null);
-  //setConnectionStart
-  // const [connectionStart, setConnectionStart] = useState<{
-  //   x: number;
-  //   y: number;
-  // } | null>(null);
-  // const [connectionEnd, setConnectionEnd] = useState<{
-  //   x: number;
-  //   y: number;
-  // } | null>(null);
-  // const [connectionType, setConnectionType] = useState<GraphElementType | null>(
-  //   null
-  // );
 
   const [gameEnded, setGameEnded] = useState(false);
   const gameEndedRef = useRef(false);
+  const nextIdRef = useRef(0);
 
   // Sync ref with state
   useEffect(() => {
@@ -1509,141 +1590,12 @@ const Canvas: React.FC<CanvasProps> = ({
     return () => cancelAnimationFrame(animationFrameId);
   }, [movingTokens.length]);
 
-  // if (!isRunning && hasSimulationStarted) {
-  //   setHasSimulationStarted(false);
-  //   setElements(currentElements =>
-  //     currentElements.map(el => ({ ...el, hasStarted: false }))
-  //   );
-  //   setMovingTokens([]); // ⬅️ add this
-  // }
-
-  // ---------- Gate helpers ----------
-  // const randInt = (min: number, max: number) =>
-  //   Math.floor(Math.random() * (max - min + 1)) + min;
-
-  // ---------- Label parsing utilities ----------
-  /**
-   * Parse a connection label to get the resource amount.
-   * Supports:
-   * - Simple number: "5" -> 5
-   * - Random range: "2-5" or "2-8" -> random value in range
-   * - Fraction: "1/2" or "3/4" -> random based on probability
-   * - Default: empty or invalid -> 1
-   */
-  // function parseConnectionLabel(label?: string): number {
-  //   const s = (label ?? '').trim();
-  //   if (!s) return 1;
-
-  //   // Check for random range (e.g., "2-5")
-  //   const rangeMatch = s.match(/^(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)$/);
-  //   if (rangeMatch) {
-  //     const min = parseFloat(rangeMatch[1]);
-  //     const max = parseFloat(rangeMatch[2]);
-  //     if (!isNaN(min) && !isNaN(max)) {
-  //       return randInt(
-  //         Math.floor(Math.min(min, max)),
-  //         Math.floor(Math.max(min, max))
-  //       );
-  //     }
-  //   }
-
-  //   // Check for fraction (e.g., "1/2", "3/4")
-  //   const fractionMatch = s.match(/^(\d+)\/(\d+)$/);
-  //   if (fractionMatch) {
-  //     const num = parseInt(fractionMatch[1], 10);
-  //     const den = parseInt(fractionMatch[2], 10);
-  //     if (!isNaN(num) && !isNaN(den) && den > 0) {
-  //       // Return num with probability num/den, 0 otherwise
-  //       return Math.random() < num / den ? num : 0;
-  //     }
-  //   }
-
-  //   // Check for simple number
-  //   const num = parseFloat(s);
-  //   if (!isNaN(num)) {
-  //     return Math.floor(num);
-  //   }
-
-  //   // Default to 1 if can't parse
-  //   return 1;
-  // }
-
-  /**
-   * Check if a connection label represents a trigger output (marked with "*")
-   */
-  // function isTriggerOutput(label?: string): boolean {
-  //   return (label ?? '').trim().includes('*');
-  // }
-
-  // type LabelKind = 'prob' | 'cond' | 'interval' | 'else' | 'empty' | 'invalid';
-
-  // replace your classifyLabel with this
-  // function classifyLabel(raw?: string): LabelKind {
-  //   const s0 = (raw ?? '').trim();
-  //   if (!s0) return 'empty';
-  //   if (s0.toLowerCase() === 'else') return 'else';
-  //   const s = s0.replace(/[–—]/g, '-'); // normalize en/em dashes
-
-  //   if (/^\d+\s*%$/.test(s)) return 'prob'; // "70%"
-  //   if (/^\d+(\.\d+)?$/.test(s)) return 'prob'; // "4"
-  //   if (/^(==|!=|>=|<=|>|<)\s*-?\d+(\.\d+)?$/.test(s)) return 'cond';
-  //   if (/^-?\d+(\.\d+)?\s*-\s*-?\d+(\.\d+)?$/.test(s)) return 'interval';
-  //   return 'invalid';
-  // }
-
-  // replace your parseInterval with this
-  // function parseInterval(raw: string): [number, number] | null {
-  //   const norm = raw.trim().replace(/[–—]/g, '-');
-  //   const m = norm.match(/^\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\s*$/);
-  //   if (!m) return null;
-  //   const a = parseFloat(m[1]),
-  //     b = parseFloat(m[2]);
-  //   return a <= b ? [a, b] : [b, a]; // inclusive range
-  // }
-
-  // function parseCond(raw: string): ((v: number) => boolean) | null {
-  //   const m = raw.trim().match(/^(==|!=|>=|<=|>|<)\s*(-?\d+(?:\.\d+)?)$/);
-  //   if (!m) return null;
-  //   const op = m[1],
-  //     rhs = parseFloat(m[2]);
-  //   return (v: number) => {
-  //     switch (op) {
-  //       case '==':
-  //         return v === rhs;
-  //       case '!=':
-  //         return v !== rhs;
-  //       case '>=':
-  //         return v >= rhs;
-  //       case '<=':
-  //         return v <= rhs;
-  //       case '>':
-  //         return v > rhs;
-  //       case '<':
-  //         return v < rhs;
-  //       default:
-  //         return false;
-  //     }
-  //   };
-  // }
-
-  // function getIntervalWrapMax(outputs: GraphElement[]): number | null {
-  //   let hi = -Infinity;
-  //   for (const o of outputs) {
-  //     if (!o.text) continue;
-  //     if (classifyLabel(o.text) === 'interval') {
-  //       const rng = parseInterval(o.text);
-  //       if (rng) hi = Math.max(hi, rng[1]);
-  //     }
-  //   }
-  //   return isFinite(hi) ? hi : null;
-  // }
-
   const evaluateStateCondition = useCallback(
     (
       connection: GraphElement,
       elementMap: Map<number, GraphElement>
     ): { evaluated: boolean; satisfied: boolean } => {
-      if (!connection.connectedToStart) {
+      if (connection.connectedToStart == null) {
         return { evaluated: false, satisfied: false };
       }
       const startEl = elementMap.get(connection.connectedToStart);
@@ -1685,8 +1637,8 @@ const Canvas: React.FC<CanvasProps> = ({
       for (const connection of elementsList) {
         if (
           connection.type !== 'State Connection' ||
-          !connection.connectedToStart ||
-          !connection.connectedToEnd
+          connection.connectedToStart == null ||
+          connection.connectedToEnd == null
         ) {
           if ('hasUnsatisfiedCondition' in connection) {
             connection.hasUnsatisfiedCondition = false;
@@ -1775,6 +1727,8 @@ const Canvas: React.FC<CanvasProps> = ({
       setGameEnded(false);
       gameEndedRef.current = false;
 
+      const maxId = imported.reduce((m, el) => Math.max(m, el.id), -1);
+      nextIdRef.current = maxId + 1;
       // load the imported diagram
       setElements(imported);
       setSelectedId([]);
@@ -1834,142 +1788,6 @@ const Canvas: React.FC<CanvasProps> = ({
       );
     };
   }, [openXmlPicker, importXmlText]);
-
-  // Optional: allow "d6", "6", or "1d6" in gate.text. Fallback to 6.
-  // function getDiceSides(gate: GraphElement, outputs: GraphElement[]): number {
-  //   const t = (gate.text ?? '').trim().toLowerCase();
-  //   const m1 = t.match(/^d\s*(\d+)$/);
-  //   const m2 = t.match(/^(\d+)\s*d\s*(\d+)$/);
-  //   if (m1) return Math.max(2, parseInt(m1[1], 10));
-  //   if (m2) return Math.max(2, parseInt(m2[2], 10));
-  //   const wrap = getIntervalWrapMax(outputs);
-  //   if (wrap && wrap >= 2) return wrap; // sensible default from labels
-  //   return 6; // final fallback
-  // }
-
-  // change signature to accept outputs
-  // function generateGateValue(
-  //   gate: GraphElement,
-  //   outputs: GraphElement[]
-  // ): number {
-  //   // Random (dice) mode
-  //   if (gate.gateType === 'dice') {
-  //     const sides = getDiceSides(gate, outputs);
-  //     return randInt(1, sides); // 1..sides
-  //   }
-
-  //   // Deterministic: cycle and wrap at the highest interval upper bound (if any)
-  //   const wrapMax = getIntervalWrapMax(outputs);
-  //   const prev = gate.lastGateValue ?? 0;
-  //   const next = prev + 1;
-
-  //   if (wrapMax && wrapMax >= 1) {
-  //     const wrapped = ((next - 1) % wrapMax) + 1; // 1..wrapMax
-  //     return wrapped;
-  //   }
-  //   return next; // no intervals -> monotone counter, no wrap
-  // }
-
-  /**
-   * Choose one output connection given labels.
-   * Condition-mode if there is ANY cond/interval label (ELSE ALONE does NOT trigger cond-mode).
-   * Otherwise probability-mode:
-   *  - If any '%' are present, '%'-labels are used and 'else' gets (100 - sum%).
-   *  - If no '%', numeric weights & empty labels (weight 1) are used. 'else' has weight 0 by default.
-   */
-  // function chooseGateOutputs(
-  //   gate: GraphElement,
-  //   outputs: GraphElement[]
-  // ): GraphElement[] {
-  //   if (outputs.length === 0) return [];
-
-  //   const kinds = outputs.map(o => classifyLabel(o.text));
-  //   const hasRealCondition = kinds.some(k => k === 'cond' || k === 'interval');
-
-  //   // ---------- Condition / Interval mode ----------
-  //   if (hasRealCondition) {
-  //     const v = generateGateValue(gate, outputs); // NOTE: uses outputs
-  //     gate.lastGateValue = v;
-
-  //     const matches: number[] = [];
-  //     for (let i = 0; i < outputs.length; i++) {
-  //       const o = outputs[i];
-  //       const kind = kinds[i];
-  //       if (!o.text) continue;
-
-  //       if (kind === 'cond') {
-  //         const fn = parseCond(o.text);
-  //         if (fn && fn(v)) matches.push(i);
-  //       } else if (kind === 'interval') {
-  //         const pair = parseInterval(o.text!);
-  //         if (pair && v >= pair[0] && v <= pair[1]) matches.push(i);
-  //       }
-  //     }
-
-  //     if (matches.length === 0) {
-  //       const elseIdx = kinds.findIndex(k => k === 'else');
-  //       return elseIdx >= 0 ? [outputs[elseIdx]] : [];
-  //     }
-
-  //     // IMPORTANT: If labels overlap, duplicate to *every* match.
-  //     // (This makes overlaps work even if the gate's pullMode is 'pull any'.)
-  //     if (matches.length > 1) {
-  //       return matches.map(i => outputs[i]);
-  //     }
-
-  //     // Single match
-  //     return [outputs[matches[0]]];
-  //   }
-
-  //   // ---------- Probability mode (unchanged: pick ONE) ----------
-  //   const isPercent = outputs.some(
-  //     (o, i) => kinds[i] === 'prob' && /%$/.test((o.text ?? '').trim())
-  //   );
-  //   const elseIdx = kinds.findIndex(k => k === 'else');
-
-  //   if (isPercent) {
-  //     let sumPercent = 0;
-  //     const weights = outputs.map((o, i) => {
-  //       const s = (o.text ?? '').trim();
-  //       if (kinds[i] === 'prob' && /%$/.test(s)) {
-  //         const w = Math.max(0, parseInt(s, 10) || 0);
-  //         sumPercent += w;
-  //         return w;
-  //       }
-  //       return 0;
-  //     });
-  //     if (elseIdx >= 0) {
-  //       const rem = Math.max(0, 100 - sumPercent);
-  //       weights[elseIdx] = rem;
-  //       sumPercent += rem;
-  //     }
-  //     if (sumPercent <= 0) return elseIdx >= 0 ? [outputs[elseIdx]] : [];
-
-  //     let r = Math.random() * sumPercent;
-  //     for (let i = 0; i < outputs.length; i++) {
-  //       r -= weights[i];
-  //       if (r <= 0 && weights[i] > 0) return [outputs[i]];
-  //     }
-  //     return [outputs[outputs.length - 1]];
-  //   } else {
-  //     const weights = outputs.map((o, i) => {
-  //       const s = (o.text ?? '').trim();
-  //       if (kinds[i] === 'prob' && !/%$/.test(s))
-  //         return Math.max(0, parseFloat(s) || 0);
-  //       if (kinds[i] === 'empty') return 1;
-  //       return 0; // else/invalid default 0
-  //     });
-  //     const total = weights.reduce((a, b) => a + b, 0);
-  //     if (total <= 0) return elseIdx >= 0 ? [outputs[elseIdx]] : [];
-
-  //     let r = Math.random() * total;
-  //     for (let i = 0; i < outputs.length; i++) {
-  //       r -= weights[i];
-  //       if (r <= 0 && weights[i] > 0) return [outputs[i]];
-  //     }
-  //     return [outputs[outputs.length - 1]];
-  //   }
-  // }
 
   const applyStateConnectionDelta = (
     target: GraphElement,
@@ -2148,25 +1966,14 @@ const Canvas: React.FC<CanvasProps> = ({
         }
       }
 
-      // for (const resetEl of nextElements) {
-      //   if (resetEl.type === 'State Connection') {
-      //     resetEl.conditionSatisfied = undefined;
-      //   }
-      //   if (resetEl.hasUnsatisfiedCondition) {
-      //     resetEl.hasUnsatisfiedCondition = false;
-      //   }
-      // }
-
-      // const targetConditionStates = new Map<number, boolean>();
-
       // =======================================================================
       // PASS 0.5: State Connections (Modifiers & Triggers)
       // =======================================================================
       for (const connection of nextElements) {
         if (
           connection.type !== 'State Connection' ||
-          !connection.connectedToStart ||
-          !connection.connectedToEnd
+          connection.connectedToStart == null ||
+          connection.connectedToEnd == null
         )
           continue;
 
@@ -2207,8 +2014,8 @@ const Canvas: React.FC<CanvasProps> = ({
       for (const connection of nextElements) {
         if (
           !isResourceLikeConnection(connection) ||
-          !connection.connectedToStart ||
-          !connection.connectedToEnd
+          connection.connectedToStart == null ||
+          connection.connectedToEnd == null
         ) {
           continue;
         }
@@ -2932,42 +2739,6 @@ const Canvas: React.FC<CanvasProps> = ({
     },
     [runSimulationTick]
   );
-
-  // Helper function to collect resources for Pull Any mode
-  // const collectResourcesForPullAny = (
-  //   trader: GraphElement,
-  //   inputConns: GraphElement[],
-  //   elementMap: Map<number, GraphElement>
-  // ) => {
-  //   for (const inputConn of inputConns) {
-  //     const inputElement = inputConn.connectedToStart
-  //       ? elementMap.get(inputConn.connectedToStart)
-  //       : undefined;
-  //     if (
-  //       inputElement &&
-  //       inputElement.type === 'Pool' &&
-  //       (inputElement.currentPoints ?? 0) > 0
-  //     ) {
-  //       const amount = parseConnectionLabel(inputConn.text);
-  //       const available = Math.min(amount, inputElement.currentPoints ?? 0);
-
-  //       if (available > 0) {
-  //         inputElement.currentPoints =
-  //           (inputElement.currentPoints ?? 0) - available;
-  //         // Use connection ID as key to uniquely identify each input connection
-  //         const resourceKey = `conn_${inputConn.id}`;
-  //         const current = trader.traderInputs![resourceKey] || 0;
-  //         trader.traderInputs![resourceKey] = current + available;
-  //       }
-  //     } else if (inputElement && inputElement.type === 'Source') {
-  //       // Source has infinite resources, collect the amount specified
-  //       const amount = parseConnectionLabel(inputConn.text);
-  //       const resourceKey = `conn_${inputConn.id}`;
-  //       const current = trader.traderInputs![resourceKey] || 0;
-  //       trader.traderInputs![resourceKey] = current + amount;
-  //     }
-  //   }
-  // };
 
   // Helper function for incomplete trader (behaves like convertor - can create/destroy resources)
   const processIncompleteTrader = (
@@ -4124,7 +3895,7 @@ const Canvas: React.FC<CanvasProps> = ({
     const rect = target.getBoundingClientRect();
     const x = clientX - rect.left;
     const y = clientY - rect.top;
-    const id = Date.now();
+    const id = nextIdRef.current++;
 
     if (type === 'Text Label') {
       setElements(prev => [
@@ -4452,7 +4223,7 @@ const Canvas: React.FC<CanvasProps> = ({
         ? toolProperties?.resourceConnection
         : toolProperties?.stateConnection;
 
-    const id = Date.now();
+    const id = nextIdRef.current++;
 
     const newConnection: GraphElement = {
       id,
@@ -4563,12 +4334,6 @@ const Canvas: React.FC<CanvasProps> = ({
         element.type === 'Register' &&
         (element.interactive === true || element.interactive === 'true')
       ) {
-        // console.log('🖱️ Interactive Register clicked:', {
-        // id: element.id,
-        // currentValue: element.currentValue,
-        // step: element.step,
-        // });
-
         const step =
           typeof element.step === 'string'
             ? parseInt(element.step, 10) || 1
@@ -4584,14 +4349,6 @@ const Canvas: React.FC<CanvasProps> = ({
             ? parseInt(element.maxValue, 10) || 50
             : (element.maxValue ?? 9999);
         const clampedValue = Math.min(Math.max(newValue, min), max);
-
-        // console.log('🖱️ Register value update:', {
-        // from: currentVal,
-        // to: clampedValue,
-        // step: step,
-        // min: min,
-        // max: max,
-        // });
 
         setElements(prev =>
           prev.map(el =>
