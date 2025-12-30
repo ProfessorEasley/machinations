@@ -9,7 +9,13 @@ import { globalIgnores } from 'eslint/config';
 
 export default tseslint.config(
   [
-    globalIgnores(['dist', 'node_modules', 'coverage', 'playwright-report']),
+    globalIgnores([
+      'dist',
+      'node_modules',
+      'coverage',
+      'playwright-report',
+      'xmls',
+    ]),
     {
       files: ['**/*.{ts,tsx}'],
       extends: [

@@ -40,3 +40,6 @@ out/
 
 *storybook.log
 storybook-static
+
+# Misc
+xmls/
