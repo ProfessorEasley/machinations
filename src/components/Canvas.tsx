@@ -2734,6 +2734,58 @@ const Canvas: React.FC<CanvasProps> = ({
     [runSimulationTick]
   );
 
+  const setElementsRef = useRef(setElements);
+  const spawnMovingTokensRef = useRef(spawnMovingTokens);
+  const runSimulationRef = useRef(runSimulationAndCollectTransfers);
+
+  useEffect(() => {
+    setElementsRef.current = setElements;
+  }, [setElements]);
+
+  useEffect(() => {
+    spawnMovingTokensRef.current = spawnMovingTokens;
+  }, [spawnMovingTokens]);
+
+  useEffect(() => {
+    runSimulationRef.current = runSimulationAndCollectTransfers;
+  }, [runSimulationAndCollectTransfers]);
+
+  // Helper function to collect resources for Pull Any mode
+  // const collectResourcesForPullAny = (
+  //   trader: GraphElement,
+  //   inputConns: GraphElement[],
+  //   elementMap: Map<number, GraphElement>
+  // ) => {
+  //   for (const inputConn of inputConns) {
+  //     const inputElement = inputConn.connectedToStart
+  //       ? elementMap.get(inputConn.connectedToStart)
+  //       : undefined;
+  //     if (
+  //       inputElement &&
+  //       inputElement.type === 'Pool' &&
+  //       (inputElement.currentPoints ?? 0) > 0
+  //     ) {
+  //       const amount = parseConnectionLabel(inputConn.text);
+  //       const available = Math.min(amount, inputElement.currentPoints ?? 0);
+
+  //       if (available > 0) {
+  //         inputElement.currentPoints =
+  //           (inputElement.currentPoints ?? 0) - available;
+  //         // Use connection ID as key to uniquely identify each input connection
+  //         const resourceKey = `conn_${inputConn.id}`;
+  //         const current = trader.traderInputs![resourceKey] || 0;
+  //         trader.traderInputs![resourceKey] = current + available;
+  //       }
+  //     } else if (inputElement && inputElement.type === 'Source') {
+  //       // Source has infinite resources, collect the amount specified
+  //       const amount = parseConnectionLabel(inputConn.text);
+  //       const resourceKey = `conn_${inputConn.id}`;
+  //       const current = trader.traderInputs![resourceKey] || 0;
+  //       trader.traderInputs![resourceKey] = current + amount;
+  //     }
+  //   }
+  // };
+
   // Helper function for incomplete trader (behaves like convertor - can create/destroy resources)
   const processIncompleteTrader = (
     trader: GraphElement,
@@ -3303,7 +3355,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
       // 1. FORCE RESET ELEMENTS (Clean slate before starting)
       // This handles the case where we "Froze" the board on the previous Game Over
-      setElements(prev => {
+      setElementsRef.current(prev => {
         const resetElements = prev.map(el => {
           const baseReset = {
             ...el,
@@ -3345,7 +3397,7 @@ const Canvas: React.FC<CanvasProps> = ({
         });
 
         // 2. Run the "OnStart" tick immediately on the clean elements
-        const { nextElements, transfers } = runSimulationAndCollectTransfers(
+        const { nextElements, transfers } = runSimulationRef.current(
           resetElements,
           'onstart'
         );
@@ -3370,11 +3422,13 @@ const Canvas: React.FC<CanvasProps> = ({
         }
         try {
           // Add try...catch
-          setElements(currentElements => {
-            const { nextElements, transfers } =
-              runSimulationAndCollectTransfers(currentElements, 'automatic');
+          setElementsRef.current(currentElements => {
+            const { nextElements, transfers } = runSimulationRef.current(
+              currentElements,
+              'automatic'
+            );
             if (transfers.length) {
-              spawnMovingTokens(transfers, nextElements);
+              spawnMovingTokensRef.current(transfers, nextElements);
             }
             return nextElements;
           });
@@ -3408,7 +3462,7 @@ const Canvas: React.FC<CanvasProps> = ({
       setMovingTokens([]);
       setGameEnded(false);
 
-      setElements(prev =>
+      setElementsRef.current(prev =>
         prev.map(el => {
           const baseReset = {
             ...el,
@@ -3458,13 +3512,7 @@ const Canvas: React.FC<CanvasProps> = ({
     };
     // Ensure ALL dependencies used inside are listed.
     // If setIsRunning comes from props/context, add it too.
-  }, [
-    isRunning,
-    hasSimulationStarted,
-    setElements,
-    runSimulationAndCollectTransfers,
-    spawnMovingTokens,
-  ]);
+  }, [isRunning, hasSimulationStarted]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -4143,6 +4191,7 @@ const Canvas: React.FC<CanvasProps> = ({
     }
 
     // 2) Otherwise, keep your existing tool drop behavior
+
     const tool = e.dataTransfer.getData('tool') as GraphElementType;
     if (tool) {
       placeElement(tool, e.clientX, e.clientY, e.currentTarget);
