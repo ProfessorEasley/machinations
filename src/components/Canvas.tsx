@@ -212,6 +212,7 @@ interface GraphElement {
   currentPoints?: number;
   hasStarted?: boolean;
   inhibited?: boolean;
+  labelPosition?: number;
 
   // Artificial Intelligence node script (from XML import + toolProperties)
   script?: string;
@@ -493,6 +494,7 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
     color?: string;
     thickness?: number;
     label?: string;
+    labelPosition?: number; // ✅ NEW
     allPts: { x: number; y: number }[];
     explicitStartX?: number;
     explicitStartY?: number;
@@ -673,6 +675,9 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
     const color = attrAny(el, ['color', 'stroke']);
     const thickness = numAttrAny(el, ['thickness', 'strokeWidth']);
     const label = textAny(el, ['text', 'label']);
+    const rawPos = numAttrAny(el, ['position', 'labelPosition', 'labelPos']);
+    const labelPosition =
+      rawPos == null ? 0.5 : Math.max(-1, Math.min(1, rawPos)); // default middle
 
     const ptsFromAttr = parsePointsAttr(
       attrAny(el, ['points', 'path', 'polyline'])
@@ -702,6 +707,7 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
       color,
       thickness,
       label,
+      labelPosition, // ✅ NEW
       allPts,
       explicitStartX,
       explicitStartY,
@@ -793,12 +799,13 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
       startY,
       endX,
       endY,
-      points: pts.length ? pts : undefined, // ✅ keep ALL intermediate points
+      points: pts.length ? pts : undefined,
       text: stub.label,
       color: stub.color,
       thickness: stub.thickness,
       connectedToStart,
       connectedToEnd,
+      labelPosition: stub.labelPosition, // ✅ NEW
     };
 
     console.log(stub.id, connectedToStart, connectedToEnd);
@@ -937,6 +944,94 @@ const getPointOnPolylineAtT = (
 
   const last = segments[segments.length - 1];
   return last.end;
+};
+
+const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+
+const getPointAndNormalOnPolylineAtT = (
+  points: { x: number; y: number }[],
+  t: number
+): { point: { x: number; y: number }; normal: { x: number; y: number } } => {
+  if (points.length < 2) {
+    const p = points[0] ?? { x: 0, y: 0 };
+    return { point: p, normal: { x: 0, y: -1 } };
+  }
+
+  const clampedT = clamp01(t);
+
+  let totalLength = 0;
+  const segments: Array<{
+    start: { x: number; y: number };
+    end: { x: number; y: number };
+    length: number;
+  }> = [];
+
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len === 0) continue;
+    segments.push({ start: a, end: b, length: len });
+    totalLength += len;
+  }
+
+  if (segments.length === 0) {
+    return { point: points[0], normal: { x: 0, y: -1 } };
+  }
+
+  const target = clampedT * totalLength;
+  let traversed = 0;
+
+  for (const seg of segments) {
+    if (traversed + seg.length >= target) {
+      const remaining = target - traversed;
+      const localT = seg.length === 0 ? 0 : remaining / seg.length;
+
+      const dx = seg.end.x - seg.start.x;
+      const dy = seg.end.y - seg.start.y;
+      const len = Math.hypot(dx, dy) || 1;
+
+      const dir = { x: dx / len, y: dy / len };
+      const normal = { x: -dir.y, y: dir.x };
+
+      return {
+        point: {
+          x: seg.start.x + dx * localT,
+          y: seg.start.y + dy * localT,
+        },
+        normal,
+      };
+    }
+    traversed += seg.length;
+  }
+
+  // fallback to end
+  const last = segments[segments.length - 1];
+  const dx = last.end.x - last.start.x;
+  const dy = last.end.y - last.start.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const dir = { x: dx / len, y: dy / len };
+  const normal = { x: -dir.y, y: dir.x };
+
+  return { point: last.end, normal };
+};
+
+const getLabelPointForConnection = (
+  polyline: { x: number; y: number }[],
+  labelPosition?: number,
+  offsetPx = 16
+) => {
+  const pos =
+    labelPosition == null ? 0.5 : Math.max(-1, Math.min(1, labelPosition));
+  const side = pos < 0 ? -1 : 1; // which side of the line
+  const t = clamp01(Math.abs(pos)); // 0..1 along the line start->end
+
+  const { point, normal } = getPointAndNormalOnPolylineAtT(polyline, t);
+
+  return {
+    x: point.x + normal.x * offsetPx * side,
+    y: point.y + normal.y * offsetPx * side,
+  };
 };
 
 const RESOURCE_LABEL_EPSILON = 1e-6;
@@ -1618,7 +1713,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
       return { evaluated: false, satisfied: false };
     },
-    [classifyLabel, parseCond, parseInterval]
+    []
   );
 
   const updateStateConnectionVisualState = useCallback(
@@ -2713,7 +2808,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
       return nextElements;
     },
-    []
+    [updateStateConnectionVisualState]
   );
 
   const runSimulationAndCollectTransfers = useCallback(
@@ -3401,7 +3496,8 @@ const Canvas: React.FC<CanvasProps> = ({
           resetElements,
           'onstart'
         );
-        if (transfers.length) spawnMovingTokens(transfers, nextElements);
+        if (transfers.length)
+          spawnMovingTokensRef.current(transfers, nextElements);
 
         return nextElements;
       });
@@ -3859,74 +3955,74 @@ const Canvas: React.FC<CanvasProps> = ({
     return { x: connectionX, y: connectionY };
   };
 
-  const normalizeVector = (
-    dx: number,
-    dy: number
-  ): { x: number; y: number } => {
-    const len = Math.hypot(dx, dy);
-    if (len === 0) return { x: 0, y: 0 };
-    return { x: dx / len, y: dy / len };
-  };
+  // const normalizeVector = (
+  //   dx: number,
+  //   dy: number
+  // ): { x: number; y: number } => {
+  //   const len = Math.hypot(dx, dy);
+  //   if (len === 0) return { x: 0, y: 0 };
+  //   return { x: dx / len, y: dy / len };
+  // };
 
-  const getPolylineMidpoint = (
-    points: { x: number; y: number }[]
-  ): {
-    point: { x: number; y: number };
-    normal: { x: number; y: number };
-  } => {
-    if (points.length === 0) {
-      return { point: { x: 0, y: 0 }, normal: { x: 0, y: -1 } };
-    }
-    if (points.length === 1) {
-      return { point: points[0], normal: { x: 0, y: -1 } };
-    }
+  // const getPolylineMidpoint = (
+  //   points: { x: number; y: number }[]
+  // ): {
+  //   point: { x: number; y: number };
+  //   normal: { x: number; y: number };
+  // } => {
+  //   if (points.length === 0) {
+  //     return { point: { x: 0, y: 0 }, normal: { x: 0, y: -1 } };
+  //   }
+  //   if (points.length === 1) {
+  //     return { point: points[0], normal: { x: 0, y: -1 } };
+  //   }
 
-    let totalLength = 0;
-    const segments: Array<{
-      start: { x: number; y: number };
-      end: { x: number; y: number };
-      length: number;
-    }> = [];
+  //   let totalLength = 0;
+  //   const segments: Array<{
+  //     start: { x: number; y: number };
+  //     end: { x: number; y: number };
+  //     length: number;
+  //   }> = [];
 
-    for (let i = 0; i < points.length - 1; i++) {
-      const start = points[i];
-      const end = points[i + 1];
-      const length = Math.hypot(end.x - start.x, end.y - start.y);
-      if (length === 0) continue;
-      segments.push({ start, end, length });
-      totalLength += length;
-    }
+  //   for (let i = 0; i < points.length - 1; i++) {
+  //     const start = points[i];
+  //     const end = points[i + 1];
+  //     const length = Math.hypot(end.x - start.x, end.y - start.y);
+  //     if (length === 0) continue;
+  //     segments.push({ start, end, length });
+  //     totalLength += length;
+  //   }
 
-    if (segments.length === 0) {
-      return { point: points[0], normal: { x: 0, y: -1 } };
-    }
+  //   if (segments.length === 0) {
+  //     return { point: points[0], normal: { x: 0, y: -1 } };
+  //   }
 
-    const target = totalLength / 2;
-    let traversed = 0;
-    for (const segment of segments) {
-      if (traversed + segment.length >= target) {
-        const remaining = target - traversed;
-        const t = remaining / segment.length;
-        const midX = segment.start.x + (segment.end.x - segment.start.x) * t;
-        const midY = segment.start.y + (segment.end.y - segment.start.y) * t;
-        const direction = normalizeVector(
-          segment.end.x - segment.start.x,
-          segment.end.y - segment.start.y
-        );
-        const normal = normalizeVector(-direction.y, direction.x);
-        return { point: { x: midX, y: midY }, normal };
-      }
-      traversed += segment.length;
-    }
+  //   const target = totalLength / 2;
+  //   let traversed = 0;
+  //   for (const segment of segments) {
+  //     if (traversed + segment.length >= target) {
+  //       const remaining = target - traversed;
+  //       const t = remaining / segment.length;
+  //       const midX = segment.start.x + (segment.end.x - segment.start.x) * t;
+  //       const midY = segment.start.y + (segment.end.y - segment.start.y) * t;
+  //       const direction = normalizeVector(
+  //         segment.end.x - segment.start.x,
+  //         segment.end.y - segment.start.y
+  //       );
+  //       const normal = normalizeVector(-direction.y, direction.x);
+  //       return { point: { x: midX, y: midY }, normal };
+  //     }
+  //     traversed += segment.length;
+  //   }
 
-    const lastSegment = segments[segments.length - 1];
-    const direction = normalizeVector(
-      lastSegment.end.x - lastSegment.start.x,
-      lastSegment.end.y - lastSegment.start.y
-    );
-    const normal = normalizeVector(-direction.y, direction.x);
-    return { point: lastSegment.end, normal };
-  };
+  //   const lastSegment = segments[segments.length - 1];
+  //   const direction = normalizeVector(
+  //     lastSegment.end.x - lastSegment.start.x,
+  //     lastSegment.end.y - lastSegment.start.y
+  //   );
+  //   const normal = normalizeVector(-direction.y, direction.x);
+  //   return { point: lastSegment.end, normal };
+  // };
 
   const placeElement = (
     type: GraphElementType,
@@ -4281,6 +4377,7 @@ const Canvas: React.FC<CanvasProps> = ({
       connectedToStart: startElement?.id,
       connectedToEnd: endElement?.id,
       points: intermediatePoints.length > 0 ? intermediatePoints : undefined,
+      labelPosition: 0.5,
     };
 
     setElements(prev => [...prev, newConnection]);
@@ -5397,12 +5494,28 @@ const Canvas: React.FC<CanvasProps> = ({
         }
 
         const padding = 15;
-        const { point: midPoint, normal } = getPolylineMidpoint(pathPoints);
-        const labelOffset = 14;
-        const labelPoint = {
-          x: midPoint.x + normal.x * labelOffset,
-          y: midPoint.y + normal.y * labelOffset,
-        };
+        const polyline = pathPoints;
+        type LegacyPositionCarrier = { position?: unknown };
+
+        const legacyPosRaw = (el as LegacyPositionCarrier).position;
+        const legacyPosNum =
+          typeof legacyPosRaw === 'number'
+            ? legacyPosRaw
+            : typeof legacyPosRaw === 'string'
+              ? Number(legacyPosRaw)
+              : NaN;
+
+        const labelPos =
+          el.labelPosition ??
+          (Number.isFinite(legacyPosNum) ? legacyPosNum : undefined) ??
+          0.5;
+
+        const labelPoint = getLabelPointForConnection(polyline, labelPos);
+
+        // const labelPoint = getLabelPointForConnection(
+        //   polyline,
+        //   el.labelPosition ?? (el as any).position ?? 0.5
+        // );
 
         const pointsForBounds = [...pathPoints, labelPoint];
         const xs = pointsForBounds.map(p => p.x);
@@ -5535,12 +5648,23 @@ const Canvas: React.FC<CanvasProps> = ({
         }
 
         const padding = 15;
-        const { point: midPoint, normal } = getPolylineMidpoint(pathPoints);
-        const labelOffset = 14;
-        const labelPoint = {
-          x: midPoint.x + normal.x * labelOffset,
-          y: midPoint.y + normal.y * labelOffset,
-        };
+        const polyline = pathPoints;
+        type LegacyPositionCarrier = { position?: unknown };
+
+        const legacyPosRaw = (el as LegacyPositionCarrier).position;
+        const legacyPosNum =
+          typeof legacyPosRaw === 'number'
+            ? legacyPosRaw
+            : typeof legacyPosRaw === 'string'
+              ? Number(legacyPosRaw)
+              : NaN;
+
+        const labelPos =
+          el.labelPosition ??
+          (Number.isFinite(legacyPosNum) ? legacyPosNum : undefined) ??
+          0.5;
+
+        const labelPoint = getLabelPointForConnection(polyline, labelPos);
 
         const pointsForBounds = [...pathPoints, labelPoint];
         const xs = pointsForBounds.map(p => p.x);
