@@ -819,6 +819,164 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
     connElements.push(conn);
   }
 
+  // ------------------------------------------------------------------
+  // STEP 4.5: If a State Connection starts/ends at a connection,
+  // snap its endpoint to the TARGET connection's label position.
+  // ------------------------------------------------------------------
+
+  const clamp01Local = (v: number) => Math.max(0, Math.min(1, v));
+
+  const getPolylineForAnyConn = (c: GraphElement) => {
+    const sx = c.startX ?? c.x;
+    const sy = c.startY ?? c.y;
+    const ex = c.endX ?? c.x;
+    const ey = c.endY ?? c.y;
+    return [{ x: sx, y: sy }, ...(c.points ?? []), { x: ex, y: ey }];
+  };
+
+  const getPointAndNormalOnPolylineAtTLocal = (
+    points: { x: number; y: number }[],
+    t: number
+  ): { point: { x: number; y: number }; normal: { x: number; y: number } } => {
+    if (points.length < 2) {
+      const p = points[0] ?? { x: 0, y: 0 };
+      return { point: p, normal: { x: 0, y: -1 } };
+    }
+
+    const clampedT = clamp01Local(t);
+
+    let totalLength = 0;
+    const segments: Array<{
+      start: { x: number; y: number };
+      end: { x: number; y: number };
+      length: number;
+    }> = [];
+
+    for (let i = 0; i < points.length - 1; i++) {
+      const a = points[i];
+      const b = points[i + 1];
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      if (len === 0) continue;
+      segments.push({ start: a, end: b, length: len });
+      totalLength += len;
+    }
+
+    if (segments.length === 0) {
+      return { point: points[0], normal: { x: 0, y: -1 } };
+    }
+
+    const target = clampedT * totalLength;
+    let traversed = 0;
+
+    for (const seg of segments) {
+      if (traversed + seg.length >= target) {
+        const remaining = target - traversed;
+        const localT = seg.length === 0 ? 0 : remaining / seg.length;
+
+        const dx = seg.end.x - seg.start.x;
+        const dy = seg.end.y - seg.start.y;
+        const dlen = Math.hypot(dx, dy) || 1;
+
+        const dir = { x: dx / dlen, y: dy / dlen };
+        const normal = { x: -dir.y, y: dir.x };
+
+        return {
+          point: {
+            x: seg.start.x + dx * localT,
+            y: seg.start.y + dy * localT,
+          },
+          normal,
+        };
+      }
+      traversed += seg.length;
+    }
+
+    const last = segments[segments.length - 1];
+    const dx = last.end.x - last.start.x;
+    const dy = last.end.y - last.start.y;
+    const dlen = Math.hypot(dx, dy) || 1;
+    const dir = { x: dx / dlen, y: dy / dlen };
+    const normal = { x: -dir.y, y: dir.x };
+    return { point: last.end, normal };
+  };
+
+  // NOTE: offsetPx should match how you render labels.
+  // If you want the State Connection to attach ON the line (not offset label text),
+  // set offsetPx = 0.
+  const getLabelAnchorForConnectionLocal = (
+    targetConn: GraphElement,
+    offsetPx = 16
+  ) => {
+    const rawPos = targetConn.labelPosition ?? 0.5;
+    const pos = Math.max(-1, Math.min(1, rawPos));
+    const side = pos < 0 ? -1 : 1;
+    const t = clamp01Local(Math.abs(pos));
+
+    const poly = getPolylineForAnyConn(targetConn);
+    const { point, normal } = getPointAndNormalOnPolylineAtTLocal(poly, t);
+
+    return {
+      x: point.x + normal.x * offsetPx * side,
+      y: point.y + normal.y * offsetPx * side,
+    };
+  };
+
+  const allById = new Map<number, GraphElement>(
+    [...nodeElements, ...connElements].map(el => [el.id, el])
+  );
+
+  type ConnEl = GraphElement & {
+    type: 'Resource Connection' | 'State Connection';
+  };
+
+  const isConnEl = (e: GraphElement | undefined): e is ConnEl =>
+    e != null &&
+    (e.type === 'Resource Connection' || e.type === 'State Connection');
+
+  // A few passes lets State->State->Resource chains settle.
+  for (let iter = 0; iter < 4; iter++) {
+    let changed = false;
+
+    for (const sc of connElements) {
+      if (sc.type !== 'State Connection') continue;
+
+      // START can also be a connection (optional, but makes it consistent)
+      if (sc.connectedToStart != null) {
+        const startTarget = allById.get(sc.connectedToStart);
+        if (isConnEl(startTarget)) {
+          const p = getLabelAnchorForConnectionLocal(startTarget);
+          if (
+            sc.startX !== p.x ||
+            sc.startY !== p.y ||
+            sc.x !== p.x ||
+            sc.y !== p.y
+          ) {
+            sc.startX = p.x;
+            sc.startY = p.y;
+            sc.x = p.x;
+            sc.y = p.y;
+            changed = true;
+          }
+        }
+      }
+
+      // END snaps to target connection label anchor
+      if (sc.connectedToEnd != null) {
+        const endTarget = allById.get(sc.connectedToEnd);
+        if (isConnEl(endTarget)) {
+          const p = getLabelAnchorForConnectionLocal(endTarget);
+          if (sc.endX !== p.x || sc.endY !== p.y) {
+            sc.endX = p.x;
+            sc.endY = p.y;
+            changed = true;
+          }
+        }
+      }
+    }
+
+    if (!changed) break;
+  }
+
   if (connElements.length === 0) {
     warnings.push(
       'No connection elements recognized. If your XML uses different tags/attrs, add them to selectors / endpoint attrs.'
