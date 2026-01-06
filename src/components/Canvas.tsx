@@ -561,8 +561,17 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
       const label = textAny(el, ['text', 'label', 'title', 'name']);
 
       const activation = normalizeActivation(
-        attrAny(el, ['activation', 'mode'])
+        attrAny(el, [
+          'activation',
+          'activationMode',
+          'activation_mode',
+          'activationmode',
+          'actionMode',
+          'action_mode',
+          'mode',
+        ])
       );
+
       const pullMode = normalizePullMode(
         attrAny(el, ['pullMode', 'pull', 'pushMode'])
       );
@@ -575,6 +584,7 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
         'value',
         'start',
         'startingValue',
+        'startingResources',
       ]);
       const max = numAttrAny(el, ['max', 'cap', 'limit']);
       const displayLimit = numAttrAny(el, [
