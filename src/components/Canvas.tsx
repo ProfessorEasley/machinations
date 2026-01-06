@@ -469,6 +469,7 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
   };
 
   const registerElementKeys = (el: Element, assignedId: number) => {
+    void el; // (avoid unused var TS error)
     // ✅ ordinal reference support (1-based)
     addXmlKey(String(assignedId), assignedId);
   };
