@@ -212,6 +212,7 @@ interface GraphElement {
   currentPoints?: number;
   hasStarted?: boolean;
   inhibited?: boolean;
+  labelPosition?: number;
 
   // Artificial Intelligence node script (from XML import + toolProperties)
   script?: string;
@@ -378,26 +379,26 @@ const parseChildPoints = (el: Element): { x: number; y: number }[] => {
   return pts;
 };
 
-// stable-ish string -> number (32-bit)
-const hashToInt = (s: string): number => {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  // keep positive, within safe int
-  return h >>> 0 || 1;
-};
+// // stable-ish string -> number (32-bit)
+// const hashToInt = (s: string): number => {
+//   let h = 2166136261;
+//   for (let i = 0; i < s.length; i++) {
+//     h ^= s.charCodeAt(i);
+//     h = Math.imul(h, 16777619);
+//   }
+//   // keep positive, within safe int
+//   return h >>> 0 || 1;
+// };
 
-const coerceId = (raw: string | undefined, fallback: number): number => {
-  if (!raw) return fallback;
-  const trimmed = raw.trim();
-  if (/^\d+$/.test(trimmed)) {
-    const n = Number(trimmed);
-    return Number.isFinite(n) ? n : fallback;
-  }
-  return hashToInt(trimmed);
-};
+// const coerceId = (raw: string | undefined, fallback: number): number => {
+//   if (!raw) return fallback;
+//   const trimmed = raw.trim();
+//   if (/^\d+$/.test(trimmed)) {
+//     const n = Number(trimmed);
+//     return Number.isFinite(n) ? n : fallback;
+//   }
+//   return hashToInt(trimmed);
+// };
 
 function parseGraphFromXml(xmlText: string): XmlImportResult {
   if (typeof DOMParser === 'undefined') {
@@ -416,237 +417,261 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
     );
   }
 
-  // 1) Collect "node" elements
-  const nodeCandidates = Array.from(
-    doc.querySelectorAll(
-      [
-        // generic schemas
-        'element',
-        'node',
-        'item',
+  // ------------------------------------------------------------------
+  // STEP 1: Collect node+connection candidates IN ONE query (doc order)
+  // ------------------------------------------------------------------
+  const NODE_TAGS = [
+    'element',
+    'node',
+    'item',
+    'pool',
+    'gate',
+    'source',
+    'drain',
+    'convertor',
+    'converter',
+    'trader',
+    'delay',
+    'register',
+    'endCondition',
+    'end-condition',
+    'textLabel',
+    'text-label',
+    'group',
+    'ai',
+    'artificialIntelligence',
+    'artificalIntelligence',
+  ];
 
-        // tag-based schemas (common)
-        'pool',
-        'gate',
-        'source',
-        'drain',
-        'convertor',
-        'converter',
-        'trader',
-        'delay',
-        'register',
-        'endCondition',
-        'end-condition',
-        'textLabel',
-        'text-label',
-        'group',
-        'ai',
-        'artificialIntelligence',
-        'artificalIntelligence',
-      ].join(',')
-    )
+  const CONN_TAGS = [
+    'connection',
+    'edge',
+    'link',
+    'resourceConnection',
+    'resource-connection',
+    'stateConnection',
+    'state-connection',
+  ];
+
+  const CANDIDATE_SELECTOR = [...NODE_TAGS, ...CONN_TAGS].join(',');
+  const orderedCandidates = Array.from(
+    doc.querySelectorAll(CANDIDATE_SELECTOR)
   );
 
-  // 2) Collect "connection" elements
-  const connCandidates = Array.from(
-    doc.querySelectorAll(
-      [
-        'connection',
-        'edge',
-        'link',
-        'resourceConnection',
-        'resource-connection',
-        'stateConnection',
-        'state-connection',
-      ].join(',')
-    )
-  );
+  // ✅ shared for nodes + connections
+  const xmlRefToId = new Map<string, number>();
 
-  // First pass: build id map for nodes (rawId -> numeric)
-  const rawNodeIdToNumeric = new Map<string, number>();
-  const usedIds = new Set<number>();
-  let nextFallbackId = 1;
-
-  const nodeElements: GraphElement[] = [];
-  const rawIdKeyForNode = (el: Element, fallbackKey: string) =>
-    attrAny(el, ['id', 'uid', 'key', 'name']) ?? fallbackKey;
-
-  for (const el of nodeCandidates) {
-    const rawType =
-      attrAny(el, ['type', 'kind', 'class']) ?? tagNameToType(el.tagName);
-    const type = normalizeGraphElementType(rawType);
-
-    // only accept if it maps to a real GraphElementType and is NOT a connection type
-    if (!type) continue;
-    if (type === 'Resource Connection' || type === 'State Connection') continue;
-
-    const rawKey = rawIdKeyForNode(el, `node_${nextFallbackId}`);
-    let id = coerceId(
-      attrAny(el, ['id', 'uid', 'key', 'name']),
-      nextFallbackId
-    );
-
-    // dedupe ids
-    while (usedIds.has(id)) id += 1;
-    usedIds.add(id);
-
-    rawNodeIdToNumeric.set(rawKey, id);
-
-    const x =
-      numAttrAny(el, ['x', 'posX', 'cx', 'left']) ??
-      numAttrAny(el, ['px', 'screenX']) ??
-      100;
-    const y =
-      numAttrAny(el, ['y', 'posY', 'cy', 'top']) ??
-      numAttrAny(el, ['py', 'screenY']) ??
-      100;
-
-    const color = attrAny(el, ['color', 'stroke', 'borderColor']);
-    const thickness = numAttrAny(el, [
-      'thickness',
-      'strokeWidth',
-      'borderWidth',
-    ]);
-    const label = textAny(el, ['text', 'label', 'title', 'name']);
-
-    const activation = normalizeActivation(attrAny(el, ['activation', 'mode']));
-    const pullMode = normalizePullMode(
-      attrAny(el, ['pullMode', 'pull', 'pushMode'])
-    );
-    const gateType = normalizeGateType(
-      attrAny(el, ['gateType', 'typeMode', 'gate'])
-    );
-
-    const number = numAttrAny(el, [
-      'number',
-      'value',
-      'start',
-      'startingValue',
-    ]);
-    const max = numAttrAny(el, ['max', 'cap', 'limit']);
-    const displayLimit = numAttrAny(el, ['displayLimit', 'display', 'showMax']);
-    const actions = numAttrAny(el, ['actions', 'actionCount']);
-
-    const formula = attrAny(el, ['formula', 'expr', 'expression']);
-    const minValue = numAttrAny(el, ['minValue', 'min']);
-    const maxValue = numAttrAny(el, ['maxValue', 'max']); // (ok: only relevant for Register)
-    const interactiveRaw = attrAny(el, ['interactive']);
-    const interactive =
-      interactiveRaw != null
-        ? interactiveRaw.trim().toLowerCase() === 'true'
-        : undefined;
-
-    const step = numAttrAny(el, ['step']);
-    const startingValue = numAttrAny(el, ['startingValue', 'startValue']);
-
-    const script = textAny(el, ['script']);
-
-    const base: GraphElement = {
-      id,
-      type,
-      x,
-      y,
-      text: label,
-      color,
-      thickness,
-      activation,
-      pullMode,
-      gateType,
-      actions: actions != null ? Math.max(1, actions) : undefined,
-      number: number != null ? Math.floor(number) : undefined,
-      max: max != null ? Math.floor(max) : undefined,
-      displayLimit: displayLimit != null ? Math.floor(displayLimit) : undefined,
-
-      // Register-specific
-      formula: type === 'Register' ? (formula ?? '') : undefined,
-      minValue: type === 'Register' ? (minValue ?? -9999) : undefined,
-      maxValue: type === 'Register' ? (maxValue ?? 9999) : undefined,
-      interactive: type === 'Register' ? (interactive ?? false) : undefined,
-      startingValue: type === 'Register' ? (startingValue ?? 0) : undefined,
-      step: type === 'Register' ? (step ?? 1) : undefined,
-
-      ...(type === 'Artifical Intelligence' ? { script: script ?? '' } : {}),
-    };
-
-    // Pool initialization (keep it consistent with your runtime)
-    if (type === 'Pool') {
-      const startVal = base.number ?? 0;
-      const c = base.color || '#000000';
-      base.resourcesByColor = startVal > 0 ? { [c]: startVal } : {};
-      base.currentPoints = startVal;
-    }
-
-    // Register initialization
-    if (type === 'Register') {
-      const sv = base.startingValue ?? 0;
-      base.currentValue = base.interactive ? sv : 0;
-    }
-
-    // End condition defaults
-    if (type === 'End Condition') {
-      base.inhibited = true;
-      base.isBlinking = false;
-    }
-
-    nodeElements.push(base);
-    nextFallbackId += 1;
-  }
-
-  if (nodeElements.length === 0) {
-    warnings.push(
-      'No node elements recognized. Your XML schema may need mapping tweaks.'
-    );
-  }
-
-  // Helper: resolve a reference id string to numeric id
-  const resolveRefToId = (raw?: string): number | undefined => {
-    if (!raw) return undefined;
-    const trimmed = raw.trim();
-    // try direct numeric
-    if (/^\d+$/.test(trimmed)) return Number(trimmed);
-
-    // try rawKey map
-    const mapped = rawNodeIdToNumeric.get(trimmed);
-    if (mapped != null) return mapped;
-
-    // try hash fallback
-    const h = hashToInt(trimmed);
-    // only accept if that hashed id exists
-    if (nodeElements.some(n => n.id === h)) return h;
-
-    return undefined;
+  const addXmlKey = (key: string | undefined, id: number) => {
+    if (!key) return;
+    const t = key.trim();
+    if (!t) return;
+    if (!xmlRefToId.has(t)) xmlRefToId.set(t, id);
   };
 
-  const nodeById = new Map<number, GraphElement>(
-    nodeElements.map(n => [n.id, n])
-  );
+  const registerElementKeys = (el: Element, assignedId: number) => {
+    void el; // (avoid unused var TS error)
+    // ✅ ordinal reference support (1-based)
+    addXmlKey(String(assignedId), assignedId);
+  };
 
-  // Second pass: parse connections
-  const connElements: GraphElement[] = [];
-  let connFallbackId = Math.max(1, ...nodeElements.map(n => n.id)) + 1;
+  // ------------------------------------------------------------------
+  // STEP 2: Sequential ID assignment state (1..n) across ALL elements
+  // ------------------------------------------------------------------
 
-  for (const el of connCandidates) {
+  let nextSequentialId = 0;
+
+  // Map any node reference tokens in XML -> our assigned node id
+  // (supports id/uid/key/name AND also numeric node-index references)
+  const nodeKeyToId = new Map<string, number>();
+  const nodeIndexToId: number[] = []; // nodeOrdinal -> assigned nodeId
+
+  const nodeElements: GraphElement[] = [];
+
+  type ConnStub = {
+    id: number;
+    connType: GraphElementType;
+    fromRaw?: string;
+    toRaw?: string;
+    color?: string;
+    thickness?: number;
+    label?: string;
+    labelPosition?: number; // ✅ NEW
+    allPts: { x: number; y: number }[];
+    explicitStartX?: number;
+    explicitStartY?: number;
+    explicitEndX?: number;
+    explicitEndY?: number;
+    idRaw?: string;
+  };
+
+  const connStubs: ConnStub[] = [];
+
+  const addNodeKey = (key: string | undefined, nodeId: number) => {
+    if (!key) return;
+    const t = key.trim();
+    if (!t) return;
+    if (!nodeKeyToId.has(t)) nodeKeyToId.set(t, nodeId);
+  };
+
+  let nodeOrdinal = 0;
+
+  // ------------------------------------------------------------------
+  // STEP 3: One pass over orderedCandidates (top->bottom in XML),
+  // assign IDs sequentially to nodes + connections.
+  // ------------------------------------------------------------------
+  for (const el of orderedCandidates) {
     const rawType =
-      attrAny(el, ['type', 'kind', 'class']) ?? tagNameToType(el.tagName);
+      attrAny(el, ['symbol', 'type', 'kind', 'class']) ??
+      tagNameToType(el.tagName);
     const type = normalizeGraphElementType(rawType);
-
     if (!type) continue;
 
-    // Only accept actual connection types
-    // const isResource =
-    //   type === 'Resource Connection' ||
-    //   el.tagName.toLowerCase().includes('resource');
-    const isState =
-      type === 'State Connection' || el.tagName.toLowerCase().includes('state');
+    const tagLower = el.tagName.toLowerCase();
+
+    const isConnection =
+      type === 'Resource Connection' ||
+      type === 'State Connection' ||
+      tagLower === 'connection' ||
+      tagLower === 'edge' ||
+      tagLower === 'link' ||
+      tagLower.includes('connection');
+
+    const assignedId = nextSequentialId++;
+    registerElementKeys(el, assignedId);
+
+    // ---------------- NODE ----------------
+    if (!isConnection) {
+      // (defensive) skip if it somehow maps to connection types
+      // if (type === 'Resource Connection' || type === 'State Connection') continue;
+
+      const x =
+        numAttrAny(el, ['x', 'posX', 'cx', 'left']) ??
+        numAttrAny(el, ['px', 'screenX']) ??
+        100;
+      const y =
+        numAttrAny(el, ['y', 'posY', 'cy', 'top']) ??
+        numAttrAny(el, ['py', 'screenY']) ??
+        100;
+
+      const color = attrAny(el, ['color', 'stroke', 'borderColor']);
+      const thickness = numAttrAny(el, [
+        'thickness',
+        'strokeWidth',
+        'borderWidth',
+      ]);
+      const label = textAny(el, ['text', 'label', 'title', 'name']);
+
+      const activation = normalizeActivation(
+        attrAny(el, [
+          'activation',
+          'activationMode',
+          'activation_mode',
+          'activationmode',
+          'actionMode',
+          'action_mode',
+          'mode',
+        ])
+      );
+
+      const pullMode = normalizePullMode(
+        attrAny(el, ['pullMode', 'pull', 'pushMode'])
+      );
+      const gateType = normalizeGateType(
+        attrAny(el, ['gateType', 'typeMode', 'gate'])
+      );
+
+      const number = numAttrAny(el, [
+        'number',
+        'value',
+        'start',
+        'startingValue',
+        'startingResources',
+      ]);
+      const max = numAttrAny(el, ['max', 'cap', 'limit']);
+      const displayLimit = numAttrAny(el, [
+        'displayLimit',
+        'display',
+        'showMax',
+      ]);
+      const actions = numAttrAny(el, ['actions', 'actionCount']);
+
+      const formula = attrAny(el, ['formula', 'expr', 'expression']);
+      const minValue = numAttrAny(el, ['minValue', 'min']);
+      const maxValue = numAttrAny(el, ['maxValue', 'max']);
+      const interactiveRaw = attrAny(el, ['interactive']);
+      const interactive =
+        interactiveRaw != null
+          ? interactiveRaw.trim().toLowerCase() === 'true'
+          : undefined;
+
+      const step = numAttrAny(el, ['step']);
+      const startingValue = numAttrAny(el, ['startingValue', 'startValue']);
+
+      const script = textAny(el, ['script']);
+
+      const base: GraphElement = {
+        id: assignedId,
+        type,
+        x,
+        y,
+        text: label,
+        color,
+        thickness,
+        activation,
+        pullMode,
+        gateType,
+        actions: actions != null ? Math.max(1, actions) : undefined,
+        number: number != null ? Math.floor(number) : undefined,
+        max: max != null ? Math.floor(max) : undefined,
+        displayLimit:
+          displayLimit != null ? Math.floor(displayLimit) : undefined,
+
+        // Register-specific
+        formula: type === 'Register' ? (formula ?? '') : undefined,
+        minValue: type === 'Register' ? (minValue ?? -9999) : undefined,
+        maxValue: type === 'Register' ? (maxValue ?? 9999) : undefined,
+        interactive: type === 'Register' ? (interactive ?? false) : undefined,
+        startingValue: type === 'Register' ? (startingValue ?? 0) : undefined,
+        step: type === 'Register' ? (step ?? 1) : undefined,
+
+        ...(type === 'Artifical Intelligence' ? { script: script ?? '' } : {}),
+      };
+
+      // Pool init
+      if (type === 'Pool') {
+        const startVal = base.number ?? 0;
+        const c = base.color || '#000000';
+        base.resourcesByColor = startVal > 0 ? { [c]: startVal } : {};
+        base.currentPoints = startVal;
+      }
+
+      // Register init
+      if (type === 'Register') {
+        const sv = base.startingValue ?? 0;
+        base.currentValue = base.interactive ? sv : 0;
+      }
+
+      // End condition defaults
+      if (type === 'End Condition') {
+        base.inhibited = true;
+        base.isBlinking = false;
+      }
+
+      nodeElements.push(base);
+
+      addNodeKey(String(nodeOrdinal), assignedId);
+      nodeIndexToId[nodeOrdinal] = assignedId;
+      nodeOrdinal++;
+
+      continue;
+    }
+
+    // ---------------- CONNECTION ----------------
+    const isState = type === 'State Connection' || tagLower.includes('state');
 
     const connType: GraphElementType = isState
       ? 'State Connection'
       : 'Resource Connection';
-
-    const idRaw = attrAny(el, ['id', 'uid', 'key']);
-    let id = coerceId(idRaw, connFallbackId);
-    while (usedIds.has(id)) id += 1;
-    usedIds.add(id);
 
     const fromRaw = attrAny(el, [
       'from',
@@ -658,86 +683,322 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
     ]);
     const toRaw = attrAny(el, ['to', 'end', 'target', 'endId', 'toId', 'b']);
 
-    const connectedToStart = resolveRefToId(fromRaw);
-    const connectedToEnd = resolveRefToId(toRaw);
-
     const color = attrAny(el, ['color', 'stroke']);
     const thickness = numAttrAny(el, ['thickness', 'strokeWidth']);
     const label = textAny(el, ['text', 'label']);
+    const rawPos = numAttrAny(el, ['position', 'labelPosition', 'labelPos']);
+    const labelPosition =
+      rawPos == null ? 0.5 : Math.max(-1, Math.min(1, rawPos)); // default middle
 
-    // points: attr or child points
     const ptsFromAttr = parsePointsAttr(
       attrAny(el, ['points', 'path', 'polyline'])
     );
     const ptsFromChildren = parseChildPoints(el);
     const allPts = ptsFromChildren.length > 0 ? ptsFromChildren : ptsFromAttr;
 
-    // Determine start/end coords.
-    // If XML provides explicit endpoints use them, else fallback to connected node centers.
     const explicitStartX = numAttrAny(el, ['startX', 'x1', 'sx']);
     const explicitStartY = numAttrAny(el, ['startY', 'y1', 'sy']);
     const explicitEndX = numAttrAny(el, ['endX', 'x2', 'ex']);
     const explicitEndY = numAttrAny(el, ['endY', 'y2', 'ey']);
 
-    const startNode = connectedToStart
-      ? nodeById.get(connectedToStart)
-      : undefined;
-    const endNode = connectedToEnd ? nodeById.get(connectedToEnd) : undefined;
+    const dumpAttrs = (el: Element) =>
+      Array.from(el.attributes)
+        .map(a => `${a.name}="${a.value}"`)
+        .join(' ');
 
-    const startX = explicitStartX ?? allPts[0]?.x ?? startNode?.x ?? 50;
-    const startY = explicitStartY ?? allPts[0]?.y ?? startNode?.y ?? 50;
-    const endX =
-      explicitEndX ?? allPts[allPts.length - 1]?.x ?? endNode?.x ?? 200;
-    const endY =
-      explicitEndY ?? allPts[allPts.length - 1]?.y ?? endNode?.y ?? 200;
-
-    // If points include endpoints, strip them to fit your internal representation:
-    // you store startX/startY/endX/endY separately, and `points` is intermediate only.
-    let intermediate: { x: number; y: number }[] | undefined = undefined;
-    if (allPts.length >= 2) {
-      // best-effort removal of first/last if they match endpoints
-      const body = allPts.slice(0);
-      if (body.length >= 1) body.shift();
-      if (body.length >= 1) body.pop();
-      intermediate = body.length ? body : undefined;
+    if (!fromRaw || !toRaw) {
+      console.warn('Missing endpoints on:', el.tagName, dumpAttrs(el));
     }
 
+    connStubs.push({
+      id: assignedId,
+      connType,
+      fromRaw,
+      toRaw,
+      color,
+      thickness,
+      label,
+      labelPosition, // ✅ NEW
+      allPts,
+      explicitStartX,
+      explicitStartY,
+      explicitEndX,
+      explicitEndY,
+      idRaw: attrAny(el, ['id', 'uid', 'key']),
+    });
+  }
+
+  if (nodeElements.length === 0) {
+    warnings.push(
+      'No node elements recognized. Your XML schema may need mapping tweaks.'
+    );
+  }
+
+  // ------------------------------------------------------------------
+  // STEP 4: Resolve connection endpoints AFTER we know all node ids,
+  // while keeping connection ids already assigned in XML order.
+  // ------------------------------------------------------------------
+  const resolveRefToId = (raw?: string): number | undefined => {
+    if (!raw) return undefined;
+    const t = raw.trim();
+    if (!t) return undefined;
+
+    const mapped = xmlRefToId.get(t);
+    if (mapped != null) return mapped;
+
+    // numeric fallback (try 0-based then 1-based)
+    if (/^\d+$/.test(t)) {
+      const n = Number(t);
+      if (Number.isFinite(n))
+        return xmlRefToId.get(String(n)) ?? xmlRefToId.get(String(n - 1));
+    }
+
+    return undefined;
+  };
+
+  const nodeById = new Map<number, GraphElement>(
+    nodeElements.map(n => [n.id, n])
+  );
+
+  const connElements: GraphElement[] = [];
+
+  for (const stub of connStubs) {
+    const connectedToStart = resolveRefToId(stub.fromRaw);
+    const connectedToEnd = resolveRefToId(stub.toRaw);
+
+    const startNode =
+      connectedToStart != null ? nodeById.get(connectedToStart) : undefined;
+    const endNode =
+      connectedToEnd != null ? nodeById.get(connectedToEnd) : undefined;
+
+    // Treat XML <point> children as INTERMEDIATE waypoints
+    const EPS = 5; // px tolerance in case endpoints are also included as points
+    const startAnchor = startNode ? { x: startNode.x, y: startNode.y } : null;
+    const endAnchor = endNode ? { x: endNode.x, y: endNode.y } : null;
+
+    const pts = stub.allPts.slice(); // candidate intermediate points
+
+    // If schema includes endpoints inside <point>, strip them when they're basically on the node
+    if (startAnchor && pts.length) {
+      const d0 = Math.hypot(pts[0].x - startAnchor.x, pts[0].y - startAnchor.y);
+      if (d0 <= EPS) pts.shift();
+    }
+    if (endAnchor && pts.length) {
+      const last = pts[pts.length - 1];
+      const d1 = Math.hypot(last.x - endAnchor.x, last.y - endAnchor.y);
+      if (d1 <= EPS) pts.pop();
+    }
+
+    // Endpoints come from the actual start/end elements (or explicit coords if present)
+    const fallbackFirst = stub.allPts[0];
+    const fallbackLast = stub.allPts[stub.allPts.length - 1];
+
+    const startX =
+      stub.explicitStartX ?? startAnchor?.x ?? fallbackFirst?.x ?? 50;
+    const startY =
+      stub.explicitStartY ?? startAnchor?.y ?? fallbackFirst?.y ?? 50;
+
+    const endX = stub.explicitEndX ?? endAnchor?.x ?? fallbackLast?.x ?? 200;
+    const endY = stub.explicitEndY ?? endAnchor?.y ?? fallbackLast?.y ?? 200;
+
     const conn: GraphElement = {
-      id,
-      type: connType,
+      id: stub.id,
+      type: stub.connType,
       x: startX,
       y: startY,
       startX,
       startY,
       endX,
       endY,
-      points: intermediate,
-      text: label,
-      color,
-      thickness,
+      points: pts.length ? pts : undefined,
+      text: stub.label,
+      color: stub.color,
+      thickness: stub.thickness,
       connectedToStart,
       connectedToEnd,
+      labelPosition: stub.labelPosition, // ✅ NEW
     };
 
-    // If connection endpoints couldn’t be resolved, keep but warn.
-    if (!connectedToStart || !connectedToEnd) {
+    console.log(stub.id, connectedToStart, connectedToEnd);
+
+    if (connectedToStart == null || connectedToEnd == null) {
       warnings.push(
-        `Connection ${idRaw ?? id} missing endpoint mapping (from="${fromRaw}", to="${toRaw}").`
+        `Connection ${stub.idRaw ?? stub.id} missing endpoint mapping (from="${stub.fromRaw}", to="${stub.toRaw}").`
       );
     }
 
     connElements.push(conn);
-    connFallbackId += 1;
+  }
+
+  // ------------------------------------------------------------------
+  // STEP 4.5: If a State Connection starts/ends at a connection,
+  // snap its endpoint to the TARGET connection's label position.
+  // ------------------------------------------------------------------
+
+  const clamp01Local = (v: number) => Math.max(0, Math.min(1, v));
+
+  const getPolylineForAnyConn = (c: GraphElement) => {
+    const sx = c.startX ?? c.x;
+    const sy = c.startY ?? c.y;
+    const ex = c.endX ?? c.x;
+    const ey = c.endY ?? c.y;
+    return [{ x: sx, y: sy }, ...(c.points ?? []), { x: ex, y: ey }];
+  };
+
+  const getPointAndNormalOnPolylineAtTLocal = (
+    points: { x: number; y: number }[],
+    t: number
+  ): { point: { x: number; y: number }; normal: { x: number; y: number } } => {
+    if (points.length < 2) {
+      const p = points[0] ?? { x: 0, y: 0 };
+      return { point: p, normal: { x: 0, y: -1 } };
+    }
+
+    const clampedT = clamp01Local(t);
+
+    let totalLength = 0;
+    const segments: Array<{
+      start: { x: number; y: number };
+      end: { x: number; y: number };
+      length: number;
+    }> = [];
+
+    for (let i = 0; i < points.length - 1; i++) {
+      const a = points[i];
+      const b = points[i + 1];
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      if (len === 0) continue;
+      segments.push({ start: a, end: b, length: len });
+      totalLength += len;
+    }
+
+    if (segments.length === 0) {
+      return { point: points[0], normal: { x: 0, y: -1 } };
+    }
+
+    const target = clampedT * totalLength;
+    let traversed = 0;
+
+    for (const seg of segments) {
+      if (traversed + seg.length >= target) {
+        const remaining = target - traversed;
+        const localT = seg.length === 0 ? 0 : remaining / seg.length;
+
+        const dx = seg.end.x - seg.start.x;
+        const dy = seg.end.y - seg.start.y;
+        const dlen = Math.hypot(dx, dy) || 1;
+
+        const dir = { x: dx / dlen, y: dy / dlen };
+        const normal = { x: -dir.y, y: dir.x };
+
+        return {
+          point: {
+            x: seg.start.x + dx * localT,
+            y: seg.start.y + dy * localT,
+          },
+          normal,
+        };
+      }
+      traversed += seg.length;
+    }
+
+    const last = segments[segments.length - 1];
+    const dx = last.end.x - last.start.x;
+    const dy = last.end.y - last.start.y;
+    const dlen = Math.hypot(dx, dy) || 1;
+    const dir = { x: dx / dlen, y: dy / dlen };
+    const normal = { x: -dir.y, y: dir.x };
+    return { point: last.end, normal };
+  };
+
+  // NOTE: offsetPx should match how you render labels.
+  // If you want the State Connection to attach ON the line (not offset label text),
+  // set offsetPx = 0.
+  const getLabelAnchorForConnectionLocal = (
+    targetConn: GraphElement,
+    offsetPx = 16
+  ) => {
+    const rawPos = targetConn.labelPosition ?? 0.5;
+    const pos = Math.max(-1, Math.min(1, rawPos));
+    const side = pos < 0 ? -1 : 1;
+    const t = clamp01Local(Math.abs(pos));
+
+    const poly = getPolylineForAnyConn(targetConn);
+    const { point, normal } = getPointAndNormalOnPolylineAtTLocal(poly, t);
+
+    return {
+      x: point.x + normal.x * offsetPx * side,
+      y: point.y + normal.y * offsetPx * side,
+    };
+  };
+
+  const allById = new Map<number, GraphElement>(
+    [...nodeElements, ...connElements].map(el => [el.id, el])
+  );
+
+  type ConnEl = GraphElement & {
+    type: 'Resource Connection' | 'State Connection';
+  };
+
+  const isConnEl = (e: GraphElement | undefined): e is ConnEl =>
+    e != null &&
+    (e.type === 'Resource Connection' || e.type === 'State Connection');
+
+  // A few passes lets State->State->Resource chains settle.
+  for (let iter = 0; iter < 4; iter++) {
+    let changed = false;
+
+    for (const sc of connElements) {
+      if (sc.type !== 'State Connection') continue;
+
+      // START can also be a connection (optional, but makes it consistent)
+      if (sc.connectedToStart != null) {
+        const startTarget = allById.get(sc.connectedToStart);
+        if (isConnEl(startTarget)) {
+          const p = getLabelAnchorForConnectionLocal(startTarget);
+          if (
+            sc.startX !== p.x ||
+            sc.startY !== p.y ||
+            sc.x !== p.x ||
+            sc.y !== p.y
+          ) {
+            sc.startX = p.x;
+            sc.startY = p.y;
+            sc.x = p.x;
+            sc.y = p.y;
+            changed = true;
+          }
+        }
+      }
+
+      // END snaps to target connection label anchor
+      if (sc.connectedToEnd != null) {
+        const endTarget = allById.get(sc.connectedToEnd);
+        if (isConnEl(endTarget)) {
+          const p = getLabelAnchorForConnectionLocal(endTarget);
+          if (sc.endX !== p.x || sc.endY !== p.y) {
+            sc.endX = p.x;
+            sc.endY = p.y;
+            changed = true;
+          }
+        }
+      }
+    }
+
+    if (!changed) break;
   }
 
   if (connElements.length === 0) {
     warnings.push(
-      'No connection elements recognized. If your XML uses different tags/attrs, add them to connCandidates / endpoint attrs.'
+      'No connection elements recognized. If your XML uses different tags/attrs, add them to selectors / endpoint attrs.'
     );
   }
-
   // Final: return combined
-  return { elements: [...nodeElements, ...connElements], warnings };
+  // return { elements: [...nodeElements, ...connElements], warnings };
+  return {
+    elements: [...nodeElements, ...connElements].sort((a, b) => a.id - b.id),
+    warnings,
+  };
 }
 
 interface ResourceTransfer {
@@ -852,6 +1113,94 @@ const getPointOnPolylineAtT = (
 
   const last = segments[segments.length - 1];
   return last.end;
+};
+
+const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+
+const getPointAndNormalOnPolylineAtT = (
+  points: { x: number; y: number }[],
+  t: number
+): { point: { x: number; y: number }; normal: { x: number; y: number } } => {
+  if (points.length < 2) {
+    const p = points[0] ?? { x: 0, y: 0 };
+    return { point: p, normal: { x: 0, y: -1 } };
+  }
+
+  const clampedT = clamp01(t);
+
+  let totalLength = 0;
+  const segments: Array<{
+    start: { x: number; y: number };
+    end: { x: number; y: number };
+    length: number;
+  }> = [];
+
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len === 0) continue;
+    segments.push({ start: a, end: b, length: len });
+    totalLength += len;
+  }
+
+  if (segments.length === 0) {
+    return { point: points[0], normal: { x: 0, y: -1 } };
+  }
+
+  const target = clampedT * totalLength;
+  let traversed = 0;
+
+  for (const seg of segments) {
+    if (traversed + seg.length >= target) {
+      const remaining = target - traversed;
+      const localT = seg.length === 0 ? 0 : remaining / seg.length;
+
+      const dx = seg.end.x - seg.start.x;
+      const dy = seg.end.y - seg.start.y;
+      const len = Math.hypot(dx, dy) || 1;
+
+      const dir = { x: dx / len, y: dy / len };
+      const normal = { x: -dir.y, y: dir.x };
+
+      return {
+        point: {
+          x: seg.start.x + dx * localT,
+          y: seg.start.y + dy * localT,
+        },
+        normal,
+      };
+    }
+    traversed += seg.length;
+  }
+
+  // fallback to end
+  const last = segments[segments.length - 1];
+  const dx = last.end.x - last.start.x;
+  const dy = last.end.y - last.start.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const dir = { x: dx / len, y: dy / len };
+  const normal = { x: -dir.y, y: dir.x };
+
+  return { point: last.end, normal };
+};
+
+const getLabelPointForConnection = (
+  polyline: { x: number; y: number }[],
+  labelPosition?: number,
+  offsetPx = 16
+) => {
+  const pos =
+    labelPosition == null ? 0.5 : Math.max(-1, Math.min(1, labelPosition));
+  const side = pos < 0 ? -1 : 1; // which side of the line
+  const t = clamp01(Math.abs(pos)); // 0..1 along the line start->end
+
+  const { point, normal } = getPointAndNormalOnPolylineAtT(polyline, t);
+
+  return {
+    x: point.x + normal.x * offsetPx * side,
+    y: point.y + normal.y * offsetPx * side,
+  };
 };
 
 const RESOURCE_LABEL_EPSILON = 1e-6;
@@ -976,7 +1325,9 @@ function applyDynamicResourceLabelsMutable(elementsList: GraphElement[]): void {
 
   const stateConnections = elementsList.filter(
     el =>
-      el.type === 'State Connection' && el.connectedToStart && el.connectedToEnd
+      el.type === 'State Connection' &&
+      el.connectedToStart != null &&
+      el.connectedToEnd != null
   );
 
   if (stateConnections.length === 0) return;
@@ -1382,21 +1733,10 @@ const Canvas: React.FC<CanvasProps> = ({
     x: number;
     y: number;
   } | null>(null);
-  //setConnectionStart
-  // const [connectionStart, setConnectionStart] = useState<{
-  //   x: number;
-  //   y: number;
-  // } | null>(null);
-  // const [connectionEnd, setConnectionEnd] = useState<{
-  //   x: number;
-  //   y: number;
-  // } | null>(null);
-  // const [connectionType, setConnectionType] = useState<GraphElementType | null>(
-  //   null
-  // );
 
   const [gameEnded, setGameEnded] = useState(false);
   const gameEndedRef = useRef(false);
+  const nextIdRef = useRef(0);
 
   // Sync ref with state
   useEffect(() => {
@@ -1508,20 +1848,12 @@ const Canvas: React.FC<CanvasProps> = ({
     return () => cancelAnimationFrame(animationFrameId);
   }, [movingTokens.length]);
 
-  // if (!isRunning && hasSimulationStarted) {
-  //   setHasSimulationStarted(false);
-  //   setElements(currentElements =>
-  //     currentElements.map(el => ({ ...el, hasStarted: false }))
-  //   );
-  //   setMovingTokens([]); // ⬅️ add this
-  // }
-
   const evaluateStateCondition = useCallback(
     (
       connection: GraphElement,
       elementMap: Map<number, GraphElement>
     ): { evaluated: boolean; satisfied: boolean } => {
-      if (!connection.connectedToStart) {
+      if (connection.connectedToStart == null) {
         return { evaluated: false, satisfied: false };
       }
       const startEl = elementMap.get(connection.connectedToStart);
@@ -1550,7 +1882,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
       return { evaluated: false, satisfied: false };
     },
-    [classifyLabel, parseCond, parseInterval]
+    []
   );
 
   const updateStateConnectionVisualState = useCallback(
@@ -1563,8 +1895,8 @@ const Canvas: React.FC<CanvasProps> = ({
       for (const connection of elementsList) {
         if (
           connection.type !== 'State Connection' ||
-          !connection.connectedToStart ||
-          !connection.connectedToEnd
+          connection.connectedToStart == null ||
+          connection.connectedToEnd == null
         ) {
           if ('hasUnsatisfiedCondition' in connection) {
             connection.hasUnsatisfiedCondition = false;
@@ -1644,7 +1976,6 @@ const Canvas: React.FC<CanvasProps> = ({
       setXmlImportError(null);
 
       const { elements: imported, warnings } = parseGraphFromXml(xmlText);
-
       if (warnings.length) {
         console.warn('XML import warnings:', warnings);
       }
@@ -1654,6 +1985,8 @@ const Canvas: React.FC<CanvasProps> = ({
       setGameEnded(false);
       gameEndedRef.current = false;
 
+      const maxId = imported.reduce((m, el) => Math.max(m, el.id), -1);
+      nextIdRef.current = maxId + 1;
       // load the imported diagram
       setElements(imported);
       setSelectedId([]);
@@ -1713,142 +2046,6 @@ const Canvas: React.FC<CanvasProps> = ({
       );
     };
   }, [openXmlPicker, importXmlText]);
-
-  // Optional: allow "d6", "6", or "1d6" in gate.text. Fallback to 6.
-  // function getDiceSides(gate: GraphElement, outputs: GraphElement[]): number {
-  //   const t = (gate.text ?? '').trim().toLowerCase();
-  //   const m1 = t.match(/^d\s*(\d+)$/);
-  //   const m2 = t.match(/^(\d+)\s*d\s*(\d+)$/);
-  //   if (m1) return Math.max(2, parseInt(m1[1], 10));
-  //   if (m2) return Math.max(2, parseInt(m2[2], 10));
-  //   const wrap = getIntervalWrapMax(outputs);
-  //   if (wrap && wrap >= 2) return wrap; // sensible default from labels
-  //   return 6; // final fallback
-  // }
-
-  // change signature to accept outputs
-  // function generateGateValue(
-  //   gate: GraphElement,
-  //   outputs: GraphElement[]
-  // ): number {
-  //   // Random (dice) mode
-  //   if (gate.gateType === 'dice') {
-  //     const sides = getDiceSides(gate, outputs);
-  //     return randInt(1, sides); // 1..sides
-  //   }
-
-  //   // Deterministic: cycle and wrap at the highest interval upper bound (if any)
-  //   const wrapMax = getIntervalWrapMax(outputs);
-  //   const prev = gate.lastGateValue ?? 0;
-  //   const next = prev + 1;
-
-  //   if (wrapMax && wrapMax >= 1) {
-  //     const wrapped = ((next - 1) % wrapMax) + 1; // 1..wrapMax
-  //     return wrapped;
-  //   }
-  //   return next; // no intervals -> monotone counter, no wrap
-  // }
-
-  /**
-   * Choose one output connection given labels.
-   * Condition-mode if there is ANY cond/interval label (ELSE ALONE does NOT trigger cond-mode).
-   * Otherwise probability-mode:
-   *  - If any '%' are present, '%'-labels are used and 'else' gets (100 - sum%).
-   *  - If no '%', numeric weights & empty labels (weight 1) are used. 'else' has weight 0 by default.
-   */
-  // function chooseGateOutputs(
-  //   gate: GraphElement,
-  //   outputs: GraphElement[]
-  // ): GraphElement[] {
-  //   if (outputs.length === 0) return [];
-
-  //   const kinds = outputs.map(o => classifyLabel(o.text));
-  //   const hasRealCondition = kinds.some(k => k === 'cond' || k === 'interval');
-
-  //   // ---------- Condition / Interval mode ----------
-  //   if (hasRealCondition) {
-  //     const v = generateGateValue(gate, outputs); // NOTE: uses outputs
-  //     gate.lastGateValue = v;
-
-  //     const matches: number[] = [];
-  //     for (let i = 0; i < outputs.length; i++) {
-  //       const o = outputs[i];
-  //       const kind = kinds[i];
-  //       if (!o.text) continue;
-
-  //       if (kind === 'cond') {
-  //         const fn = parseCond(o.text);
-  //         if (fn && fn(v)) matches.push(i);
-  //       } else if (kind === 'interval') {
-  //         const pair = parseInterval(o.text!);
-  //         if (pair && v >= pair[0] && v <= pair[1]) matches.push(i);
-  //       }
-  //     }
-
-  //     if (matches.length === 0) {
-  //       const elseIdx = kinds.findIndex(k => k === 'else');
-  //       return elseIdx >= 0 ? [outputs[elseIdx]] : [];
-  //     }
-
-  //     // IMPORTANT: If labels overlap, duplicate to *every* match.
-  //     // (This makes overlaps work even if the gate's pullMode is 'pull any'.)
-  //     if (matches.length > 1) {
-  //       return matches.map(i => outputs[i]);
-  //     }
-
-  //     // Single match
-  //     return [outputs[matches[0]]];
-  //   }
-
-  //   // ---------- Probability mode (unchanged: pick ONE) ----------
-  //   const isPercent = outputs.some(
-  //     (o, i) => kinds[i] === 'prob' && /%$/.test((o.text ?? '').trim())
-  //   );
-  //   const elseIdx = kinds.findIndex(k => k === 'else');
-
-  //   if (isPercent) {
-  //     let sumPercent = 0;
-  //     const weights = outputs.map((o, i) => {
-  //       const s = (o.text ?? '').trim();
-  //       if (kinds[i] === 'prob' && /%$/.test(s)) {
-  //         const w = Math.max(0, parseInt(s, 10) || 0);
-  //         sumPercent += w;
-  //         return w;
-  //       }
-  //       return 0;
-  //     });
-  //     if (elseIdx >= 0) {
-  //       const rem = Math.max(0, 100 - sumPercent);
-  //       weights[elseIdx] = rem;
-  //       sumPercent += rem;
-  //     }
-  //     if (sumPercent <= 0) return elseIdx >= 0 ? [outputs[elseIdx]] : [];
-
-  //     let r = Math.random() * sumPercent;
-  //     for (let i = 0; i < outputs.length; i++) {
-  //       r -= weights[i];
-  //       if (r <= 0 && weights[i] > 0) return [outputs[i]];
-  //     }
-  //     return [outputs[outputs.length - 1]];
-  //   } else {
-  //     const weights = outputs.map((o, i) => {
-  //       const s = (o.text ?? '').trim();
-  //       if (kinds[i] === 'prob' && !/%$/.test(s))
-  //         return Math.max(0, parseFloat(s) || 0);
-  //       if (kinds[i] === 'empty') return 1;
-  //       return 0; // else/invalid default 0
-  //     });
-  //     const total = weights.reduce((a, b) => a + b, 0);
-  //     if (total <= 0) return elseIdx >= 0 ? [outputs[elseIdx]] : [];
-
-  //     let r = Math.random() * total;
-  //     for (let i = 0; i < outputs.length; i++) {
-  //       r -= weights[i];
-  //       if (r <= 0 && weights[i] > 0) return [outputs[i]];
-  //     }
-  //     return [outputs[outputs.length - 1]];
-  //   }
-  // }
 
   const applyStateConnectionDelta = (
     target: GraphElement,
@@ -2027,25 +2224,14 @@ const Canvas: React.FC<CanvasProps> = ({
         }
       }
 
-      // for (const resetEl of nextElements) {
-      //   if (resetEl.type === 'State Connection') {
-      //     resetEl.conditionSatisfied = undefined;
-      //   }
-      //   if (resetEl.hasUnsatisfiedCondition) {
-      //     resetEl.hasUnsatisfiedCondition = false;
-      //   }
-      // }
-
-      // const targetConditionStates = new Map<number, boolean>();
-
       // =======================================================================
       // PASS 0.5: State Connections (Modifiers & Triggers)
       // =======================================================================
       for (const connection of nextElements) {
         if (
           connection.type !== 'State Connection' ||
-          !connection.connectedToStart ||
-          !connection.connectedToEnd
+          connection.connectedToStart == null ||
+          connection.connectedToEnd == null
         )
           continue;
 
@@ -2086,8 +2272,8 @@ const Canvas: React.FC<CanvasProps> = ({
       for (const connection of nextElements) {
         if (
           !isResourceLikeConnection(connection) ||
-          !connection.connectedToStart ||
-          !connection.connectedToEnd
+          connection.connectedToStart == null ||
+          connection.connectedToEnd == null
         ) {
           continue;
         }
@@ -2791,7 +2977,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
       return nextElements;
     },
-    []
+    [updateStateConnectionVisualState]
   );
 
   const runSimulationAndCollectTransfers = useCallback(
@@ -3479,7 +3665,8 @@ const Canvas: React.FC<CanvasProps> = ({
           resetElements,
           'onstart'
         );
-        if (transfers.length) spawnMovingTokens(transfers, nextElements);
+        if (transfers.length)
+          spawnMovingTokensRef.current(transfers, nextElements);
 
         return nextElements;
       });
@@ -3937,74 +4124,74 @@ const Canvas: React.FC<CanvasProps> = ({
     return { x: connectionX, y: connectionY };
   };
 
-  const normalizeVector = (
-    dx: number,
-    dy: number
-  ): { x: number; y: number } => {
-    const len = Math.hypot(dx, dy);
-    if (len === 0) return { x: 0, y: 0 };
-    return { x: dx / len, y: dy / len };
-  };
+  // const normalizeVector = (
+  //   dx: number,
+  //   dy: number
+  // ): { x: number; y: number } => {
+  //   const len = Math.hypot(dx, dy);
+  //   if (len === 0) return { x: 0, y: 0 };
+  //   return { x: dx / len, y: dy / len };
+  // };
 
-  const getPolylineMidpoint = (
-    points: { x: number; y: number }[]
-  ): {
-    point: { x: number; y: number };
-    normal: { x: number; y: number };
-  } => {
-    if (points.length === 0) {
-      return { point: { x: 0, y: 0 }, normal: { x: 0, y: -1 } };
-    }
-    if (points.length === 1) {
-      return { point: points[0], normal: { x: 0, y: -1 } };
-    }
+  // const getPolylineMidpoint = (
+  //   points: { x: number; y: number }[]
+  // ): {
+  //   point: { x: number; y: number };
+  //   normal: { x: number; y: number };
+  // } => {
+  //   if (points.length === 0) {
+  //     return { point: { x: 0, y: 0 }, normal: { x: 0, y: -1 } };
+  //   }
+  //   if (points.length === 1) {
+  //     return { point: points[0], normal: { x: 0, y: -1 } };
+  //   }
 
-    let totalLength = 0;
-    const segments: Array<{
-      start: { x: number; y: number };
-      end: { x: number; y: number };
-      length: number;
-    }> = [];
+  //   let totalLength = 0;
+  //   const segments: Array<{
+  //     start: { x: number; y: number };
+  //     end: { x: number; y: number };
+  //     length: number;
+  //   }> = [];
 
-    for (let i = 0; i < points.length - 1; i++) {
-      const start = points[i];
-      const end = points[i + 1];
-      const length = Math.hypot(end.x - start.x, end.y - start.y);
-      if (length === 0) continue;
-      segments.push({ start, end, length });
-      totalLength += length;
-    }
+  //   for (let i = 0; i < points.length - 1; i++) {
+  //     const start = points[i];
+  //     const end = points[i + 1];
+  //     const length = Math.hypot(end.x - start.x, end.y - start.y);
+  //     if (length === 0) continue;
+  //     segments.push({ start, end, length });
+  //     totalLength += length;
+  //   }
 
-    if (segments.length === 0) {
-      return { point: points[0], normal: { x: 0, y: -1 } };
-    }
+  //   if (segments.length === 0) {
+  //     return { point: points[0], normal: { x: 0, y: -1 } };
+  //   }
 
-    const target = totalLength / 2;
-    let traversed = 0;
-    for (const segment of segments) {
-      if (traversed + segment.length >= target) {
-        const remaining = target - traversed;
-        const t = remaining / segment.length;
-        const midX = segment.start.x + (segment.end.x - segment.start.x) * t;
-        const midY = segment.start.y + (segment.end.y - segment.start.y) * t;
-        const direction = normalizeVector(
-          segment.end.x - segment.start.x,
-          segment.end.y - segment.start.y
-        );
-        const normal = normalizeVector(-direction.y, direction.x);
-        return { point: { x: midX, y: midY }, normal };
-      }
-      traversed += segment.length;
-    }
+  //   const target = totalLength / 2;
+  //   let traversed = 0;
+  //   for (const segment of segments) {
+  //     if (traversed + segment.length >= target) {
+  //       const remaining = target - traversed;
+  //       const t = remaining / segment.length;
+  //       const midX = segment.start.x + (segment.end.x - segment.start.x) * t;
+  //       const midY = segment.start.y + (segment.end.y - segment.start.y) * t;
+  //       const direction = normalizeVector(
+  //         segment.end.x - segment.start.x,
+  //         segment.end.y - segment.start.y
+  //       );
+  //       const normal = normalizeVector(-direction.y, direction.x);
+  //       return { point: { x: midX, y: midY }, normal };
+  //     }
+  //     traversed += segment.length;
+  //   }
 
-    const lastSegment = segments[segments.length - 1];
-    const direction = normalizeVector(
-      lastSegment.end.x - lastSegment.start.x,
-      lastSegment.end.y - lastSegment.start.y
-    );
-    const normal = normalizeVector(-direction.y, direction.x);
-    return { point: lastSegment.end, normal };
-  };
+  //   const lastSegment = segments[segments.length - 1];
+  //   const direction = normalizeVector(
+  //     lastSegment.end.x - lastSegment.start.x,
+  //     lastSegment.end.y - lastSegment.start.y
+  //   );
+  //   const normal = normalizeVector(-direction.y, direction.x);
+  //   return { point: lastSegment.end, normal };
+  // };
 
   const placeElement = (
     type: GraphElementType,
@@ -4015,7 +4202,7 @@ const Canvas: React.FC<CanvasProps> = ({
     const rect = target.getBoundingClientRect();
     const x = clientX - rect.left;
     const y = clientY - rect.top;
-    const id = Date.now();
+    const id = nextIdRef.current++;
 
     if (type === 'Text Label') {
       setElements(prev => [
@@ -4269,6 +4456,7 @@ const Canvas: React.FC<CanvasProps> = ({
     }
 
     // 2) Otherwise, keep your existing tool drop behavior
+
     const tool = e.dataTransfer.getData('tool') as GraphElementType;
     if (tool) {
       placeElement(tool, e.clientX, e.clientY, e.currentTarget);
@@ -4343,7 +4531,7 @@ const Canvas: React.FC<CanvasProps> = ({
         ? toolProperties?.resourceConnection
         : toolProperties?.stateConnection;
 
-    const id = Date.now();
+    const id = nextIdRef.current++;
 
     const newConnection: GraphElement = {
       id,
@@ -4358,6 +4546,7 @@ const Canvas: React.FC<CanvasProps> = ({
       connectedToStart: startElement?.id,
       connectedToEnd: endElement?.id,
       points: intermediatePoints.length > 0 ? intermediatePoints : undefined,
+      labelPosition: 0.5,
     };
 
     setElements(prev => [...prev, newConnection]);
@@ -4454,12 +4643,6 @@ const Canvas: React.FC<CanvasProps> = ({
         element.type === 'Register' &&
         (element.interactive === true || element.interactive === 'true')
       ) {
-        // console.log('🖱️ Interactive Register clicked:', {
-        // id: element.id,
-        // currentValue: element.currentValue,
-        // step: element.step,
-        // });
-
         const step =
           typeof element.step === 'string'
             ? parseInt(element.step, 10) || 1
@@ -4475,14 +4658,6 @@ const Canvas: React.FC<CanvasProps> = ({
             ? parseInt(element.maxValue, 10) || 50
             : (element.maxValue ?? 9999);
         const clampedValue = Math.min(Math.max(newValue, min), max);
-
-        // console.log('🖱️ Register value update:', {
-        // from: currentVal,
-        // to: clampedValue,
-        // step: step,
-        // min: min,
-        // max: max,
-        // });
 
         setElements(prev =>
           prev.map(el =>
@@ -5488,12 +5663,28 @@ const Canvas: React.FC<CanvasProps> = ({
         }
 
         const padding = 15;
-        const { point: midPoint, normal } = getPolylineMidpoint(pathPoints);
-        const labelOffset = 14;
-        const labelPoint = {
-          x: midPoint.x + normal.x * labelOffset,
-          y: midPoint.y + normal.y * labelOffset,
-        };
+        const polyline = pathPoints;
+        type LegacyPositionCarrier = { position?: unknown };
+
+        const legacyPosRaw = (el as LegacyPositionCarrier).position;
+        const legacyPosNum =
+          typeof legacyPosRaw === 'number'
+            ? legacyPosRaw
+            : typeof legacyPosRaw === 'string'
+              ? Number(legacyPosRaw)
+              : NaN;
+
+        const labelPos =
+          el.labelPosition ??
+          (Number.isFinite(legacyPosNum) ? legacyPosNum : undefined) ??
+          0.5;
+
+        const labelPoint = getLabelPointForConnection(polyline, labelPos);
+
+        // const labelPoint = getLabelPointForConnection(
+        //   polyline,
+        //   el.labelPosition ?? (el as any).position ?? 0.5
+        // );
 
         const pointsForBounds = [...pathPoints, labelPoint];
         const xs = pointsForBounds.map(p => p.x);
@@ -5626,12 +5817,23 @@ const Canvas: React.FC<CanvasProps> = ({
         }
 
         const padding = 15;
-        const { point: midPoint, normal } = getPolylineMidpoint(pathPoints);
-        const labelOffset = 14;
-        const labelPoint = {
-          x: midPoint.x + normal.x * labelOffset,
-          y: midPoint.y + normal.y * labelOffset,
-        };
+        const polyline = pathPoints;
+        type LegacyPositionCarrier = { position?: unknown };
+
+        const legacyPosRaw = (el as LegacyPositionCarrier).position;
+        const legacyPosNum =
+          typeof legacyPosRaw === 'number'
+            ? legacyPosRaw
+            : typeof legacyPosRaw === 'string'
+              ? Number(legacyPosRaw)
+              : NaN;
+
+        const labelPos =
+          el.labelPosition ??
+          (Number.isFinite(legacyPosNum) ? legacyPosNum : undefined) ??
+          0.5;
+
+        const labelPoint = getLabelPointForConnection(polyline, labelPos);
 
         const pointsForBounds = [...pathPoints, labelPoint];
         const xs = pointsForBounds.map(p => p.x);
