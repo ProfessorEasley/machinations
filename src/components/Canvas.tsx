@@ -5032,7 +5032,7 @@ const Canvas: React.FC<CanvasProps> = ({
     const applyConditionStyle = (style: CSSProperties = {}): CSSProperties =>
       el.hasUnsatisfiedCondition ? { ...style, opacity: 0.4 } : style;
     switch (el.type) {
-      case 'Text Label':
+      case 'Text Label': {
         let labelClass = '';
         if (!isRunning) {
             labelClass = selectedTool === 'Select' ? 'selectable' : 'clickable';
@@ -5069,7 +5069,7 @@ const Canvas: React.FC<CanvasProps> = ({
           >
             {el.text || 'Text Label'}
           </span>
-        );
+        );}
       case 'Pool': {
         const size = getElementSize(el.thickness);
         const center = size / 2;
