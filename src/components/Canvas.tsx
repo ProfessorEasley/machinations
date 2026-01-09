@@ -4627,7 +4627,6 @@ const Canvas: React.FC<CanvasProps> = ({
     if (selectedTool === 'Select') {
       // 1. If clicking strictly on the canvas (background)
       if (e.target === canvasRef.current) {
-        
         // 2. Clear selection immediately (unless holding Ctrl for box select addition)
         if (!e.ctrlKey && !e.metaKey) {
           setSelectedId([]);
@@ -5028,14 +5027,15 @@ const Canvas: React.FC<CanvasProps> = ({
   // Render each element
   const renderElement = (el: GraphElement) => {
     const isSelected = !isRunning && selectedId.includes(el.id);
-    const selectableClass = (!isRunning && selectedTool === 'Select') ? 'selectable' : '';
+    const selectableClass =
+      !isRunning && selectedTool === 'Select' ? 'selectable' : '';
     const applyConditionStyle = (style: CSSProperties = {}): CSSProperties =>
       el.hasUnsatisfiedCondition ? { ...style, opacity: 0.4 } : style;
     switch (el.type) {
       case 'Text Label': {
         let labelClass = '';
         if (!isRunning) {
-            labelClass = selectedTool === 'Select' ? 'selectable' : 'clickable';
+          labelClass = selectedTool === 'Select' ? 'selectable' : 'clickable';
         }
         return (
           <span
@@ -5069,7 +5069,8 @@ const Canvas: React.FC<CanvasProps> = ({
           >
             {el.text || 'Text Label'}
           </span>
-        );}
+        );
+      }
       case 'Pool': {
         const size = getElementSize(el.thickness);
         const center = size / 2;
@@ -5740,7 +5741,13 @@ const Canvas: React.FC<CanvasProps> = ({
           <div
             key={el.id}
             className={containerClasses.join(' ').trim()}
-            style={applyConditionStyle({ left, top, width, height, pointerEvents: 'none' })}
+            style={applyConditionStyle({
+              left,
+              top,
+              width,
+              height,
+              pointerEvents: 'none',
+            })}
             onMouseDown={e => {
               e.stopPropagation();
               if (selectedTool === 'Select') {
@@ -5804,7 +5811,7 @@ const Canvas: React.FC<CanvasProps> = ({
                   style={{
                     left: startPoint.x - left - 4,
                     top: startPoint.y - top - 4,
-                    pointerEvents: 'auto'
+                    pointerEvents: 'auto',
                   }}
                   onMouseDown={e => handleArrowResizeStart(e, el.id, 'start')}
                 />
@@ -5813,7 +5820,7 @@ const Canvas: React.FC<CanvasProps> = ({
                   style={{
                     left: endPoint.x - left - 4,
                     top: endPoint.y - top - 4,
-                    pointerEvents: 'auto'
+                    pointerEvents: 'auto',
                   }}
                   onMouseDown={e => handleArrowResizeStart(e, el.id, 'end')}
                 />
@@ -5898,7 +5905,13 @@ const Canvas: React.FC<CanvasProps> = ({
           <div
             key={el.id}
             className={containerClasses.join(' ').trim()}
-            style={applyConditionStyle({ left, top, width, height, pointerEvents: 'none' })}
+            style={applyConditionStyle({
+              left,
+              top,
+              width,
+              height,
+              pointerEvents: 'none',
+            })}
             onMouseDown={e => {
               e.stopPropagation();
               if (selectedTool === 'Select') {
@@ -5964,7 +5977,7 @@ const Canvas: React.FC<CanvasProps> = ({
                   style={{
                     left: startPoint.x - left - 4,
                     top: startPoint.y - top - 4,
-                    pointerEvents: 'auto'
+                    pointerEvents: 'auto',
                   }}
                   onMouseDown={e => handleArrowResizeStart(e, el.id, 'start')}
                 />
@@ -5973,7 +5986,7 @@ const Canvas: React.FC<CanvasProps> = ({
                   style={{
                     left: endPoint.x - left - 4,
                     top: endPoint.y - top - 4,
-                    pointerEvents: 'auto'
+                    pointerEvents: 'auto',
                   }}
                   onMouseDown={e => handleArrowResizeStart(e, el.id, 'end')}
                 />
@@ -6083,7 +6096,7 @@ const Canvas: React.FC<CanvasProps> = ({
       if (isAConn && !isBConn) return -1;
       // If A is node and B is connection, B goes first (bottom layer)
       if (!isAConn && isBConn) return 1;
-      
+
       // Otherwise maintain creation order
       return a.id - b.id;
     });

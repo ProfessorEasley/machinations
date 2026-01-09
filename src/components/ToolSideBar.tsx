@@ -750,12 +750,12 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
               onChange={e => {
                 const numValue =
                   e.target.value === '' ? 0 : parseInt(e.target.value, 10) || 0;
-                
+
                 if (onElementUpdate && selectedElement) {
                   // ✅ FIX: Update BOTH 'number' (start value) AND 'currentPoints' (visual value)
-                  onElementUpdate(selectedElement.id, { 
+                  onElementUpdate(selectedElement.id, {
                     number: numValue,
-                    currentPoints: numValue 
+                    currentPoints: numValue,
                   });
                 }
               }}
@@ -768,9 +768,9 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
                 if (e.target.value === '') {
                   if (onElementUpdate && selectedElement) {
                     // ✅ FIX: Reset both values on blur if empty
-                    onElementUpdate(selectedElement.id, { 
+                    onElementUpdate(selectedElement.id, {
                       number: 0,
-                      currentPoints: 0 
+                      currentPoints: 0,
                     });
                   }
                 }

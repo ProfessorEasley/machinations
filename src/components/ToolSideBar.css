@@ -187,8 +187,8 @@ button.selected {
 
 .sidebar-disabled {
   /* Prevents all clicks/hovers */
-  pointer-events: none; 
-  
+  pointer-events: none;
+
   /* Visual feedback */
   opacity: 0.5;
   filter: grayscale(100%);
