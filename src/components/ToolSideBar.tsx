@@ -35,6 +35,7 @@ interface GraphElement {
   number?: number;
   max?: number;
   displayLimit?: number;
+  currentPoints?: number;
 
   actions?: number;
   minValue?: number;
@@ -76,6 +77,7 @@ interface ToolSideBarProps {
   onElementUpdate?: (elementId: number, updates: Partial<GraphElement>) => void;
   canUndo?: boolean;
   canRedo?: boolean;
+  disabled?: boolean;
 
   runType?: 'quick' | 'multiple' | null;
   onMultipleRunClick?: () => void;
@@ -277,6 +279,7 @@ const renderColorDropdown = (
 const ToolSideBar: React.FC<ToolSideBarProps> = ({
   selectedTool,
   setSelectedTool,
+  disabled,
   selectedElement,
   selectedElements = [],
   allElements = [],
@@ -747,8 +750,13 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
               onChange={e => {
                 const numValue =
                   e.target.value === '' ? 0 : parseInt(e.target.value, 10) || 0;
+
                 if (onElementUpdate && selectedElement) {
-                  onElementUpdate(selectedElement.id, { number: numValue });
+                  // ✅ FIX: Update BOTH 'number' (start value) AND 'currentPoints' (visual value)
+                  onElementUpdate(selectedElement.id, {
+                    number: numValue,
+                    currentPoints: numValue,
+                  });
                 }
               }}
               onFocus={e => {
@@ -758,9 +766,12 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
               }}
               onBlur={e => {
                 if (e.target.value === '') {
-                  e.target.value = '0';
                   if (onElementUpdate && selectedElement) {
-                    onElementUpdate(selectedElement.id, { number: 0 });
+                    // ✅ FIX: Reset both values on blur if empty
+                    onElementUpdate(selectedElement.id, {
+                      number: 0,
+                      currentPoints: 0,
+                    });
                   }
                 }
               }}
@@ -3317,7 +3328,7 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
   };
 
   return (
-    <div className="tool-sidebar">
+    <div className={`tool-sidebar ${disabled ? 'sidebar-disabled' : ''}`}>
       <div className="tab-buttons">
         {(['Graph', 'Edit', 'File', 'Run'] as const).map(tab => (
           <button

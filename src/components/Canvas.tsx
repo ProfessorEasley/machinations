@@ -1743,6 +1743,13 @@ const Canvas: React.FC<CanvasProps> = ({
     gameEndedRef.current = gameEnded;
   }, [gameEnded]);
 
+  useEffect(() => {
+    // Whenever the tool changes (e.g., from 'Select' to 'Pool'), clears selection.
+    if (selectedTool !== 'Select') {
+      setSelectedId([]);
+    }
+  }, [selectedTool, setSelectedId]);
+
   const canvasRef = useRef<HTMLDivElement>(null);
 
   // ---------- Moving Tokens (for Resource Connections) ----------
@@ -3797,6 +3804,8 @@ const Canvas: React.FC<CanvasProps> = ({
         return;
       }
 
+      if (isRunning) return;
+
       // Handle escape key to switch to Select tool or cancel connection creation
       if (e.key === 'Escape') {
         if (isCreatingConnection) {
@@ -4611,16 +4620,24 @@ const Canvas: React.FC<CanvasProps> = ({
   };
 
   const handleCanvasMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (selectedTool === 'Select' && e.target === canvasRef.current) {
-      setMouseDownOnCanvas(true);
-      setIsSelectingBox(false);
-      const rect = canvasRef.current!.getBoundingClientRect();
-      setBoxStart({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-      setBoxEnd(null);
+    // If running, ignore canvas clicks (or handle panning if you have that)
+    if (isRunning) return;
 
-      // If not holding Ctrl/Cmd, clear selection when starting box selection
-      if (!e.ctrlKey && !e.metaKey) {
-        setSelectedId([]);
+    // We ONLY care about deselecting or box-selecting if we are in 'Select' mode
+    if (selectedTool === 'Select') {
+      // 1. If clicking strictly on the canvas (background)
+      if (e.target === canvasRef.current) {
+        // 2. Clear selection immediately (unless holding Ctrl for box select addition)
+        if (!e.ctrlKey && !e.metaKey) {
+          setSelectedId([]);
+        }
+
+        // 3. Start Box Selection
+        setMouseDownOnCanvas(true);
+        setIsSelectingBox(false); // Reset flag
+        const rect = canvasRef.current.getBoundingClientRect();
+        setBoxStart({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+        setBoxEnd(null);
       }
     }
   };
@@ -5009,15 +5026,21 @@ const Canvas: React.FC<CanvasProps> = ({
 
   // Render each element
   const renderElement = (el: GraphElement) => {
-    const isSelected = selectedId.includes(el.id);
+    const isSelected = !isRunning && selectedId.includes(el.id);
+    const selectableClass =
+      !isRunning && selectedTool === 'Select' ? 'selectable' : '';
     const applyConditionStyle = (style: CSSProperties = {}): CSSProperties =>
       el.hasUnsatisfiedCondition ? { ...style, opacity: 0.4 } : style;
     switch (el.type) {
-      case 'Text Label':
+      case 'Text Label': {
+        let labelClass = '';
+        if (!isRunning) {
+          labelClass = selectedTool === 'Select' ? 'selectable' : 'clickable';
+        }
         return (
           <span
             key={el.id}
-            className={`text-label-span ${selectedTool === 'Select' ? 'selectable' : 'clickable'} ${isSelected ? 'selected' : ''}`}
+            className={`text-label-span ${labelClass} ${isSelected ? 'selected' : ''}`}
             style={applyConditionStyle({
               left: el.x,
               top: el.y,
@@ -5047,6 +5070,7 @@ const Canvas: React.FC<CanvasProps> = ({
             {el.text || 'Text Label'}
           </span>
         );
+      }
       case 'Pool': {
         const size = getElementSize(el.thickness);
         const center = size / 2;
@@ -5055,9 +5079,7 @@ const Canvas: React.FC<CanvasProps> = ({
         return (
           <svg
             key={el.id}
-            className={`svg-element pool-element ${
-              selectedTool === 'Select' ? 'selectable' : ''
-            } ${isSelected ? 'selected' : ''}`}
+            className={`svg-element pool-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
             style={applyConditionStyle({
               left: el.x - offset,
               top: el.y - offset,
@@ -5112,9 +5134,7 @@ const Canvas: React.FC<CanvasProps> = ({
         return (
           <svg
             key={el.id}
-            className={`svg-element source-element clickable-element ${
-              selectedTool === 'Select' ? 'selectable' : ''
-            } ${isSelected ? 'selected' : ''}`}
+            className={`svg-element source-element clickable-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
             style={applyConditionStyle({
               left: el.x - offset,
               top: el.y - offset,
@@ -5164,9 +5184,7 @@ const Canvas: React.FC<CanvasProps> = ({
         return (
           <svg
             key={el.id}
-            className={`svg-element drain-element clickable-element ${
-              selectedTool === 'Select' ? 'selectable' : ''
-            } ${isSelected ? 'selected' : ''}`}
+            className={`svg-element drain-element clickable-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
             style={applyConditionStyle({
               left: el.x - offset,
               top: el.y - offset,
@@ -5203,7 +5221,7 @@ const Canvas: React.FC<CanvasProps> = ({
         return (
           <div
             key={el.id}
-            className={`group-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
+            className={`group-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
             style={applyConditionStyle({
               left: el.x,
               top: el.y,
@@ -5280,7 +5298,7 @@ const Canvas: React.FC<CanvasProps> = ({
         return (
           <svg
             key={el.id}
-            className={`svg-element gate-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
+            className={`svg-element gate-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
             style={applyConditionStyle({
               left: el.x - offset,
               top: el.y - offset,
@@ -5321,7 +5339,7 @@ const Canvas: React.FC<CanvasProps> = ({
         return (
           <svg
             key={el.id}
-            className={`svg-element convertor-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
+            className={`svg-element convertor-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
             style={applyConditionStyle({
               left: el.x - offset,
               top: el.y - offset,
@@ -5401,7 +5419,7 @@ const Canvas: React.FC<CanvasProps> = ({
         return (
           <svg
             key={el.id}
-            className={`svg-element trader-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
+            className={`svg-element trader-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
             style={applyConditionStyle({
               left: el.x - offset,
               top: el.y - offset,
@@ -5458,7 +5476,7 @@ const Canvas: React.FC<CanvasProps> = ({
           <g key={el.id}>
             {/* EndCondition SVG element*/}
             <svg
-              className={`svg-element end-condition-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''} ${el.isBlinking ? 'blinking' : ''} ${!el.inhibited ? 'victory' : ''}`}
+              className={`svg-element end-condition-element ${selectableClass} ${isSelected ? 'selected' : ''} ${el.isBlinking ? 'blinking' : ''} ${!el.inhibited ? 'victory' : ''}`}
               style={applyConditionStyle({
                 left: el.x - offset,
                 top: el.y - offset,
@@ -5545,7 +5563,7 @@ const Canvas: React.FC<CanvasProps> = ({
         return (
           <svg
             key={el.id}
-            className={`svg-element register-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
+            className={`svg-element register-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
             style={applyConditionStyle({
               left: el.x - offset,
               top: el.y - offset,
@@ -5604,7 +5622,7 @@ const Canvas: React.FC<CanvasProps> = ({
         return (
           <svg
             key={el.id}
-            className={`svg-element delay-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
+            className={`svg-element delay-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
             style={applyConditionStyle({
               left: el.x - offset,
               top: el.y - offset,
@@ -5712,7 +5730,7 @@ const Canvas: React.FC<CanvasProps> = ({
         const markerStroke = stateStroke;
         const containerClasses = [
           'connection-container',
-          selectedTool === 'Select' ? 'selectable' : '',
+          selectableClass,
           isSelected ? 'selected' : '',
         ];
         if (isConditionUnsatisfied) {
@@ -5723,7 +5741,13 @@ const Canvas: React.FC<CanvasProps> = ({
           <div
             key={el.id}
             className={containerClasses.join(' ').trim()}
-            style={applyConditionStyle({ left, top, width, height })}
+            style={applyConditionStyle({
+              left,
+              top,
+              width,
+              height,
+              pointerEvents: 'none',
+            })}
             onMouseDown={e => {
               e.stopPropagation();
               if (selectedTool === 'Select') {
@@ -5764,6 +5788,7 @@ const Canvas: React.FC<CanvasProps> = ({
                 fill="none"
                 stroke={stateStroke}
                 markerEnd={`url(#arrowhead-${el.id})`}
+                style={{ pointerEvents: 'visibleStroke', cursor: 'pointer' }}
               />
               {el.text && el.text !== '0' && (
                 <text
@@ -5773,6 +5798,7 @@ const Canvas: React.FC<CanvasProps> = ({
                   fill={
                     isConditionUnsatisfied ? '#8a8a8a' : baseConnectionColor
                   }
+                  style={{ pointerEvents: 'auto', cursor: 'pointer' }}
                 >
                   {el.text}
                 </text>
@@ -5785,6 +5811,7 @@ const Canvas: React.FC<CanvasProps> = ({
                   style={{
                     left: startPoint.x - left - 4,
                     top: startPoint.y - top - 4,
+                    pointerEvents: 'auto',
                   }}
                   onMouseDown={e => handleArrowResizeStart(e, el.id, 'start')}
                 />
@@ -5793,6 +5820,7 @@ const Canvas: React.FC<CanvasProps> = ({
                   style={{
                     left: endPoint.x - left - 4,
                     top: endPoint.y - top - 4,
+                    pointerEvents: 'auto',
                   }}
                   onMouseDown={e => handleArrowResizeStart(e, el.id, 'end')}
                 />
@@ -5866,7 +5894,7 @@ const Canvas: React.FC<CanvasProps> = ({
         const labelFill = isConditionUnsatisfied ? '#888888' : '#000000';
         const containerClasses = [
           'connection-container',
-          selectedTool === 'Select' ? 'selectable' : '',
+          selectableClass,
           isSelected ? 'selected' : '',
         ];
         if (isConditionUnsatisfied) {
@@ -5877,7 +5905,13 @@ const Canvas: React.FC<CanvasProps> = ({
           <div
             key={el.id}
             className={containerClasses.join(' ').trim()}
-            style={applyConditionStyle({ left, top, width, height })}
+            style={applyConditionStyle({
+              left,
+              top,
+              width,
+              height,
+              pointerEvents: 'none',
+            })}
             onMouseDown={e => {
               e.stopPropagation();
               if (selectedTool === 'Select') {
@@ -5922,6 +5956,7 @@ const Canvas: React.FC<CanvasProps> = ({
                 fill="none"
                 className={`state-connection-line ${isSelected ? 'selected' : ''}`}
                 markerEnd={`url(#arrowhead-dashed-${el.id})`}
+                style={{ pointerEvents: 'visibleStroke', cursor: 'pointer' }}
               />
               {el.text && el.text !== '0' && (
                 <text
@@ -5929,6 +5964,7 @@ const Canvas: React.FC<CanvasProps> = ({
                   y={labelY}
                   className="connection-label-text"
                   fill={labelFill}
+                  style={{ pointerEvents: 'auto', cursor: 'pointer' }}
                 >
                   {el.text}
                 </text>
@@ -5941,6 +5977,7 @@ const Canvas: React.FC<CanvasProps> = ({
                   style={{
                     left: startPoint.x - left - 4,
                     top: startPoint.y - top - 4,
+                    pointerEvents: 'auto',
                   }}
                   onMouseDown={e => handleArrowResizeStart(e, el.id, 'start')}
                 />
@@ -5949,6 +5986,7 @@ const Canvas: React.FC<CanvasProps> = ({
                   style={{
                     left: endPoint.x - left - 4,
                     top: endPoint.y - top - 4,
+                    pointerEvents: 'auto',
                   }}
                   onMouseDown={e => handleArrowResizeStart(e, el.id, 'end')}
                 />
@@ -6045,7 +6083,24 @@ const Canvas: React.FC<CanvasProps> = ({
     return null;
   };
 
-  const displayElements = draggedElements || elements;
+  // const displayElements = draggedElements || elements;
+  const displayElements = React.useMemo(() => {
+    const list = draggedElements || elements;
+    return [...list].sort((a, b) => {
+      const isAConn =
+        a.type === 'Resource Connection' || a.type === 'State Connection';
+      const isBConn =
+        b.type === 'Resource Connection' || b.type === 'State Connection';
+
+      // If A is connection and B is node, A goes first (bottom layer)
+      if (isAConn && !isBConn) return -1;
+      // If A is node and B is connection, B goes first (bottom layer)
+      if (!isAConn && isBConn) return 1;
+
+      // Otherwise maintain creation order
+      return a.id - b.id;
+    });
+  }, [draggedElements, elements]);
 
   return (
     <div

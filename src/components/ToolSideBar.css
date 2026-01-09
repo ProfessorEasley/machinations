@@ -182,3 +182,15 @@ button.selected {
   background-color: #f0f0f0;
   color: #999;
 }
+
+/* Sidebar.css */
+
+.sidebar-disabled {
+  /* Prevents all clicks/hovers */
+  pointer-events: none;
+
+  /* Visual feedback */
+  opacity: 0.5;
+  filter: grayscale(100%);
+  cursor: not-allowed;
+}
