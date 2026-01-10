@@ -1461,8 +1461,8 @@ function classifyLabel(raw?: string): LabelKind {
   if (s0.toLowerCase() === 'else') return 'else';
   const s = s0.replace(/[–—]/g, '-');
 
-  if (/^\d+\s*%$/.test(s)) return 'prob';
-  if (/^\d+(\.\d+)?$/.test(s)) return 'prob';
+  if (/^[+-]?\d+\s*%$/.test(s)) return 'prob';
+  if (/^[+-]?\d+(\.\d+)?$/.test(s)) return 'prob';
   if (/^(==|!=|>=|<=|>|<)\s*-?\d+(\.\d+)?$/.test(s)) return 'cond';
   if (/^-?\d+(\.\d+)?\s*-\s*-?\d+(\.\d+)?$/.test(s)) return 'interval';
   return 'invalid';
@@ -2115,6 +2115,9 @@ const Canvas: React.FC<CanvasProps> = ({
         nextElements.map(el => [el.id, el])
       );
 
+      // Accumulate register modifiers here so PASS 5 can apply them (and not get overwritten by formulas)
+      const registerDeltaById = new Map<number, number>();
+
       // --- Internal Helpers for Color Logic ---
       const normalizeColor = (c?: string) => c || '#000000';
 
@@ -2257,8 +2260,25 @@ const Canvas: React.FC<CanvasProps> = ({
 
         // Apply Modifiers
         if (kind === 'prob' || kind === 'empty') {
-          const delta = parseConnectionLabel(rawLabel);
-          applyStateConnectionDelta(endEl, delta);
+          const perUnit = parseConnectionLabel(rawLabel);
+
+          // ✅ Pool -> Register: apply per resource in the pool
+          if (endEl.type === 'Register') {
+            let delta = perUnit;
+            if (startEl.type === 'Pool') {
+              const unitsInPool = getElementValue(startEl); // sums all colors
+              delta = perUnit * unitsInPool;
+            }
+            if (delta !== 0) {
+              registerDeltaById.set(
+                endEl.id,
+                (registerDeltaById.get(endEl.id) ?? 0) + delta
+              );
+            }
+          } else {
+            // existing behavior for Pools / other targets
+            // applyStateConnectionDelta(endEl, perUnit);
+          }
         }
 
         // Handle Triggers
@@ -2879,20 +2899,42 @@ const Canvas: React.FC<CanvasProps> = ({
         }
         if (activationType === 'onstart') trader.hasStarted = true;
       }
-
       // =======================================================================
       // PASS 5: Registers
       // =======================================================================
       for (const register of nextElements) {
         if (register.type !== 'Register') continue;
-        if (register.interactive === true || register.interactive === 'true') {
-          if (register.currentValue === undefined)
-            register.currentValue = register.startingValue || 0;
+
+        const min = register.minValue ?? -9999;
+        const max = register.maxValue ?? 9999;
+
+        // ✅ Always apply Pool->Register modifiers (summed in PASS 0.5)
+        const delta = registerDeltaById.get(register.id) ?? 0;
+
+        const isInteractive =
+          register.interactive === true || register.interactive === 'true';
+
+        // Ensure there is always a stable base
+        if (register.currentValue === undefined) {
+          register.currentValue = register.startingValue ?? 0;
+        }
+
+        // Interactive registers: keep existing behavior (user-controlled base),
+        // but still apply the computed delta.
+        if (isInteractive) {
+          if (delta !== 0) applyStateConnectionDelta(register, delta);
           continue;
         }
+
+        // Non-interactive registers:
+        // 1) Compute base from formula if present
+        // 2) Otherwise base = startingValue
+        let baseValue = register.startingValue ?? 0;
+
         const inputConns = nextElements.filter(
           c => c.type === 'State Connection' && c.connectedToEnd === register.id
         );
+
         if (inputConns.length > 0 && register.formula) {
           try {
             const variables = new Array(23).fill(0);
@@ -2904,18 +2946,24 @@ const Canvas: React.FC<CanvasProps> = ({
                 variables[idx] = getElementValue(src);
               }
             }
+
             const postfix = RegisterExpression.toPostfix(register.formula);
             const val = RegisterExpression.evaluate(postfix, variables);
-            const min = register.minValue ?? -9999;
-            const max = register.maxValue ?? 9999;
-            register.currentValue = Math.floor(
-              Math.min(Math.max(val, min), max)
-            );
+
+            // formula gives the base (clamped + floored like your original)
+            baseValue = Math.floor(Math.min(Math.max(val, min), max));
           } catch (e) {
             console.log(e);
-            register.currentValue = 0;
+            baseValue = 0;
           }
         }
+
+        // ✅ Final register value always includes the computed delta
+        const nextVal = baseValue + delta;
+        register.currentValue = Math.min(
+          Math.max(Math.floor(nextVal), min),
+          max
+        );
       }
 
       // =======================================================================
@@ -2977,6 +3025,7 @@ const Canvas: React.FC<CanvasProps> = ({
           );
         }
       }
+
       // console.log('✅ [PASS 6] EndCondition check complete');
 
       // applyDynamicResourceLabelsMutable(nextElements);
