@@ -1905,7 +1905,10 @@ const Canvas: React.FC<CanvasProps> = ({
           connection.connectedToStart == null ||
           connection.connectedToEnd == null
         ) {
-          if ('hasUnsatisfiedCondition' in connection) {
+          if (
+            connection.type !== 'Resource Connection' &&
+            'hasUnsatisfiedCondition' in connection
+          ) {
             connection.hasUnsatisfiedCondition = false;
           }
           continue;
@@ -2118,6 +2121,104 @@ const Canvas: React.FC<CanvasProps> = ({
       // Accumulate register modifiers here so PASS 5 can apply them (and not get overwritten by formulas)
       const registerDeltaById = new Map<number, number>();
 
+      // =======================================================================
+      // Helper: Check if a ResourceConnection is inhibited by StateConnections
+      // This mirrors the original Machinations checkInhibition() logic
+      // =======================================================================
+      const isConnectionInhibitedByState = (conn: GraphElement): boolean => {
+        if (conn.type !== 'Resource Connection') return false;
+
+        // =========================================================
+        // Check 1: Is any incoming StateConnection's condition unsatisfied?
+        // =========================================================
+        const incomingStateConnections = nextElements.filter(
+          el => el.type === 'State Connection' && el.connectedToEnd === conn.id
+        );
+
+        for (const stateConn of incomingStateConnections) {
+          const labelText = (stateConn.text ?? '').trim();
+          const kind = classifyLabel(labelText);
+          const isActivator = kind === 'cond' || kind === 'interval';
+
+          if (isActivator) {
+            const startEl = elementMap.get(stateConn.connectedToStart!);
+            if (!startEl) continue;
+
+            const value = getElementValue(startEl);
+            let conditionSatisfied = false;
+
+            if (kind === 'cond') {
+              const fn = parseCond(labelText);
+              if (fn) conditionSatisfied = fn(value);
+            } else if (kind === 'interval') {
+              const range = parseInterval(labelText);
+              if (range)
+                conditionSatisfied = value >= range[0] && value <= range[1];
+            }
+
+            if (!conditionSatisfied) {
+              return true;
+            }
+          }
+        }
+
+        // =========================================================
+        // Check 2: Is the START NODE inhibited by any StateConnection?
+        // =========================================================
+        const startNodeId = conn.connectedToStart;
+        if (startNodeId != null) {
+          // Find all StateConnections that point TO the start node with condition labels
+          const stateConnsToStartNode = nextElements.filter(
+            el =>
+              el.type === 'State Connection' &&
+              el.connectedToEnd === startNodeId
+          );
+
+          for (const stateConn of stateConnsToStartNode) {
+            const labelText = (stateConn.text ?? '').trim();
+            const kind = classifyLabel(labelText);
+            const isActivator = kind === 'cond' || kind === 'interval';
+
+            if (isActivator) {
+              const sourceEl = elementMap.get(stateConn.connectedToStart!);
+              if (!sourceEl) continue;
+
+              const value = getElementValue(sourceEl);
+              let conditionSatisfied = false;
+
+              if (kind === 'cond') {
+                const fn = parseCond(labelText);
+                if (fn) conditionSatisfied = fn(value);
+              } else if (kind === 'interval') {
+                const range = parseInterval(labelText);
+                if (range)
+                  conditionSatisfied = value >= range[0] && value <= range[1];
+              }
+
+              // If the start node has an unsatisfied condition, this connection is inhibited
+              if (!conditionSatisfied) {
+                console.log(
+                  `[DEBUG] ResourceConn ${conn.id} inhibited because start node ${startNodeId} has unsatisfied condition from StateConn ${stateConn.id} (${labelText})`
+                );
+                return true;
+              }
+            }
+          }
+        }
+
+        return false;
+      };
+
+      const updateAllConnectionInhibitionState = () => {
+        for (const conn of nextElements) {
+          if (conn.type === 'Resource Connection') {
+            const isInhibited = isConnectionInhibitedByState(conn);
+            conn.inhibited = isInhibited;
+            conn.hasUnsatisfiedCondition = isInhibited;
+          }
+        }
+      };
+
       // --- Internal Helpers for Color Logic ---
       const normalizeColor = (c?: string) => c || '#000000';
 
@@ -2233,6 +2334,7 @@ const Canvas: React.FC<CanvasProps> = ({
           resetEl.hasUnsatisfiedCondition = false;
         }
       }
+      updateAllConnectionInhibitionState();
 
       // =======================================================================
       // PASS 0.5: State Connections (Modifiers & Triggers)
@@ -2354,7 +2456,10 @@ const Canvas: React.FC<CanvasProps> = ({
 
         // PULL
         const inputConns = nextElements.filter(
-          c => isResourceLikeConnection(c) && c.connectedToEnd === pool.id
+          c =>
+            isResourceLikeConnection(c) &&
+            c.connectedToEnd === pool.id &&
+            !c.inhibited // Filter out inhibited connections
         );
         const validInputs = inputConns.filter(c => {
           const start = elementMap.get(c.connectedToStart!);
@@ -2399,7 +2504,10 @@ const Canvas: React.FC<CanvasProps> = ({
         // PUSH
         if (pool.pullMode === 'push any' || pool.pullMode === 'push all') {
           const outputConns = nextElements.filter(
-            c => isResourceLikeConnection(c) && c.connectedToStart === pool.id
+            c =>
+              isResourceLikeConnection(c) &&
+              c.connectedToStart === pool.id &&
+              !c.inhibited // Filter out inhibited connections
           );
           const outputs = outputConns
             .map(conn => ({
@@ -2479,12 +2587,16 @@ const Canvas: React.FC<CanvasProps> = ({
           continue;
 
         const inputConns = nextElements.filter(
-          c => isResourceLikeConnection(c) && c.connectedToEnd === gate.id
+          c =>
+            isResourceLikeConnection(c) &&
+            c.connectedToEnd === gate.id &&
+            !c.inhibited // Filter out inhibited connections
         );
         const outputConns = nextElements.filter(
           c =>
             (isResourceLikeConnection(c) || c.type === 'State Connection') &&
-            c.connectedToStart === gate.id
+            c.connectedToStart === gate.id &&
+            !(c.type === 'Resource Connection' && c.inhibited) // Filter inhibited Resource Connections
         );
         const actions = Math.max(1, gate.actions ?? 1);
 
@@ -2560,7 +2672,10 @@ const Canvas: React.FC<CanvasProps> = ({
           (activationType === 'onstart' ? !source.hasStarted : true)
         ) {
           const outputConns = nextElements.filter(
-            c => isResourceLikeConnection(c) && c.connectedToStart === source.id
+            c =>
+              isResourceLikeConnection(c) &&
+              c.connectedToStart === source.id &&
+              !c.inhibited // Filter out inhibited connections
           );
           outputConns.forEach(conn => {
             const amount = parseConnectionLabel(conn.text);
@@ -2599,7 +2714,10 @@ const Canvas: React.FC<CanvasProps> = ({
           (activationType === 'onstart' ? !drain.hasStarted : true)
         ) {
           const inputConns = nextElements.filter(
-            c => isResourceLikeConnection(c) && c.connectedToEnd === drain.id
+            c =>
+              isResourceLikeConnection(c) &&
+              c.connectedToEnd === drain.id &&
+              !c.inhibited // Filter out inhibited connections
           );
           inputConns.forEach(conn => {
             const startEl = elementMap.get(conn.connectedToStart!);
@@ -2658,11 +2776,16 @@ const Canvas: React.FC<CanvasProps> = ({
         if (!convertor.inputResources) convertor.inputResources = {};
 
         const inputConns = nextElements.filter(
-          c => isResourceLikeConnection(c) && c.connectedToEnd === convertor.id
+          c =>
+            isResourceLikeConnection(c) &&
+            c.connectedToEnd === convertor.id &&
+            !c.inhibited // Filter out inhibited connections
         );
         const outputConns = nextElements.filter(
           c =>
-            isResourceLikeConnection(c) && c.connectedToStart === convertor.id
+            isResourceLikeConnection(c) &&
+            c.connectedToStart === convertor.id &&
+            !c.inhibited // Filter out inhibited connections
         );
 
         if (inputConns.length === 0 || outputConns.length === 0) {
@@ -2782,10 +2905,16 @@ const Canvas: React.FC<CanvasProps> = ({
         if (!trader.traderOutputs) trader.traderOutputs = {};
 
         const inputConns = nextElements.filter(
-          c => isResourceLikeConnection(c) && c.connectedToEnd === trader.id
+          c =>
+            isResourceLikeConnection(c) &&
+            c.connectedToEnd === trader.id &&
+            !c.inhibited // Filter out inhibited connections
         );
         const outputConns = nextElements.filter(
-          c => isResourceLikeConnection(c) && c.connectedToStart === trader.id
+          c =>
+            isResourceLikeConnection(c) &&
+            c.connectedToStart === trader.id &&
+            !c.inhibited // Filter out inhibited connections
         );
         const triggerConns = nextElements.filter(
           c => c.type === 'State Connection' && c.connectedToEnd === trader.id
