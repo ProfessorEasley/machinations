@@ -1402,15 +1402,27 @@ const normalizeColor = (color?: string) => color || '#000000';
 const recordTransfer = (
   transfers: ResourceTransfer[] | undefined,
   conn: GraphElement | undefined,
-  units: number
+  units: number,
+  sourceElement?: GraphElement
 ): void => {
   if (!transfers || !conn || conn.type !== 'Resource Connection') return;
   if (units <= 0) return;
 
+  // Determine the color to use for the tokens
+  let tokenColor = normalizeColor(conn.color); // Default to connection color
+
+  // If source element has a resources color property and it's not black, use that instead
+  if (sourceElement && sourceElement.resources) {
+    const resourceColor = normalizeColor(sourceElement.resources);
+    if (resourceColor !== '#000000') {
+      tokenColor = resourceColor;
+    }
+  }
+
   transfers.push({
     connectionId: conn.id,
     units,
-    color: normalizeColor(conn.color), // ✅ Capture connection color
+    color: tokenColor,
   });
 };
 
@@ -1461,8 +1473,8 @@ function classifyLabel(raw?: string): LabelKind {
   if (s0.toLowerCase() === 'else') return 'else';
   const s = s0.replace(/[–—]/g, '-');
 
-  if (/^[+-]?\d+\s*%$/.test(s)) return 'prob';
-  if (/^[+-]?\d+(\.\d+)?$/.test(s)) return 'prob';
+  if (/^\d+\s*%$/.test(s)) return 'prob';
+  if (/^\d+(\.\d+)?$/.test(s)) return 'prob';
   if (/^(==|!=|>=|<=|>|<)\s*-?\d+(\.\d+)?$/.test(s)) return 'cond';
   if (/^-?\d+(\.\d+)?\s*-\s*-?\d+(\.\d+)?$/.test(s)) return 'interval';
   return 'invalid';
@@ -2115,9 +2127,6 @@ const Canvas: React.FC<CanvasProps> = ({
         nextElements.map(el => [el.id, el])
       );
 
-      // Accumulate register modifiers here so PASS 5 can apply them (and not get overwritten by formulas)
-      const registerDeltaById = new Map<number, number>();
-
       // --- Internal Helpers for Color Logic ---
       const normalizeColor = (c?: string) => c || '#000000';
 
@@ -2166,14 +2175,25 @@ const Canvas: React.FC<CanvasProps> = ({
         return 0;
       };
 
-      const deliverUnits = (outConn: GraphElement, units: number) => {
+      const deliverUnits = (
+        outConn: GraphElement,
+        units: number,
+        sourceElement?: GraphElement
+      ) => {
         if (units <= 0) return;
         const end = elementMap.get(outConn.connectedToEnd!);
         if (!end) return;
 
         const color = normalizeColor(outConn.color);
-        if (transfers)
+
+        // Use recordTransfer for Resource Connections to apply source element's resources color
+        if (outConn.type === 'Resource Connection') {
+          if (transfers)
+            recordTransfer(transfers, outConn, units, sourceElement);
+        } else if (transfers) {
+          // For State Connections, push directly (no color from source needed)
           transfers.push({ connectionId: outConn.id, units, color });
+        }
 
         if (outConn.type === 'State Connection') {
           end.triggerCount = (end.triggerCount ?? 0) + units;
@@ -2260,25 +2280,8 @@ const Canvas: React.FC<CanvasProps> = ({
 
         // Apply Modifiers
         if (kind === 'prob' || kind === 'empty') {
-          const perUnit = parseConnectionLabel(rawLabel);
-
-          // ✅ Pool -> Register: apply per resource in the pool
-          if (endEl.type === 'Register') {
-            let delta = perUnit;
-            if (startEl.type === 'Pool') {
-              const unitsInPool = getElementValue(startEl); // sums all colors
-              delta = perUnit * unitsInPool;
-            }
-            if (delta !== 0) {
-              registerDeltaById.set(
-                endEl.id,
-                (registerDeltaById.get(endEl.id) ?? 0) + delta
-              );
-            }
-          } else {
-            // existing behavior for Pools / other targets
-            // applyStateConnectionDelta(endEl, perUnit);
-          }
+          const delta = parseConnectionLabel(rawLabel);
+          applyStateConnectionDelta(endEl, delta);
         }
 
         // Handle Triggers
@@ -2379,7 +2382,8 @@ const Canvas: React.FC<CanvasProps> = ({
               const space = (pool.max ?? Infinity) - (pool.currentPoints ?? 0);
               const accepted = Math.min(taken, space);
               modResCount(pool, r.color, accepted);
-              if (transfers) recordTransfer(transfers, r.conn, accepted);
+              if (transfers)
+                recordTransfer(transfers, r.conn, accepted, r.startEl);
             });
           }
         } else {
@@ -2390,7 +2394,8 @@ const Canvas: React.FC<CanvasProps> = ({
               const space = (pool.max ?? Infinity) - (pool.currentPoints ?? 0);
               const accepted = Math.min(taken, space);
               modResCount(pool, r.color, accepted);
-              if (transfers) recordTransfer(transfers, r.conn, accepted);
+              if (transfers)
+                recordTransfer(transfers, r.conn, accepted, r.startEl);
               break;
             }
           }
@@ -2426,7 +2431,8 @@ const Canvas: React.FC<CanvasProps> = ({
                   modResCount(pool, o.color, -o.units);
                   if (o.endEl!.type === 'Pool')
                     modResCount(o.endEl!, o.color, o.units);
-                  if (transfers) recordTransfer(transfers, o.conn, o.units);
+                  if (transfers)
+                    recordTransfer(transfers, o.conn, o.units, pool);
                 }
               });
             }
@@ -2443,7 +2449,8 @@ const Canvas: React.FC<CanvasProps> = ({
                   modResCount(pool, o.color, -o.units);
                   if (o.endEl!.type === 'Pool')
                     modResCount(o.endEl!, o.color, o.units);
-                  if (transfers) recordTransfer(transfers, o.conn, o.units);
+                  if (transfers)
+                    recordTransfer(transfers, o.conn, o.units, pool);
                 }
               }
             }
@@ -2506,10 +2513,11 @@ const Canvas: React.FC<CanvasProps> = ({
             inputs.forEach(i => {
               const taken = takeUnits(i.startEl!, i.units, i.color);
               if (taken > 0) {
-                if (transfers) recordTransfer(transfers, i.conn, taken);
+                if (transfers)
+                  recordTransfer(transfers, i.conn, taken, i.startEl);
                 for (let k = 0; k < taken; k++) {
                   const chosen = chooseGateOutputs(gate, outputConns);
-                  chosen.forEach(out => deliverUnits(out, 1));
+                  chosen.forEach(out => deliverUnits(out, 1, i.startEl));
                 }
               }
             });
@@ -2518,10 +2526,11 @@ const Canvas: React.FC<CanvasProps> = ({
               if (canTakeUnits(i.startEl!, i.units, i.color)) {
                 const taken = takeUnits(i.startEl!, i.units, i.color);
                 if (taken > 0) {
-                  if (transfers) recordTransfer(transfers, i.conn, taken);
+                  if (transfers)
+                    recordTransfer(transfers, i.conn, taken, i.startEl);
                   for (let k = 0; k < taken; k++) {
                     const chosen = chooseGateOutputs(gate, outputConns);
-                    chosen.forEach(out => deliverUnits(out, 1));
+                    chosen.forEach(out => deliverUnits(out, 1, i.startEl));
                   }
                 }
               }
@@ -2564,7 +2573,7 @@ const Canvas: React.FC<CanvasProps> = ({
           );
           outputConns.forEach(conn => {
             const amount = parseConnectionLabel(conn.text);
-            if (amount > 0) deliverUnits(conn, amount);
+            if (amount > 0) deliverUnits(conn, amount, source);
           });
           if (activationType === 'onstart') source.hasStarted = true;
         }
@@ -2609,7 +2618,7 @@ const Canvas: React.FC<CanvasProps> = ({
             if (startEl && amount > 0) {
               if (canTakeUnits(startEl, amount, color)) {
                 const taken = takeUnits(startEl, amount, color);
-                if (transfers) recordTransfer(transfers, conn, taken);
+                if (transfers) recordTransfer(transfers, conn, taken, startEl);
                 const stateOuts = nextElements.filter(
                   c =>
                     c.type === 'State Connection' &&
@@ -2734,12 +2743,12 @@ const Canvas: React.FC<CanvasProps> = ({
                       (convertor.inputResources![i.key] || 0) + taken;
                   }
                   if (taken > 0 && transfers)
-                    recordTransfer(transfers, i.conn, taken);
+                    recordTransfer(transfers, i.conn, taken, i.startEl);
                 }
               }
             });
 
-            outputs.forEach(o => deliverUnits(o.conn, o.units));
+            outputs.forEach(o => deliverUnits(o.conn, o.units, convertor));
           } else {
             if (convertor.pullMode === 'pull any') {
               for (const inputConn of inputConns) {
@@ -2760,7 +2769,12 @@ const Canvas: React.FC<CanvasProps> = ({
                   );
                   if (available > 0) {
                     modResCount(inputElement, req.color, -available);
-                    recordTransfer(transfers, inputConn, available);
+                    recordTransfer(
+                      transfers,
+                      inputConn,
+                      available,
+                      inputElement
+                    );
                     const resourceKey = inputConn.text || 'default';
                     convertor.inputResources![resourceKey] =
                       (convertor.inputResources![resourceKey] || 0) + available;
@@ -2899,42 +2913,20 @@ const Canvas: React.FC<CanvasProps> = ({
         }
         if (activationType === 'onstart') trader.hasStarted = true;
       }
+
       // =======================================================================
       // PASS 5: Registers
       // =======================================================================
       for (const register of nextElements) {
         if (register.type !== 'Register') continue;
-
-        const min = register.minValue ?? -9999;
-        const max = register.maxValue ?? 9999;
-
-        // ✅ Always apply Pool->Register modifiers (summed in PASS 0.5)
-        const delta = registerDeltaById.get(register.id) ?? 0;
-
-        const isInteractive =
-          register.interactive === true || register.interactive === 'true';
-
-        // Ensure there is always a stable base
-        if (register.currentValue === undefined) {
-          register.currentValue = register.startingValue ?? 0;
-        }
-
-        // Interactive registers: keep existing behavior (user-controlled base),
-        // but still apply the computed delta.
-        if (isInteractive) {
-          if (delta !== 0) applyStateConnectionDelta(register, delta);
+        if (register.interactive === true || register.interactive === 'true') {
+          if (register.currentValue === undefined)
+            register.currentValue = register.startingValue || 0;
           continue;
         }
-
-        // Non-interactive registers:
-        // 1) Compute base from formula if present
-        // 2) Otherwise base = startingValue
-        let baseValue = register.startingValue ?? 0;
-
         const inputConns = nextElements.filter(
           c => c.type === 'State Connection' && c.connectedToEnd === register.id
         );
-
         if (inputConns.length > 0 && register.formula) {
           try {
             const variables = new Array(23).fill(0);
@@ -2946,24 +2938,18 @@ const Canvas: React.FC<CanvasProps> = ({
                 variables[idx] = getElementValue(src);
               }
             }
-
             const postfix = RegisterExpression.toPostfix(register.formula);
             const val = RegisterExpression.evaluate(postfix, variables);
-
-            // formula gives the base (clamped + floored like your original)
-            baseValue = Math.floor(Math.min(Math.max(val, min), max));
+            const min = register.minValue ?? -9999;
+            const max = register.maxValue ?? 9999;
+            register.currentValue = Math.floor(
+              Math.min(Math.max(val, min), max)
+            );
           } catch (e) {
             console.log(e);
-            baseValue = 0;
+            register.currentValue = 0;
           }
         }
-
-        // ✅ Final register value always includes the computed delta
-        const nextVal = baseValue + delta;
-        register.currentValue = Math.min(
-          Math.max(Math.floor(nextVal), min),
-          max
-        );
       }
 
       // =======================================================================
@@ -3025,7 +3011,6 @@ const Canvas: React.FC<CanvasProps> = ({
           );
         }
       }
-
       // console.log('✅ [PASS 6] EndCondition check complete');
 
       // applyDynamicResourceLabelsMutable(nextElements);
@@ -3177,7 +3162,12 @@ const Canvas: React.FC<CanvasProps> = ({
                 0,
                 (inputElement.currentPoints ?? 0) - requiredAmount
               );
-              recordTransfer(transfers, inputConn, requiredAmount);
+              recordTransfer(
+                transfers,
+                inputConn,
+                requiredAmount,
+                inputElement
+              );
             }
             // Source doesn't need to be consumed (infinite)
           }
@@ -3224,7 +3214,7 @@ const Canvas: React.FC<CanvasProps> = ({
               if (outputElement && outputElement.type === 'Pool') {
                 const current = outputElement.currentPoints ?? 0;
                 const max = outputElement.max ?? Infinity;
-                recordTransfer(transfers, outputConn, outputAmount);
+                recordTransfer(transfers, outputConn, outputAmount, trader);
                 outputElement.currentPoints = Math.min(
                   current + outputAmount,
                   max
@@ -3493,7 +3483,12 @@ const Canvas: React.FC<CanvasProps> = ({
                 0,
                 (inputElement.currentPoints ?? 0) - requiredAmount
               );
-              recordTransfer(transfers, inputConn, requiredAmount);
+              recordTransfer(
+                transfers,
+                inputConn,
+                requiredAmount,
+                inputElement
+              );
             }
             // Source doesn't need to be consumed (infinite)
           }
