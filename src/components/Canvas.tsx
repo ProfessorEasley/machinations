@@ -1017,6 +1017,13 @@ interface MovingToken {
   currentY: number;
 }
 
+// For tracking fractional resource dispatch progress
+interface FractionalDispatchState {
+  connectionId: number;
+  accumulator: number; // Accumulates fractional values until we can dispatch a full resource
+  lastTick: number; // Track when this was last updated
+}
+
 const isResourceLikeConnection = (element: GraphElement) =>
   element.type === 'Resource Connection';
 
@@ -1402,22 +1409,78 @@ const normalizeColor = (color?: string) => color || '#000000';
 const recordTransfer = (
   transfers: ResourceTransfer[] | undefined,
   conn: GraphElement | undefined,
-  units: number
+  units: number,
+  sourceElement?: GraphElement
 ): void => {
   if (!transfers || !conn || conn.type !== 'Resource Connection') return;
   if (units <= 0) return;
 
+  // Determine the color to use for the tokens
+  let tokenColor = normalizeColor(conn.color); // Default to connection color
+
+  // If source element has a resources color property and it's not black, use that instead
+  if (sourceElement && sourceElement.resources) {
+    const resourceColor = normalizeColor(sourceElement.resources);
+    if (resourceColor !== '#000000') {
+      tokenColor = resourceColor;
+    }
+  }
+
   transfers.push({
     connectionId: conn.id,
     units,
-    color: normalizeColor(conn.color), // ✅ Capture connection color
+    color: tokenColor,
   });
 };
+
+// Helper functions for decimal resource dispatching
+function handleDecimalResourceDispatch(
+  connection: GraphElement,
+  labelValue: number,
+  fractionalDispatchMap: Map<number, FractionalDispatchState>,
+  currentTick: number
+): number {
+  if (labelValue >= 1) {
+    // For values >= 1, dispatch as normal (can be fractional like 1.5)
+    return labelValue;
+  }
+
+  if (labelValue <= 0) return 0;
+
+  // For values < 1 (like 0.5, 0.2), use accumulator approach
+  const connectionId = connection.id;
+  let state = fractionalDispatchMap.get(connectionId);
+
+  if (!state) {
+    state = {
+      connectionId,
+      accumulator: 0,
+      lastTick: currentTick,
+    };
+    fractionalDispatchMap.set(connectionId, state);
+  }
+
+  // Add the fractional value to accumulator
+  state.accumulator += labelValue;
+  state.lastTick = currentTick;
+
+  // Check if we can dispatch full resources
+  const resourcesToDispatch = Math.floor(state.accumulator);
+  if (resourcesToDispatch > 0) {
+    state.accumulator -= resourcesToDispatch;
+    console.log(
+      `Decimal dispatch: Connection ${connectionId}, label ${labelValue}, dispatching ${resourcesToDispatch} resources, remaining accumulator: ${state.accumulator}`
+    );
+    return resourcesToDispatch;
+  }
+
+  return 0;
+}
 
 const randInt = (min: number, max: number) =>
   Math.floor(Math.random() * (max - min + 1)) + min;
 
-// Supports: "5", "2-5", "1/2", default 1
+// Supports: "5", "2-5", "1/2", "0.5", default 1
 function parseConnectionLabel(label?: string): number {
   const s = (label ?? '').trim();
   if (!s) return 1;
@@ -1444,7 +1507,7 @@ function parseConnectionLabel(label?: string): number {
   }
 
   const num = parseFloat(s);
-  if (!isNaN(num)) return Math.floor(num);
+  if (!isNaN(num)) return num; // Changed: Keep decimal values instead of flooring
 
   return 1;
 }
@@ -1758,6 +1821,12 @@ const Canvas: React.FC<CanvasProps> = ({
   const [movingTokens, setMovingTokens] = useState<MovingToken[]>([]);
   const nextTokenIdRef = useRef(1);
 
+  // Track fractional dispatch progress for decimal-labeled connections
+  const fractionalDispatchRef = useRef<Map<number, FractionalDispatchState>>(
+    new Map()
+  );
+  const currentTickRef = useRef(0);
+
   const spawnMovingTokens = useCallback(
     (transfers: ResourceTransfer[], elementsSnapshot: GraphElement[]) => {
       const tokensToAdd: MovingToken[] = [];
@@ -1995,6 +2064,10 @@ const Canvas: React.FC<CanvasProps> = ({
       setGameEnded(false);
       gameEndedRef.current = false;
 
+      // Reset fractional dispatch state
+      fractionalDispatchRef.current.clear();
+      currentTickRef.current = 0;
+
       const maxId = imported.reduce((m, el) => Math.max(m, el.id), -1);
       nextIdRef.current = maxId + 1;
       // load the imported diagram
@@ -2111,6 +2184,10 @@ const Canvas: React.FC<CanvasProps> = ({
       interactiveElementId?: number,
       transfers?: ResourceTransfer[]
     ): GraphElement[] => {
+      // Increment tick counter for fractional dispatch tracking
+      currentTickRef.current += 1;
+      const currentTick = currentTickRef.current;
+
       const nextElements = JSON.parse(
         JSON.stringify(elementsToUpdate)
       ) as GraphElement[];
@@ -2267,14 +2344,25 @@ const Canvas: React.FC<CanvasProps> = ({
         return 0;
       };
 
-      const deliverUnits = (outConn: GraphElement, units: number) => {
+      const deliverUnits = (
+        outConn: GraphElement,
+        units: number,
+        sourceElement?: GraphElement
+      ) => {
         if (units <= 0) return;
         const end = elementMap.get(outConn.connectedToEnd!);
         if (!end) return;
 
         const color = normalizeColor(outConn.color);
-        if (transfers)
+
+        // Use recordTransfer for Resource Connections to apply source element's resources color
+        if (outConn.type === 'Resource Connection') {
+          if (transfers)
+            recordTransfer(transfers, outConn, units, sourceElement);
+        } else if (transfers) {
+          // For State Connections, push directly (no color from source needed)
           transfers.push({ connectionId: outConn.id, units, color });
+        }
 
         if (outConn.type === 'State Connection') {
           end.triggerCount = (end.triggerCount ?? 0) + units;
@@ -2467,12 +2555,22 @@ const Canvas: React.FC<CanvasProps> = ({
         });
 
         const requirements = validInputs
-          .map(conn => ({
-            conn,
-            units: parseConnectionLabel(conn.text),
-            color: normalizeColor(conn.color),
-            startEl: elementMap.get(conn.connectedToStart!),
-          }))
+          .map(conn => {
+            const labelValue = parseConnectionLabel(conn.text);
+            // For pool pulls, use decimal logic when pool is triggered
+            const unitsToRequest = handleDecimalResourceDispatch(
+              conn,
+              labelValue,
+              fractionalDispatchRef.current,
+              currentTick
+            );
+            return {
+              conn,
+              units: unitsToRequest,
+              color: normalizeColor(conn.color),
+              startEl: elementMap.get(conn.connectedToStart!),
+            };
+          })
           .filter(r => r.startEl && r.units > 0);
 
         if (pool.pullMode === 'pull all') {
@@ -2484,7 +2582,8 @@ const Canvas: React.FC<CanvasProps> = ({
               const space = (pool.max ?? Infinity) - (pool.currentPoints ?? 0);
               const accepted = Math.min(taken, space);
               modResCount(pool, r.color, accepted);
-              if (transfers) recordTransfer(transfers, r.conn, accepted);
+              if (transfers)
+                recordTransfer(transfers, r.conn, accepted, r.startEl);
             });
           }
         } else {
@@ -2495,7 +2594,8 @@ const Canvas: React.FC<CanvasProps> = ({
               const space = (pool.max ?? Infinity) - (pool.currentPoints ?? 0);
               const accepted = Math.min(taken, space);
               modResCount(pool, r.color, accepted);
-              if (transfers) recordTransfer(transfers, r.conn, accepted);
+              if (transfers)
+                recordTransfer(transfers, r.conn, accepted, r.startEl);
               break;
             }
           }
@@ -2510,12 +2610,22 @@ const Canvas: React.FC<CanvasProps> = ({
               !c.inhibited // Filter out inhibited connections
           );
           const outputs = outputConns
-            .map(conn => ({
-              conn,
-              units: parseConnectionLabel(conn.text),
-              color: normalizeColor(conn.color),
-              endEl: elementMap.get(conn.connectedToEnd!),
-            }))
+            .map(conn => {
+              const labelValue = parseConnectionLabel(conn.text);
+              // Calculate actual units to dispatch using decimal logic
+              const unitsToDispatch = handleDecimalResourceDispatch(
+                conn,
+                labelValue,
+                fractionalDispatchRef.current,
+                currentTick
+              );
+              return {
+                conn,
+                units: unitsToDispatch,
+                color: normalizeColor(conn.color),
+                endEl: elementMap.get(conn.connectedToEnd!),
+              };
+            })
             .filter(o => o.endEl && o.units > 0);
 
           if (pool.pullMode === 'push all') {
@@ -2534,7 +2644,8 @@ const Canvas: React.FC<CanvasProps> = ({
                   modResCount(pool, o.color, -o.units);
                   if (o.endEl!.type === 'Pool')
                     modResCount(o.endEl!, o.color, o.units);
-                  if (transfers) recordTransfer(transfers, o.conn, o.units);
+                  if (transfers)
+                    recordTransfer(transfers, o.conn, o.units, pool);
                 }
               });
             }
@@ -2551,7 +2662,8 @@ const Canvas: React.FC<CanvasProps> = ({
                   modResCount(pool, o.color, -o.units);
                   if (o.endEl!.type === 'Pool')
                     modResCount(o.endEl!, o.color, o.units);
-                  if (transfers) recordTransfer(transfers, o.conn, o.units);
+                  if (transfers)
+                    recordTransfer(transfers, o.conn, o.units, pool);
                 }
               }
             }
@@ -2618,10 +2730,11 @@ const Canvas: React.FC<CanvasProps> = ({
             inputs.forEach(i => {
               const taken = takeUnits(i.startEl!, i.units, i.color);
               if (taken > 0) {
-                if (transfers) recordTransfer(transfers, i.conn, taken);
+                if (transfers)
+                  recordTransfer(transfers, i.conn, taken, i.startEl);
                 for (let k = 0; k < taken; k++) {
                   const chosen = chooseGateOutputs(gate, outputConns);
-                  chosen.forEach(out => deliverUnits(out, 1));
+                  chosen.forEach(out => deliverUnits(out, 1, i.startEl));
                 }
               }
             });
@@ -2630,10 +2743,11 @@ const Canvas: React.FC<CanvasProps> = ({
               if (canTakeUnits(i.startEl!, i.units, i.color)) {
                 const taken = takeUnits(i.startEl!, i.units, i.color);
                 if (taken > 0) {
-                  if (transfers) recordTransfer(transfers, i.conn, taken);
+                  if (transfers)
+                    recordTransfer(transfers, i.conn, taken, i.startEl);
                   for (let k = 0; k < taken; k++) {
                     const chosen = chooseGateOutputs(gate, outputConns);
-                    chosen.forEach(out => deliverUnits(out, 1));
+                    chosen.forEach(out => deliverUnits(out, 1, i.startEl));
                   }
                 }
               }
@@ -2678,8 +2792,19 @@ const Canvas: React.FC<CanvasProps> = ({
               !c.inhibited // Filter out inhibited connections
           );
           outputConns.forEach(conn => {
-            const amount = parseConnectionLabel(conn.text);
-            if (amount > 0) deliverUnits(conn, amount);
+            const labelValue = parseConnectionLabel(conn.text);
+            if (labelValue > 0) {
+              // Use decimal dispatch logic for fractional labels
+              const amountToDispatch = handleDecimalResourceDispatch(
+                conn,
+                labelValue,
+                fractionalDispatchRef.current,
+                currentTick
+              );
+              if (amountToDispatch > 0) {
+                deliverUnits(conn, amountToDispatch);
+              }
+            }
           });
           if (activationType === 'onstart') source.hasStarted = true;
         }
@@ -2721,12 +2846,23 @@ const Canvas: React.FC<CanvasProps> = ({
           );
           inputConns.forEach(conn => {
             const startEl = elementMap.get(conn.connectedToStart!);
-            const amount = parseConnectionLabel(conn.text);
+            const labelValue = parseConnectionLabel(conn.text);
             const color = normalizeColor(conn.color);
 
-            if (startEl && amount > 0) {
-              if (canTakeUnits(startEl, amount, color)) {
-                const taken = takeUnits(startEl, amount, color);
+            if (startEl && labelValue > 0) {
+              // Use decimal dispatch logic for fractional labels
+              const amountToTake = handleDecimalResourceDispatch(
+                conn,
+                labelValue,
+                fractionalDispatchRef.current,
+                currentTick
+              );
+
+              if (
+                amountToTake > 0 &&
+                canTakeUnits(startEl, amountToTake, color)
+              ) {
+                const taken = takeUnits(startEl, amountToTake, color);
                 if (transfers) recordTransfer(transfers, conn, taken);
                 const stateOuts = nextElements.filter(
                   c =>
@@ -2857,12 +2993,12 @@ const Canvas: React.FC<CanvasProps> = ({
                       (convertor.inputResources![i.key] || 0) + taken;
                   }
                   if (taken > 0 && transfers)
-                    recordTransfer(transfers, i.conn, taken);
+                    recordTransfer(transfers, i.conn, taken, i.startEl);
                 }
               }
             });
 
-            outputs.forEach(o => deliverUnits(o.conn, o.units));
+            outputs.forEach(o => deliverUnits(o.conn, o.units, convertor));
           } else {
             if (convertor.pullMode === 'pull any') {
               for (const inputConn of inputConns) {
@@ -2883,7 +3019,12 @@ const Canvas: React.FC<CanvasProps> = ({
                   );
                   if (available > 0) {
                     modResCount(inputElement, req.color, -available);
-                    recordTransfer(transfers, inputConn, available);
+                    recordTransfer(
+                      transfers,
+                      inputConn,
+                      available,
+                      inputElement
+                    );
                     const resourceKey = inputConn.text || 'default';
                     convertor.inputResources![resourceKey] =
                       (convertor.inputResources![resourceKey] || 0) + available;
@@ -3028,6 +3169,7 @@ const Canvas: React.FC<CanvasProps> = ({
         }
         if (activationType === 'onstart') trader.hasStarted = true;
       }
+
       // =======================================================================
       // PASS 5: Registers
       // =======================================================================
@@ -3063,7 +3205,6 @@ const Canvas: React.FC<CanvasProps> = ({
         const inputConns = nextElements.filter(
           c => c.type === 'State Connection' && c.connectedToEnd === register.id
         );
-
         if (inputConns.length > 0 && register.formula) {
           try {
             const variables = new Array(23).fill(0);
@@ -3075,7 +3216,6 @@ const Canvas: React.FC<CanvasProps> = ({
                 variables[idx] = getElementValue(src);
               }
             }
-
             const postfix = RegisterExpression.toPostfix(register.formula);
             const val = RegisterExpression.evaluate(postfix, variables);
 
@@ -3154,7 +3294,6 @@ const Canvas: React.FC<CanvasProps> = ({
           );
         }
       }
-
       // console.log('✅ [PASS 6] EndCondition check complete');
 
       // applyDynamicResourceLabelsMutable(nextElements);
@@ -3306,7 +3445,12 @@ const Canvas: React.FC<CanvasProps> = ({
                 0,
                 (inputElement.currentPoints ?? 0) - requiredAmount
               );
-              recordTransfer(transfers, inputConn, requiredAmount);
+              recordTransfer(
+                transfers,
+                inputConn,
+                requiredAmount,
+                inputElement
+              );
             }
             // Source doesn't need to be consumed (infinite)
           }
@@ -3353,7 +3497,7 @@ const Canvas: React.FC<CanvasProps> = ({
               if (outputElement && outputElement.type === 'Pool') {
                 const current = outputElement.currentPoints ?? 0;
                 const max = outputElement.max ?? Infinity;
-                recordTransfer(transfers, outputConn, outputAmount);
+                recordTransfer(transfers, outputConn, outputAmount, trader);
                 outputElement.currentPoints = Math.min(
                   current + outputAmount,
                   max
@@ -3622,7 +3766,12 @@ const Canvas: React.FC<CanvasProps> = ({
                 0,
                 (inputElement.currentPoints ?? 0) - requiredAmount
               );
-              recordTransfer(transfers, inputConn, requiredAmount);
+              recordTransfer(
+                transfers,
+                inputConn,
+                requiredAmount,
+                inputElement
+              );
             }
             // Source doesn't need to be consumed (infinite)
           }
@@ -3802,6 +3951,10 @@ const Canvas: React.FC<CanvasProps> = ({
       setGameEnded(false);
       gameEndedRef.current = false;
 
+      // Reset fractional dispatch state for new simulation
+      fractionalDispatchRef.current.clear();
+      currentTickRef.current = 0;
+
       // 1. FORCE RESET ELEMENTS (Clean slate before starting)
       // This handles the case where we "Froze" the board on the previous Game Over
       setElementsRef.current(prev => {
@@ -3911,6 +4064,10 @@ const Canvas: React.FC<CanvasProps> = ({
       console.log('--- Manual Stop: Resetting Board ---');
       setMovingTokens([]);
       setGameEnded(false);
+
+      // Reset fractional dispatch state
+      fractionalDispatchRef.current.clear();
+      currentTickRef.current = 0;
 
       setElementsRef.current(prev =>
         prev.map(el => {
