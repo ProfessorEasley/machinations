@@ -1402,34 +1402,15 @@ const normalizeColor = (color?: string) => color || '#000000';
 const recordTransfer = (
   transfers: ResourceTransfer[] | undefined,
   conn: GraphElement | undefined,
-  units: number,
-  sourceElement?: GraphElement
+  units: number
 ): void => {
   if (!transfers || !conn || conn.type !== 'Resource Connection') return;
   if (units <= 0) return;
 
-  // Determine the color to use for the tokens
-  // Priority: 1. Connection color (if not black), 2. Source element's resources color (if not black), 3. Black
-  let tokenColor = '#000000'; // Default to black
-
-  // First, check if source element has a resources color property and it's not black
-  if (sourceElement && sourceElement.resources) {
-    const resourceColor = normalizeColor(sourceElement.resources);
-    if (resourceColor !== '#000000') {
-      tokenColor = resourceColor;
-    }
-  }
-
-  // Connection color takes precedence if it's not black
-  const connColor = normalizeColor(conn.color);
-  if (connColor !== '#000000') {
-    tokenColor = connColor;
-  }
-
   transfers.push({
     connectionId: conn.id,
     units,
-    color: tokenColor,
+    color: normalizeColor(conn.color), // ✅ Capture connection color
   });
 };
 
@@ -2182,25 +2163,14 @@ const Canvas: React.FC<CanvasProps> = ({
         return 0;
       };
 
-      const deliverUnits = (
-        outConn: GraphElement,
-        units: number,
-        sourceElement?: GraphElement
-      ) => {
+      const deliverUnits = (outConn: GraphElement, units: number) => {
         if (units <= 0) return;
         const end = elementMap.get(outConn.connectedToEnd!);
         if (!end) return;
 
         const color = normalizeColor(outConn.color);
-
-        // Use recordTransfer for Resource Connections to apply source element's resources color
-        if (outConn.type === 'Resource Connection') {
-          if (transfers)
-            recordTransfer(transfers, outConn, units, sourceElement);
-        } else if (transfers) {
-          // For State Connections, push directly (no color from source needed)
+        if (transfers)
           transfers.push({ connectionId: outConn.id, units, color });
-        }
 
         if (outConn.type === 'State Connection') {
           end.triggerCount = (end.triggerCount ?? 0) + units;
@@ -2389,8 +2359,7 @@ const Canvas: React.FC<CanvasProps> = ({
               const space = (pool.max ?? Infinity) - (pool.currentPoints ?? 0);
               const accepted = Math.min(taken, space);
               modResCount(pool, r.color, accepted);
-              if (transfers)
-                recordTransfer(transfers, r.conn, accepted, r.startEl);
+              if (transfers) recordTransfer(transfers, r.conn, accepted);
             });
           }
         } else {
@@ -2401,8 +2370,7 @@ const Canvas: React.FC<CanvasProps> = ({
               const space = (pool.max ?? Infinity) - (pool.currentPoints ?? 0);
               const accepted = Math.min(taken, space);
               modResCount(pool, r.color, accepted);
-              if (transfers)
-                recordTransfer(transfers, r.conn, accepted, r.startEl);
+              if (transfers) recordTransfer(transfers, r.conn, accepted);
               break;
             }
           }
@@ -2438,8 +2406,7 @@ const Canvas: React.FC<CanvasProps> = ({
                   modResCount(pool, o.color, -o.units);
                   if (o.endEl!.type === 'Pool')
                     modResCount(o.endEl!, o.color, o.units);
-                  if (transfers)
-                    recordTransfer(transfers, o.conn, o.units, pool);
+                  if (transfers) recordTransfer(transfers, o.conn, o.units);
                 }
               });
             }
@@ -2456,8 +2423,7 @@ const Canvas: React.FC<CanvasProps> = ({
                   modResCount(pool, o.color, -o.units);
                   if (o.endEl!.type === 'Pool')
                     modResCount(o.endEl!, o.color, o.units);
-                  if (transfers)
-                    recordTransfer(transfers, o.conn, o.units, pool);
+                  if (transfers) recordTransfer(transfers, o.conn, o.units);
                 }
               }
             }
@@ -2520,11 +2486,10 @@ const Canvas: React.FC<CanvasProps> = ({
             inputs.forEach(i => {
               const taken = takeUnits(i.startEl!, i.units, i.color);
               if (taken > 0) {
-                if (transfers)
-                  recordTransfer(transfers, i.conn, taken, i.startEl);
+                if (transfers) recordTransfer(transfers, i.conn, taken);
                 for (let k = 0; k < taken; k++) {
                   const chosen = chooseGateOutputs(gate, outputConns);
-                  chosen.forEach(out => deliverUnits(out, 1, i.startEl));
+                  chosen.forEach(out => deliverUnits(out, 1));
                 }
               }
             });
@@ -2533,11 +2498,10 @@ const Canvas: React.FC<CanvasProps> = ({
               if (canTakeUnits(i.startEl!, i.units, i.color)) {
                 const taken = takeUnits(i.startEl!, i.units, i.color);
                 if (taken > 0) {
-                  if (transfers)
-                    recordTransfer(transfers, i.conn, taken, i.startEl);
+                  if (transfers) recordTransfer(transfers, i.conn, taken);
                   for (let k = 0; k < taken; k++) {
                     const chosen = chooseGateOutputs(gate, outputConns);
-                    chosen.forEach(out => deliverUnits(out, 1, i.startEl));
+                    chosen.forEach(out => deliverUnits(out, 1));
                   }
                 }
               }
@@ -2580,7 +2544,7 @@ const Canvas: React.FC<CanvasProps> = ({
           );
           outputConns.forEach(conn => {
             const amount = parseConnectionLabel(conn.text);
-            if (amount > 0) deliverUnits(conn, amount, source);
+            if (amount > 0) deliverUnits(conn, amount);
           });
           if (activationType === 'onstart') source.hasStarted = true;
         }
@@ -2625,7 +2589,7 @@ const Canvas: React.FC<CanvasProps> = ({
             if (startEl && amount > 0) {
               if (canTakeUnits(startEl, amount, color)) {
                 const taken = takeUnits(startEl, amount, color);
-                if (transfers) recordTransfer(transfers, conn, taken, startEl);
+                if (transfers) recordTransfer(transfers, conn, taken);
                 const stateOuts = nextElements.filter(
                   c =>
                     c.type === 'State Connection' &&
@@ -2750,12 +2714,12 @@ const Canvas: React.FC<CanvasProps> = ({
                       (convertor.inputResources![i.key] || 0) + taken;
                   }
                   if (taken > 0 && transfers)
-                    recordTransfer(transfers, i.conn, taken, i.startEl);
+                    recordTransfer(transfers, i.conn, taken);
                 }
               }
             });
 
-            outputs.forEach(o => deliverUnits(o.conn, o.units, convertor));
+            outputs.forEach(o => deliverUnits(o.conn, o.units));
           } else {
             if (convertor.pullMode === 'pull any') {
               for (const inputConn of inputConns) {
@@ -2776,12 +2740,7 @@ const Canvas: React.FC<CanvasProps> = ({
                   );
                   if (available > 0) {
                     modResCount(inputElement, req.color, -available);
-                    recordTransfer(
-                      transfers,
-                      inputConn,
-                      available,
-                      inputElement
-                    );
+                    recordTransfer(transfers, inputConn, available);
                     const resourceKey = inputConn.text || 'default';
                     convertor.inputResources![resourceKey] =
                       (convertor.inputResources![resourceKey] || 0) + available;
@@ -3169,12 +3128,7 @@ const Canvas: React.FC<CanvasProps> = ({
                 0,
                 (inputElement.currentPoints ?? 0) - requiredAmount
               );
-              recordTransfer(
-                transfers,
-                inputConn,
-                requiredAmount,
-                inputElement
-              );
+              recordTransfer(transfers, inputConn, requiredAmount);
             }
             // Source doesn't need to be consumed (infinite)
           }
@@ -3221,7 +3175,7 @@ const Canvas: React.FC<CanvasProps> = ({
               if (outputElement && outputElement.type === 'Pool') {
                 const current = outputElement.currentPoints ?? 0;
                 const max = outputElement.max ?? Infinity;
-                recordTransfer(transfers, outputConn, outputAmount, trader);
+                recordTransfer(transfers, outputConn, outputAmount);
                 outputElement.currentPoints = Math.min(
                   current + outputAmount,
                   max
@@ -3490,12 +3444,7 @@ const Canvas: React.FC<CanvasProps> = ({
                 0,
                 (inputElement.currentPoints ?? 0) - requiredAmount
               );
-              recordTransfer(
-                transfers,
-                inputConn,
-                requiredAmount,
-                inputElement
-              );
+              recordTransfer(transfers, inputConn, requiredAmount);
             }
             // Source doesn't need to be consumed (infinite)
           }
