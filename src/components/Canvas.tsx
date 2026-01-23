@@ -4468,6 +4468,76 @@ const Canvas: React.FC<CanvasProps> = ({
     return { x: connectionX, y: connectionY };
   };
 
+  // Helper function to snap a node's center to its edge in the direction of another point
+  const snapNodeToEdgeInDirection = (
+    node: GraphElement,
+    targetPoint: { x: number; y: number }
+  ): { x: number; y: number } => {
+    const nodeCenter = { x: node.x, y: node.y };
+
+    // Get node size
+    let nodeWidth: number;
+    let nodeHeight: number;
+    if (node.type === 'Group') {
+      nodeWidth = node.width || 200;
+      nodeHeight = node.height || 150;
+    } else {
+      const size = getElementSize(node.thickness);
+      nodeWidth = size;
+      nodeHeight = size;
+    }
+
+    const offsetX = nodeWidth / 2;
+    const offsetY = nodeHeight / 2;
+    const left = node.x - offsetX;
+    const right = node.x + offsetX;
+    const top = node.y - offsetY;
+    const bottom = node.y + offsetY;
+
+    // Calculate direction from node center to target point
+    const dx = targetPoint.x - nodeCenter.x;
+    const dy = targetPoint.y - nodeCenter.y;
+    const distance = Math.hypot(dx, dy);
+
+    if (distance === 0) {
+      // If target is at same position, return node center
+      return nodeCenter;
+    }
+
+    // Normalize direction
+    const dirX = dx / distance;
+    const dirY = dy / distance;
+
+    // Find intersection of ray from node center in direction of target with node edges
+    // Calculate t values where ray intersects each edge
+    const tLeft =
+      offsetX > 0 ? (left - nodeCenter.x) / (dirX || 1e-10) : Infinity;
+    const tRight =
+      offsetX > 0 ? (right - nodeCenter.x) / (dirX || 1e-10) : Infinity;
+    const tTop =
+      offsetY > 0 ? (top - nodeCenter.y) / (dirY || 1e-10) : Infinity;
+    const tBottom =
+      offsetY > 0 ? (bottom - nodeCenter.y) / (dirY || 1e-10) : Infinity;
+
+    // Find the closest positive t (intersection in direction of target)
+    const validTs = [
+      dirX > 0 ? tRight : tLeft,
+      dirY > 0 ? tBottom : tTop,
+    ].filter(t => t > 0);
+
+    const t = Math.min(...validTs);
+
+    if (!isFinite(t)) {
+      return nodeCenter;
+    }
+
+    // Calculate intersection point
+    const intersectionX = nodeCenter.x + dirX * t;
+    const intersectionY = nodeCenter.y + dirY * t;
+
+    return { x: intersectionX, y: intersectionY };
+  };
+
   // const normalizeVector = (
   //   dx: number,
   //   dy: number
@@ -6016,17 +6086,30 @@ const Canvas: React.FC<CanvasProps> = ({
           y: el.endY ?? el.y,
         };
 
-        // Use node centers for connection positioning
-        if (startNode) {
-          startPoint = { x: startNode.x, y: startNode.y };
-        }
+        // Snap nodes to their edges in the direction of the next point (first waypoint or end node)
+        if (startNode && endNode) {
+          // If there are waypoints, snap start to first waypoint; otherwise snap to end node
+          const startTargetPoint =
+            el.points && el.points.length > 0
+              ? el.points[0]
+              : { x: endNode.x, y: endNode.y };
 
-        if (endNode) {
+          // If there are waypoints, snap end to last waypoint; otherwise snap to start node
+          const endTargetPoint =
+            el.points && el.points.length > 0
+              ? el.points[el.points.length - 1]
+              : { x: startNode.x, y: startNode.y };
+
+          startPoint = snapNodeToEdgeInDirection(startNode, startTargetPoint);
+          endPoint = snapNodeToEdgeInDirection(endNode, endTargetPoint);
+        } else if (startNode) {
+          startPoint = { x: startNode.x, y: startNode.y };
+        } else if (endNode) {
           endPoint = { x: endNode.x, y: endNode.y };
         }
 
-        // For resource connections, always use a straight line (start to end only)
-        const pathPoints = [startPoint, endPoint];
+        // Include intermediate waypoints if they exist, creating a polyline that follows breakpoints
+        const pathPoints = [startPoint, ...(el.points ?? []), endPoint];
 
         if (pathPoints.length < 2) {
           return null;
@@ -6197,17 +6280,30 @@ const Canvas: React.FC<CanvasProps> = ({
           y: el.endY ?? el.y,
         };
 
-        // Use node centers for connection positioning
-        if (startNode) {
-          startPoint = { x: startNode.x, y: startNode.y };
-        }
+        // Snap nodes to their edges in the direction of the next point (first waypoint or end node)
+        if (startNode && endNode) {
+          // If there are waypoints, snap start to first waypoint; otherwise snap to end node
+          const startTargetPoint =
+            el.points && el.points.length > 0
+              ? el.points[0]
+              : { x: endNode.x, y: endNode.y };
 
-        if (endNode) {
+          // If there are waypoints, snap end to last waypoint; otherwise snap to start node
+          const endTargetPoint =
+            el.points && el.points.length > 0
+              ? el.points[el.points.length - 1]
+              : { x: startNode.x, y: startNode.y };
+
+          startPoint = snapNodeToEdgeInDirection(startNode, startTargetPoint);
+          endPoint = snapNodeToEdgeInDirection(endNode, endTargetPoint);
+        } else if (startNode) {
+          startPoint = { x: startNode.x, y: startNode.y };
+        } else if (endNode) {
           endPoint = { x: endNode.x, y: endNode.y };
         }
 
-        // For state connections, always use a straight line (start to end only)
-        const pathPoints = [startPoint, endPoint];
+        // Include intermediate waypoints if they exist, creating a polyline that follows breakpoints
+        const pathPoints = [startPoint, ...(el.points ?? []), endPoint];
 
         if (pathPoints.length < 2) {
           return null;
