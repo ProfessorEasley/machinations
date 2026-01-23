@@ -5609,7 +5609,7 @@ const Canvas: React.FC<CanvasProps> = ({
               y={30 * scale}
               className="element-value-text"
               fill="black"
-              fontSize={20 * scale}
+              fontSize={14 * scale}
             >
               ∞
             </text>
@@ -5694,7 +5694,7 @@ const Canvas: React.FC<CanvasProps> = ({
                   left: '50%',
                   transform: 'translate(-50%, -50%)',
                   color: el.color || '#000000',
-                  fontSize: '14px',
+                  fontSize: '11px',
                   fontWeight: 'bold',
                   textAlign: 'center',
                   pointerEvents: 'none',
@@ -5824,7 +5824,7 @@ const Canvas: React.FC<CanvasProps> = ({
                 <text
                   x={center}
                   y={15 * scale}
-                  fontSize={8 * scale}
+                  fontSize={5 * scale}
                   fill="white"
                   textAnchor="middle"
                   className="convertor-storage"
@@ -5840,7 +5840,7 @@ const Canvas: React.FC<CanvasProps> = ({
               <text
                 x={center}
                 y={30 * scale}
-                fontSize={6 * scale}
+                fontSize={4.5 * scale}
                 fill="white"
                 textAnchor="middle"
                 className="convertor-label"
@@ -5896,7 +5896,7 @@ const Canvas: React.FC<CanvasProps> = ({
               <text
                 x={center}
                 y={30 * scale}
-                fontSize={6 * scale}
+                fontSize={4.5 * scale}
                 fill={el.color || '#000000'}
                 textAnchor="middle"
                 className="trader-label"
@@ -5980,7 +5980,7 @@ const Canvas: React.FC<CanvasProps> = ({
                   position: 'absolute',
                   left: el.x - offset,
                   top: el.y - offset + size + 5,
-                  fontSize: `${12 * scale}px`,
+                  fontSize: `${10 * scale}px`,
                   fontWeight: 'bold',
                   color: el.color || '#000000',
                   textAlign: 'center',
@@ -6043,7 +6043,7 @@ const Canvas: React.FC<CanvasProps> = ({
               y={center + size / 8}
               className="register-text"
               fill="black"
-              fontSize={14 * scale}
+              fontSize={11 * scale}
               textAnchor="middle"
               fontWeight="bold"
             >
@@ -6098,7 +6098,7 @@ const Canvas: React.FC<CanvasProps> = ({
               x={center}
               y={center + 2 * scale}
               className="delay-text"
-              fontSize={14 * scale}
+              fontSize={11 * scale}
             >
               8
             </text>
@@ -6238,16 +6238,20 @@ const Canvas: React.FC<CanvasProps> = ({
                 <marker
                   id={`arrowhead-${el.id}`}
                   className="arrow-marker"
-                  viewBox="0 0 10 7"
-                  refX="10"
-                  refY="3.5"
-                  markerWidth="10"
-                  markerHeight="7"
+                  viewBox="0 0 10 10"
+                  refX="7"
+                  refY="5"
+                  markerWidth="6"
+                  markerHeight="6"
                   orient="auto-start-reverse"
                 >
                   <polygon
-                    points="0 0, 10 3.5, 0 7"
+                    points="0 0, 6 5, 0 10"
                     fill={markerStroke}
+                    stroke={markerStroke}
+                    strokeWidth="1"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                     className="arrow-polygon"
                   />
                 </marker>
@@ -6455,17 +6459,20 @@ const Canvas: React.FC<CanvasProps> = ({
                 <marker
                   id={`arrowhead-dashed-${el.id}`}
                   className="arrow-marker"
-                  viewBox="0 0 10 7"
-                  refX="10"
-                  refY="3.5"
-                  markerWidth="10"
-                  markerHeight="7"
+                  viewBox="0 0 10 10"
+                  refX="7"
+                  refY="5"
+                  markerWidth="6"
+                  markerHeight="6"
                   orient="auto-start-reverse"
                 >
                   <polygon
-                    points="0 0, 10 3.5, 0 7"
-                    // fill={markerStroke}
+                    points="0 0, 6 5, 0 10"
                     fill={el.color || '#000000'}
+                    stroke={el.color || '#000000'}
+                    strokeWidth="1"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                     className="dashed-arrow-polygon"
                   />
                 </marker>
