@@ -6001,15 +6001,32 @@ const Canvas: React.FC<CanvasProps> = ({
         );
       }
       case 'Resource Connection': {
-        const startPoint = {
+        // Get the connected nodes to calculate proper positioning
+        const startNode = elements.find(
+          node => node.id === el.connectedToStart
+        );
+        const endNode = elements.find(node => node.id === el.connectedToEnd);
+
+        let startPoint = {
           x: el.startX ?? el.x,
           y: el.startY ?? el.y,
         };
-        const endPoint = {
+        let endPoint = {
           x: el.endX ?? el.x,
           y: el.endY ?? el.y,
         };
-        const pathPoints = [startPoint, ...(el.points ?? []), endPoint];
+
+        // Use node centers for connection positioning
+        if (startNode) {
+          startPoint = { x: startNode.x, y: startNode.y };
+        }
+
+        if (endNode) {
+          endPoint = { x: endNode.x, y: endNode.y };
+        }
+
+        // For resource connections, always use a straight line (start to end only)
+        const pathPoints = [startPoint, endPoint];
 
         if (pathPoints.length < 2) {
           return null;
@@ -6165,15 +6182,32 @@ const Canvas: React.FC<CanvasProps> = ({
         );
       }
       case 'State Connection': {
-        const startPoint = {
+        // Get the connected nodes to calculate proper positioning
+        const startNode = elements.find(
+          node => node.id === el.connectedToStart
+        );
+        const endNode = elements.find(node => node.id === el.connectedToEnd);
+
+        let startPoint = {
           x: el.startX ?? el.x,
           y: el.startY ?? el.y,
         };
-        const endPoint = {
+        let endPoint = {
           x: el.endX ?? el.x,
           y: el.endY ?? el.y,
         };
-        const pathPoints = [startPoint, ...(el.points ?? []), endPoint];
+
+        // Use node centers for connection positioning
+        if (startNode) {
+          startPoint = { x: startNode.x, y: startNode.y };
+        }
+
+        if (endNode) {
+          endPoint = { x: endNode.x, y: endNode.y };
+        }
+
+        // For state connections, always use a straight line (start to end only)
+        const pathPoints = [startPoint, endPoint];
 
         if (pathPoints.length < 2) {
           return null;
