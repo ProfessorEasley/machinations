@@ -1797,6 +1797,12 @@ const Canvas: React.FC<CanvasProps> = ({
     y: number;
   } | null>(null);
 
+  // Waypoint dragging state
+  const [draggingWaypoint, setDraggingWaypoint] = useState<{
+    connectionId: number;
+    waypointIndex: number;
+  } | null>(null);
+
   const [gameEnded, setGameEnded] = useState(false);
   const gameEndedRef = useRef(false);
   const nextIdRef = useRef(0);
@@ -5126,6 +5132,29 @@ const Canvas: React.FC<CanvasProps> = ({
   // Mouse move to drag selected element(s) or update bounding box or resize or create connection
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (isRunning) return;
+
+    // Handle waypoint dragging
+    if (draggingWaypoint && canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const newX = e.clientX - rect.left;
+      const newY = e.clientY - rect.top;
+
+      setElements(prev =>
+        prev.map(el => {
+          if (el.id === draggingWaypoint.connectionId && el.points) {
+            const updatedPoints = [...el.points];
+            updatedPoints[draggingWaypoint.waypointIndex] = {
+              x: newX,
+              y: newY,
+            };
+            return { ...el, points: updatedPoints };
+          }
+          return el;
+        })
+      );
+      return;
+    }
+
     if (selectedTool === 'Select' && mouseDownOnCanvas && boxStart) {
       setIsSelectingBox(true);
       const rect = canvasRef.current!.getBoundingClientRect();
@@ -5226,6 +5255,12 @@ const Canvas: React.FC<CanvasProps> = ({
 
   // Mouse up to end dragging or bounding box selection or resize or create connection
   const handleMouseUp = () => {
+    // End waypoint dragging
+    if (draggingWaypoint) {
+      setDraggingWaypoint(null);
+      return;
+    }
+
     const wasDragging = draggingId !== null && dragOffset !== null;
     if (wasDragging && draggedElements) {
       setElements(draggedElements);
@@ -6238,6 +6273,29 @@ const Canvas: React.FC<CanvasProps> = ({
                   {el.text}
                 </text>
               )}
+              {/* Show waypoint circles when connection is selected */}
+              {isSelected &&
+                el.points &&
+                el.points.length > 0 &&
+                el.points.map((point, index) => (
+                  <circle
+                    key={`waypoint-${index}`}
+                    cx={point.x - left}
+                    cy={point.y - top}
+                    r="5"
+                    fill={baseConnectionColor}
+                    stroke="#fff"
+                    strokeWidth="2"
+                    style={{ cursor: 'grab', pointerEvents: 'auto' }}
+                    onMouseDown={e => {
+                      e.stopPropagation();
+                      setDraggingWaypoint({
+                        connectionId: el.id,
+                        waypointIndex: index,
+                      });
+                    }}
+                  />
+                ))}
             </svg>
             {isSelected && (
               <>
@@ -6434,6 +6492,29 @@ const Canvas: React.FC<CanvasProps> = ({
                   {el.text}
                 </text>
               )}
+              {/* Show waypoint circles when connection is selected */}
+              {isSelected &&
+                el.points &&
+                el.points.length > 0 &&
+                el.points.map((point, index) => (
+                  <circle
+                    key={`waypoint-${index}`}
+                    cx={point.x - left}
+                    cy={point.y - top}
+                    r="5"
+                    fill={el.color || '#000000'}
+                    stroke="#fff"
+                    strokeWidth="2"
+                    style={{ cursor: 'grab', pointerEvents: 'auto' }}
+                    onMouseDown={e => {
+                      e.stopPropagation();
+                      setDraggingWaypoint({
+                        connectionId: el.id,
+                        waypointIndex: index,
+                      });
+                    }}
+                  />
+                ))}
             </svg>
             {isSelected && (
               <>
