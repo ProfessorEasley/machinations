@@ -1416,12 +1416,18 @@ const recordTransfer = (
   if (units <= 0) return;
 
   // Determine the color to use for the tokens
+  // Priority: source element's resources color > connection color
   let tokenColor = normalizeColor(conn.color); // Default to connection color
 
-  // If source element has a resources color property and it's not black, use that instead
+  // If source element has a resources color property and it's not black/default, use that instead
   if (sourceElement && sourceElement.resources) {
     const resourceColor = normalizeColor(sourceElement.resources);
-    if (resourceColor !== '#000000') {
+    // Use source element's resource color if it's explicitly set (not black/default)
+    if (
+      resourceColor &&
+      resourceColor !== '#000000' &&
+      resourceColor !== '#000'
+    ) {
       tokenColor = resourceColor;
     }
   }
@@ -2869,7 +2875,7 @@ const Canvas: React.FC<CanvasProps> = ({
                 canTakeUnits(startEl, amountToTake, color)
               ) {
                 const taken = takeUnits(startEl, amountToTake, color);
-                if (transfers) recordTransfer(transfers, conn, taken);
+                if (transfers) recordTransfer(transfers, conn, taken, startEl);
                 const stateOuts = nextElements.filter(
                   c =>
                     c.type === 'State Connection' &&
