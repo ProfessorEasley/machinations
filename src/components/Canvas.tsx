@@ -1797,6 +1797,12 @@ const Canvas: React.FC<CanvasProps> = ({
     y: number;
   } | null>(null);
 
+  // Waypoint dragging state
+  const [draggingWaypoint, setDraggingWaypoint] = useState<{
+    connectionId: number;
+    waypointIndex: number;
+  } | null>(null);
+
   const [gameEnded, setGameEnded] = useState(false);
   const gameEndedRef = useRef(false);
   const nextIdRef = useRef(0);
@@ -4468,6 +4474,76 @@ const Canvas: React.FC<CanvasProps> = ({
     return { x: connectionX, y: connectionY };
   };
 
+  // Helper function to snap a node's center to its edge in the direction of another point
+  const snapNodeToEdgeInDirection = (
+    node: GraphElement,
+    targetPoint: { x: number; y: number }
+  ): { x: number; y: number } => {
+    const nodeCenter = { x: node.x, y: node.y };
+
+    // Get node size
+    let nodeWidth: number;
+    let nodeHeight: number;
+    if (node.type === 'Group') {
+      nodeWidth = node.width || 200;
+      nodeHeight = node.height || 150;
+    } else {
+      const size = getElementSize(node.thickness);
+      nodeWidth = size;
+      nodeHeight = size;
+    }
+
+    const offsetX = nodeWidth / 2;
+    const offsetY = nodeHeight / 2;
+    const left = node.x - offsetX;
+    const right = node.x + offsetX;
+    const top = node.y - offsetY;
+    const bottom = node.y + offsetY;
+
+    // Calculate direction from node center to target point
+    const dx = targetPoint.x - nodeCenter.x;
+    const dy = targetPoint.y - nodeCenter.y;
+    const distance = Math.hypot(dx, dy);
+
+    if (distance === 0) {
+      // If target is at same position, return node center
+      return nodeCenter;
+    }
+
+    // Normalize direction
+    const dirX = dx / distance;
+    const dirY = dy / distance;
+
+    // Find intersection of ray from node center in direction of target with node edges
+    // Calculate t values where ray intersects each edge
+    const tLeft =
+      offsetX > 0 ? (left - nodeCenter.x) / (dirX || 1e-10) : Infinity;
+    const tRight =
+      offsetX > 0 ? (right - nodeCenter.x) / (dirX || 1e-10) : Infinity;
+    const tTop =
+      offsetY > 0 ? (top - nodeCenter.y) / (dirY || 1e-10) : Infinity;
+    const tBottom =
+      offsetY > 0 ? (bottom - nodeCenter.y) / (dirY || 1e-10) : Infinity;
+
+    // Find the closest positive t (intersection in direction of target)
+    const validTs = [
+      dirX > 0 ? tRight : tLeft,
+      dirY > 0 ? tBottom : tTop,
+    ].filter(t => t > 0);
+
+    const t = Math.min(...validTs);
+
+    if (!isFinite(t)) {
+      return nodeCenter;
+    }
+
+    // Calculate intersection point
+    const intersectionX = nodeCenter.x + dirX * t;
+    const intersectionY = nodeCenter.y + dirY * t;
+
+    return { x: intersectionX, y: intersectionY };
+  };
+
   // const normalizeVector = (
   //   dx: number,
   //   dy: number
@@ -5056,6 +5132,29 @@ const Canvas: React.FC<CanvasProps> = ({
   // Mouse move to drag selected element(s) or update bounding box or resize or create connection
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (isRunning) return;
+
+    // Handle waypoint dragging
+    if (draggingWaypoint && canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const newX = e.clientX - rect.left;
+      const newY = e.clientY - rect.top;
+
+      setElements(prev =>
+        prev.map(el => {
+          if (el.id === draggingWaypoint.connectionId && el.points) {
+            const updatedPoints = [...el.points];
+            updatedPoints[draggingWaypoint.waypointIndex] = {
+              x: newX,
+              y: newY,
+            };
+            return { ...el, points: updatedPoints };
+          }
+          return el;
+        })
+      );
+      return;
+    }
+
     if (selectedTool === 'Select' && mouseDownOnCanvas && boxStart) {
       setIsSelectingBox(true);
       const rect = canvasRef.current!.getBoundingClientRect();
@@ -5156,6 +5255,12 @@ const Canvas: React.FC<CanvasProps> = ({
 
   // Mouse up to end dragging or bounding box selection or resize or create connection
   const handleMouseUp = () => {
+    // End waypoint dragging
+    if (draggingWaypoint) {
+      setDraggingWaypoint(null);
+      return;
+    }
+
     const wasDragging = draggingId !== null && dragOffset !== null;
     if (wasDragging && draggedElements) {
       setElements(draggedElements);
@@ -5504,7 +5609,7 @@ const Canvas: React.FC<CanvasProps> = ({
               y={30 * scale}
               className="element-value-text"
               fill="black"
-              fontSize={20 * scale}
+              fontSize={14 * scale}
             >
               ∞
             </text>
@@ -5589,7 +5694,7 @@ const Canvas: React.FC<CanvasProps> = ({
                   left: '50%',
                   transform: 'translate(-50%, -50%)',
                   color: el.color || '#000000',
-                  fontSize: '14px',
+                  fontSize: '11px',
                   fontWeight: 'bold',
                   textAlign: 'center',
                   pointerEvents: 'none',
@@ -5719,7 +5824,7 @@ const Canvas: React.FC<CanvasProps> = ({
                 <text
                   x={center}
                   y={15 * scale}
-                  fontSize={8 * scale}
+                  fontSize={5 * scale}
                   fill="white"
                   textAnchor="middle"
                   className="convertor-storage"
@@ -5735,7 +5840,7 @@ const Canvas: React.FC<CanvasProps> = ({
               <text
                 x={center}
                 y={30 * scale}
-                fontSize={6 * scale}
+                fontSize={4.5 * scale}
                 fill="white"
                 textAnchor="middle"
                 className="convertor-label"
@@ -5791,7 +5896,7 @@ const Canvas: React.FC<CanvasProps> = ({
               <text
                 x={center}
                 y={30 * scale}
-                fontSize={6 * scale}
+                fontSize={4.5 * scale}
                 fill={el.color || '#000000'}
                 textAnchor="middle"
                 className="trader-label"
@@ -5875,7 +5980,7 @@ const Canvas: React.FC<CanvasProps> = ({
                   position: 'absolute',
                   left: el.x - offset,
                   top: el.y - offset + size + 5,
-                  fontSize: `${12 * scale}px`,
+                  fontSize: `${10 * scale}px`,
                   fontWeight: 'bold',
                   color: el.color || '#000000',
                   textAlign: 'center',
@@ -5938,7 +6043,7 @@ const Canvas: React.FC<CanvasProps> = ({
               y={center + size / 8}
               className="register-text"
               fill="black"
-              fontSize={14 * scale}
+              fontSize={11 * scale}
               textAnchor="middle"
               fontWeight="bold"
             >
@@ -5993,7 +6098,7 @@ const Canvas: React.FC<CanvasProps> = ({
               x={center}
               y={center + 2 * scale}
               className="delay-text"
-              fontSize={14 * scale}
+              fontSize={11 * scale}
             >
               8
             </text>
@@ -6001,14 +6106,44 @@ const Canvas: React.FC<CanvasProps> = ({
         );
       }
       case 'Resource Connection': {
-        const startPoint = {
+        // Get the connected nodes to calculate proper positioning
+        const startNode = elements.find(
+          node => node.id === el.connectedToStart
+        );
+        const endNode = elements.find(node => node.id === el.connectedToEnd);
+
+        let startPoint = {
           x: el.startX ?? el.x,
           y: el.startY ?? el.y,
         };
-        const endPoint = {
+        let endPoint = {
           x: el.endX ?? el.x,
           y: el.endY ?? el.y,
         };
+
+        // Snap nodes to their edges in the direction of the next point (first waypoint or end node)
+        if (startNode && endNode) {
+          // If there are waypoints, snap start to first waypoint; otherwise snap to end node
+          const startTargetPoint =
+            el.points && el.points.length > 0
+              ? el.points[0]
+              : { x: endNode.x, y: endNode.y };
+
+          // If there are waypoints, snap end to last waypoint; otherwise snap to start node
+          const endTargetPoint =
+            el.points && el.points.length > 0
+              ? el.points[el.points.length - 1]
+              : { x: startNode.x, y: startNode.y };
+
+          startPoint = snapNodeToEdgeInDirection(startNode, startTargetPoint);
+          endPoint = snapNodeToEdgeInDirection(endNode, endTargetPoint);
+        } else if (startNode) {
+          startPoint = { x: startNode.x, y: startNode.y };
+        } else if (endNode) {
+          endPoint = { x: endNode.x, y: endNode.y };
+        }
+
+        // Include intermediate waypoints if they exist, creating a polyline that follows breakpoints
         const pathPoints = [startPoint, ...(el.points ?? []), endPoint];
 
         if (pathPoints.length < 2) {
@@ -6103,16 +6238,20 @@ const Canvas: React.FC<CanvasProps> = ({
                 <marker
                   id={`arrowhead-${el.id}`}
                   className="arrow-marker"
-                  viewBox="0 0 10 7"
-                  refX="10"
-                  refY="3.5"
-                  markerWidth="10"
-                  markerHeight="7"
+                  viewBox="0 0 10 10"
+                  refX="7"
+                  refY="5"
+                  markerWidth="6"
+                  markerHeight="6"
                   orient="auto-start-reverse"
                 >
                   <polygon
-                    points="0 0, 10 3.5, 0 7"
+                    points="0 0, 6 5, 0 10"
                     fill={markerStroke}
+                    stroke={markerStroke}
+                    strokeWidth="1"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                     className="arrow-polygon"
                   />
                 </marker>
@@ -6138,6 +6277,29 @@ const Canvas: React.FC<CanvasProps> = ({
                   {el.text}
                 </text>
               )}
+              {/* Show waypoint circles when connection is selected */}
+              {isSelected &&
+                el.points &&
+                el.points.length > 0 &&
+                el.points.map((point, index) => (
+                  <circle
+                    key={`waypoint-${index}`}
+                    cx={point.x - left}
+                    cy={point.y - top}
+                    r="5"
+                    fill={baseConnectionColor}
+                    stroke="#fff"
+                    strokeWidth="2"
+                    style={{ cursor: 'grab', pointerEvents: 'auto' }}
+                    onMouseDown={e => {
+                      e.stopPropagation();
+                      setDraggingWaypoint({
+                        connectionId: el.id,
+                        waypointIndex: index,
+                      });
+                    }}
+                  />
+                ))}
             </svg>
             {isSelected && (
               <>
@@ -6165,14 +6327,44 @@ const Canvas: React.FC<CanvasProps> = ({
         );
       }
       case 'State Connection': {
-        const startPoint = {
+        // Get the connected nodes to calculate proper positioning
+        const startNode = elements.find(
+          node => node.id === el.connectedToStart
+        );
+        const endNode = elements.find(node => node.id === el.connectedToEnd);
+
+        let startPoint = {
           x: el.startX ?? el.x,
           y: el.startY ?? el.y,
         };
-        const endPoint = {
+        let endPoint = {
           x: el.endX ?? el.x,
           y: el.endY ?? el.y,
         };
+
+        // Snap nodes to their edges in the direction of the next point (first waypoint or end node)
+        if (startNode && endNode) {
+          // If there are waypoints, snap start to first waypoint; otherwise snap to end node
+          const startTargetPoint =
+            el.points && el.points.length > 0
+              ? el.points[0]
+              : { x: endNode.x, y: endNode.y };
+
+          // If there are waypoints, snap end to last waypoint; otherwise snap to start node
+          const endTargetPoint =
+            el.points && el.points.length > 0
+              ? el.points[el.points.length - 1]
+              : { x: startNode.x, y: startNode.y };
+
+          startPoint = snapNodeToEdgeInDirection(startNode, startTargetPoint);
+          endPoint = snapNodeToEdgeInDirection(endNode, endTargetPoint);
+        } else if (startNode) {
+          startPoint = { x: startNode.x, y: startNode.y };
+        } else if (endNode) {
+          endPoint = { x: endNode.x, y: endNode.y };
+        }
+
+        // Include intermediate waypoints if they exist, creating a polyline that follows breakpoints
         const pathPoints = [startPoint, ...(el.points ?? []), endPoint];
 
         if (pathPoints.length < 2) {
@@ -6267,17 +6459,20 @@ const Canvas: React.FC<CanvasProps> = ({
                 <marker
                   id={`arrowhead-dashed-${el.id}`}
                   className="arrow-marker"
-                  viewBox="0 0 10 7"
-                  refX="10"
-                  refY="3.5"
-                  markerWidth="10"
-                  markerHeight="7"
+                  viewBox="0 0 10 10"
+                  refX="7"
+                  refY="5"
+                  markerWidth="6"
+                  markerHeight="6"
                   orient="auto-start-reverse"
                 >
                   <polygon
-                    points="0 0, 10 3.5, 0 7"
-                    // fill={markerStroke}
+                    points="0 0, 6 5, 0 10"
                     fill={el.color || '#000000'}
+                    stroke={el.color || '#000000'}
+                    strokeWidth="1"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                     className="dashed-arrow-polygon"
                   />
                 </marker>
@@ -6304,6 +6499,29 @@ const Canvas: React.FC<CanvasProps> = ({
                   {el.text}
                 </text>
               )}
+              {/* Show waypoint circles when connection is selected */}
+              {isSelected &&
+                el.points &&
+                el.points.length > 0 &&
+                el.points.map((point, index) => (
+                  <circle
+                    key={`waypoint-${index}`}
+                    cx={point.x - left}
+                    cy={point.y - top}
+                    r="5"
+                    fill={el.color || '#000000'}
+                    stroke="#fff"
+                    strokeWidth="2"
+                    style={{ cursor: 'grab', pointerEvents: 'auto' }}
+                    onMouseDown={e => {
+                      e.stopPropagation();
+                      setDraggingWaypoint({
+                        connectionId: el.id,
+                        waypointIndex: index,
+                      });
+                    }}
+                  />
+                ))}
             </svg>
             {isSelected && (
               <>
