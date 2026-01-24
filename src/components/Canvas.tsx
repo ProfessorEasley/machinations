@@ -1416,13 +1416,23 @@ const recordTransfer = (
   if (units <= 0) return;
 
   // Determine the color to use for the tokens
+  // Priority: source element's resources color > connection color
   let tokenColor = normalizeColor(conn.color); // Default to connection color
 
-  // If source element has a resources color property and it's not black, use that instead
+  // If source element has a resources color property and it's not black/default, use that instead
   if (sourceElement && sourceElement.resources) {
-    const resourceColor = normalizeColor(sourceElement.resources);
-    if (resourceColor !== '#000000') {
-      tokenColor = resourceColor;
+    const resourceColorStr = sourceElement.resources.trim();
+    if (resourceColorStr) {
+      const resourceColor = normalizeColor(resourceColorStr);
+      // Use source element's resource color if it's explicitly set (not black/default)
+      if (
+        resourceColor &&
+        resourceColor !== '#000000' &&
+        resourceColor !== '#000' &&
+        resourceColor.toLowerCase() !== 'black'
+      ) {
+        tokenColor = resourceColor;
+      }
     }
   }
 
@@ -2808,7 +2818,7 @@ const Canvas: React.FC<CanvasProps> = ({
                 currentTick
               );
               if (amountToDispatch > 0) {
-                deliverUnits(conn, amountToDispatch);
+                deliverUnits(conn, amountToDispatch, source);
               }
             }
           });
@@ -2869,7 +2879,7 @@ const Canvas: React.FC<CanvasProps> = ({
                 canTakeUnits(startEl, amountToTake, color)
               ) {
                 const taken = takeUnits(startEl, amountToTake, color);
-                if (transfers) recordTransfer(transfers, conn, taken);
+                if (transfers) recordTransfer(transfers, conn, taken, startEl);
                 const stateOuts = nextElements.filter(
                   c =>
                     c.type === 'State Connection' &&
@@ -3138,11 +3148,19 @@ const Canvas: React.FC<CanvasProps> = ({
                 const key = `conn_${inputConn.id}`;
                 const current = trader.traderInputs![key] || 0;
                 trader.traderInputs![key] = current + avail;
+                // Show animation for resources entering trader
+                if (transfers) {
+                  recordTransfer(transfers, inputConn, avail, inputElement);
+                }
               }
             } else if (inputElement && inputElement.type === 'Source') {
               const key = `conn_${inputConn.id}`;
               const current = trader.traderInputs![key] || 0;
               trader.traderInputs![key] = current + amount;
+              // Show animation for resources entering trader from Source
+              if (transfers) {
+                recordTransfer(transfers, inputConn, amount, inputElement);
+              }
             }
           }
         }
@@ -3457,8 +3475,17 @@ const Canvas: React.FC<CanvasProps> = ({
                 requiredAmount,
                 inputElement
               );
+            } else if (inputElement && inputElement.type === 'Source') {
+              // Source doesn't need to be consumed (infinite), but show animation
+              if (transfers) {
+                recordTransfer(
+                  transfers,
+                  inputConn,
+                  requiredAmount,
+                  inputElement
+                );
+              }
             }
-            // Source doesn't need to be consumed (infinite)
           }
         }
 
@@ -3477,6 +3504,10 @@ const Canvas: React.FC<CanvasProps> = ({
           if (outputElement && outputElement.type === 'Pool') {
             const current = outputElement.currentPoints ?? 0;
             const max = outputElement.max ?? Infinity;
+            const accepted = Math.min(totalInput, max - current);
+            if (accepted > 0 && transfers) {
+              recordTransfer(transfers, outputConn, accepted, trader);
+            }
             outputElement.currentPoints = Math.min(current + totalInput, max);
           }
         } else if (inputConns.length === 1 && outputConns.length > 1) {
@@ -3488,6 +3519,10 @@ const Canvas: React.FC<CanvasProps> = ({
             if (outputElement && outputElement.type === 'Pool') {
               const current = outputElement.currentPoints ?? 0;
               const max = outputElement.max ?? Infinity;
+              const accepted = Math.min(inputAmount, max - current);
+              if (accepted > 0 && transfers) {
+                recordTransfer(transfers, outputConn, accepted, trader);
+              }
               outputElement.currentPoints = Math.min(
                 current + inputAmount,
                 max
@@ -3503,7 +3538,10 @@ const Canvas: React.FC<CanvasProps> = ({
               if (outputElement && outputElement.type === 'Pool') {
                 const current = outputElement.currentPoints ?? 0;
                 const max = outputElement.max ?? Infinity;
-                recordTransfer(transfers, outputConn, outputAmount, trader);
+                const accepted = Math.min(outputAmount, max - current);
+                if (accepted > 0 && transfers) {
+                  recordTransfer(transfers, outputConn, accepted, trader);
+                }
                 outputElement.currentPoints = Math.min(
                   current + outputAmount,
                   max
@@ -3561,10 +3599,12 @@ const Canvas: React.FC<CanvasProps> = ({
           if (outputElement && outputElement.type === 'Pool') {
             const current = outputElement.currentPoints ?? 0;
             const max = outputElement.max ?? Infinity;
-            outputElement.currentPoints = Math.min(
-              current + totalInputPerTrade * tradesToExecute,
-              max
-            );
+            const totalOutput = totalInputPerTrade * tradesToExecute;
+            const accepted = Math.min(totalOutput, max - current);
+            if (accepted > 0 && transfers) {
+              recordTransfer(transfers, outputConn, accepted, trader);
+            }
+            outputElement.currentPoints = Math.min(current + totalOutput, max);
           }
         } else if (inputConns.length === 1 && outputConns.length > 1) {
           // Single input, multiple outputs: split input to all outputs
@@ -3575,8 +3615,13 @@ const Canvas: React.FC<CanvasProps> = ({
             if (outputElement && outputElement.type === 'Pool') {
               const current = outputElement.currentPoints ?? 0;
               const max = outputElement.max ?? Infinity;
+              const totalOutput = inputAmount * tradesToExecute;
+              const accepted = Math.min(totalOutput, max - current);
+              if (accepted > 0 && transfers) {
+                recordTransfer(transfers, outputConn, accepted, trader);
+              }
               outputElement.currentPoints = Math.min(
-                current + inputAmount * tradesToExecute,
+                current + totalOutput,
                 max
               );
             }
@@ -3590,8 +3635,13 @@ const Canvas: React.FC<CanvasProps> = ({
               if (outputElement && outputElement.type === 'Pool') {
                 const current = outputElement.currentPoints ?? 0;
                 const max = outputElement.max ?? Infinity;
+                const totalOutput = outputAmount * tradesToExecute;
+                const accepted = Math.min(totalOutput, max - current);
+                if (accepted > 0 && transfers) {
+                  recordTransfer(transfers, outputConn, accepted, trader);
+                }
                 outputElement.currentPoints = Math.min(
-                  current + outputAmount * tradesToExecute,
+                  current + totalOutput,
                   max
                 );
               }
@@ -3778,8 +3828,17 @@ const Canvas: React.FC<CanvasProps> = ({
                 requiredAmount,
                 inputElement
               );
+            } else if (inputElement && inputElement.type === 'Source') {
+              // Source doesn't need to be consumed (infinite), but show animation
+              if (transfers) {
+                recordTransfer(
+                  transfers,
+                  inputConn,
+                  requiredAmount,
+                  inputElement
+                );
+              }
             }
-            // Source doesn't need to be consumed (infinite)
           }
         }
 
@@ -3798,6 +3857,10 @@ const Canvas: React.FC<CanvasProps> = ({
             if (outputElement && outputElement.type === 'Pool') {
               const current = outputElement.currentPoints ?? 0;
               const max = outputElement.max ?? Infinity;
+              const accepted = Math.min(totalInput, max - current);
+              if (accepted > 0 && transfers) {
+                recordTransfer(transfers, outputConn, accepted, trader);
+              }
               outputElement.currentPoints = Math.min(current + totalInput, max);
             }
           }
@@ -3816,6 +3879,10 @@ const Canvas: React.FC<CanvasProps> = ({
                 if (outputElement && outputElement.type === 'Pool') {
                   const current = outputElement.currentPoints ?? 0;
                   const max = outputElement.max ?? Infinity;
+                  const accepted = Math.min(input.amount, max - current);
+                  if (accepted > 0 && transfers) {
+                    recordTransfer(transfers, outputConn, accepted, trader);
+                  }
                   // Send the amount from this input to this output
                   outputElement.currentPoints = Math.min(
                     current + input.amount,
@@ -3875,8 +3942,13 @@ const Canvas: React.FC<CanvasProps> = ({
             if (outputElement && outputElement.type === 'Pool') {
               const current = outputElement.currentPoints ?? 0;
               const max = outputElement.max ?? Infinity;
+              const totalOutput = totalInputPerTrade * tradesToExecute;
+              const accepted = Math.min(totalOutput, max - current);
+              if (accepted > 0 && transfers) {
+                recordTransfer(transfers, outputConn, accepted, trader);
+              }
               outputElement.currentPoints = Math.min(
-                current + totalInputPerTrade * tradesToExecute,
+                current + totalOutput,
                 max
               );
             }
@@ -3896,9 +3968,14 @@ const Canvas: React.FC<CanvasProps> = ({
                 if (outputElement && outputElement.type === 'Pool') {
                   const current = outputElement.currentPoints ?? 0;
                   const max = outputElement.max ?? Infinity;
+                  const totalOutput = input.amount * tradesToExecute;
+                  const accepted = Math.min(totalOutput, max - current);
+                  if (accepted > 0 && transfers) {
+                    recordTransfer(transfers, outputConn, accepted, trader);
+                  }
                   // Send the amount from this input to this output (multiplied by trades)
                   outputElement.currentPoints = Math.min(
-                    current + input.amount * tradesToExecute,
+                    current + totalOutput,
                     max
                   );
                 }
