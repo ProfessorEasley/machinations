@@ -215,25 +215,6 @@ const graphTools = [
   'Artifical Intelligence',
 ];
 
-const TOOL_SYMBOLS: Record<string, string> = {
-  Select: '⌖',
-  'Text Label': 'T',
-  Group: '▭',
-  Chart: '▦',
-  Pool: '○',
-  Gate: '◇',
-  'Resource Connection': '→',
-  'State Connection': '⇢',
-  Source: '▲',
-  Drain: '▼',
-  Convertor: '▶',
-  Trader: '▱',
-  Delay: '8',
-  Register: '□',
-  'End Condition': '■',
-  'Artifical Intelligence': 'AI',
-};
-
 const fileTools = [
   'New (N)',
   'Open (O)',
@@ -512,21 +493,12 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
             {graphTools.map(tool => (
               <button
                 key={tool}
-                className={[
-                  'tool-button',
-                  selectedTool === tool ? 'selected' : '',
-                ]
-                  .join(' ')
-                  .trim()}
+                className={selectedTool === tool ? 'selected' : ''}
                 onClick={() => setSelectedTool(tool)}
                 draggable
                 onDragStart={e => handleDragStart(e, tool)}
-                title={tool}
-                aria-label={tool}
               >
-                <span className="tool-symbol" aria-hidden="true">
-                  {TOOL_SYMBOLS[tool] ?? tool}
-                </span>
+                {tool}
               </button>
             ))}
           </>
