@@ -56,11 +56,6 @@ const ChartElement: React.FC<ChartElementProps> = ({
   const MIN_WIDTH = 100;
   const MIN_HEIGHT = 80;
 
-  const [localSize, setLocalSize] = useState<{
-    width: number;
-    height: number;
-  } | null>(null);
-
   const handleResizeStart = useCallback(
     (e: React.MouseEvent, handle: string) => {
       e.stopPropagation();
@@ -95,7 +90,6 @@ const ChartElement: React.FC<ChartElementProps> = ({
         }
 
         currentSize = { width: newWidth, height: newHeight };
-        setLocalSize(currentSize);
       };
 
       const handleMouseUp = () => {
@@ -109,7 +103,6 @@ const ChartElement: React.FC<ChartElementProps> = ({
         ) {
           onResize(currentSize.width, currentSize.height);
         }
-        setLocalSize(null);
       };
 
       document.addEventListener('mousemove', handleMouseMove);
@@ -132,7 +125,7 @@ const ChartElement: React.FC<ChartElementProps> = ({
 
   const yGridLines = useMemo(() => {
     const lines: { y: number; label: string }[] = [];
-    let step = yRatio * 0.25;
+    const step = yRatio * 0.25;
     let yPos = step;
 
     while (yPos < 1) {

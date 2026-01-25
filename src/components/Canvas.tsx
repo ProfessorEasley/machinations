@@ -9,7 +9,6 @@ import {
   autoExpandScaleY,
   autoExpandNegScaleY,
 } from '../utils/ChartUtils';
-import type { ChartState } from '../utils/ChartUtils';
 import './Chart.css';
 
 interface CanvasProps {
