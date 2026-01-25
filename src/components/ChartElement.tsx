@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useState } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import type { CSSProperties } from 'react';
 import { exportChartDataToCSV, downloadCSV } from '../utils/ChartUtils';
 import type { ChartState } from '../utils/ChartUtils';
