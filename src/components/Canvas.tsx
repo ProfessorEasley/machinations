@@ -1028,7 +1028,9 @@ const Canvas: React.FC<CanvasProps> = ({
           if (list) {
             list.push(connection);
           } else {
-            stateConnectionsByStart.set(connection.connectedToStart, [connection]);
+            stateConnectionsByStart.set(connection.connectedToStart, [
+              connection,
+            ]);
           }
         }
       }
@@ -2476,8 +2478,8 @@ const Canvas: React.FC<CanvasProps> = ({
   const collectResourcesForPullAny = (
     trader: GraphElement,
     inputConns: GraphElement[],
-  elementMap: Map<number, GraphElement>,
-  onArrival: (startElementId?: number) => void
+    elementMap: Map<number, GraphElement>,
+    onArrival: (startElementId?: number) => void
   ) => {
     for (const inputConn of inputConns) {
       const inputElement = inputConn.connectedToStart
@@ -2516,8 +2518,8 @@ const Canvas: React.FC<CanvasProps> = ({
     trader: GraphElement,
     inputConns: GraphElement[],
     outputConns: GraphElement[],
-  elementMap: Map<number, GraphElement>,
-  onArrival: (startElementId?: number) => void
+    elementMap: Map<number, GraphElement>,
+    onArrival: (startElementId?: number) => void
   ) => {
     // Parse input connection labels to determine required resources
     // Use connection ID as key to handle multiple connections
@@ -2750,8 +2752,8 @@ const Canvas: React.FC<CanvasProps> = ({
     trader: GraphElement,
     inputConns: GraphElement[],
     outputConns: GraphElement[],
-  elementMap: Map<number, GraphElement>,
-  onArrival: (startElementId?: number) => void
+    elementMap: Map<number, GraphElement>,
+    onArrival: (startElementId?: number) => void
   ) => {
     // Parse input connection labels to determine required resources
     // Use connection ID as key to handle multiple connections
