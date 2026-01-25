@@ -549,6 +549,10 @@ const Canvas: React.FC<CanvasProps> = ({
     width: number;
     height: number;
   } | null>(null);
+  const [draggingCorner, setDraggingCorner] = useState<{
+    connectionId: number;
+    pointIndex: number;
+  } | null>(null);
 
   // Connection creation state
   const [isCreatingConnection, setIsCreatingConnection] = useState(false);
@@ -4057,6 +4061,35 @@ const Canvas: React.FC<CanvasProps> = ({
       setBoxEnd({ x: e.clientX - rect.left, y: e.clientY - rect.top });
     }
 
+    if (draggingCorner) {
+      if (!canvasRef.current) return;
+      const rect = canvasRef.current.getBoundingClientRect();
+      const currentX = e.clientX - rect.left;
+      const currentY = e.clientY - rect.top;
+      setElements(prev =>
+        prev.map(el => {
+          if (
+            el.id !== draggingCorner.connectionId ||
+            el.type !== 'State Connection'
+          ) {
+            return el;
+          }
+          const points = [...(el.points ?? [])];
+          if (!points[draggingCorner.pointIndex]) return el;
+          const startPoint = { x: el.startX ?? el.x, y: el.startY ?? el.y };
+          const endPoint = { x: el.endX ?? el.x, y: el.endY ?? el.y };
+          const target = points[draggingCorner.pointIndex];
+          const isEndpoint =
+            (target.x === startPoint.x && target.y === startPoint.y) ||
+            (target.x === endPoint.x && target.y === endPoint.y);
+          if (isEndpoint) return el;
+          points[draggingCorner.pointIndex] = { x: currentX, y: currentY };
+          return { ...el, points };
+        })
+      );
+      return;
+    }
+
     // Handle connection creation
     if (isCreatingConnection) {
       if (!canvasRef.current) return;
@@ -4164,6 +4197,10 @@ const Canvas: React.FC<CanvasProps> = ({
     // Handle resize end
     if (isResizing) {
       handleResizeEnd();
+      return;
+    }
+    if (draggingCorner) {
+      setDraggingCorner(null);
       return;
     }
 
@@ -4354,11 +4391,15 @@ const Canvas: React.FC<CanvasProps> = ({
     return Math.min(calculatedSize, maxSize);
   };
 
+  const shouldShowConditionState = isRunning || hasSimulationStarted;
+
   // Render each element
   const renderElement = (el: GraphElement) => {
     const isSelected = selectedId.includes(el.id);
     const applyConditionStyle = (style: CSSProperties = {}): CSSProperties =>
-      el.hasUnsatisfiedCondition ? { ...style, opacity: 0.4 } : style;
+      shouldShowConditionState && el.hasUnsatisfiedCondition
+        ? { ...style, opacity: 0.4 }
+        : style;
     switch (el.type) {
       case 'Text Label':
         return (
@@ -5035,7 +5076,8 @@ const Canvas: React.FC<CanvasProps> = ({
 
         const labelX = labelPoint.x - left;
         const labelY = labelPoint.y - top;
-        const isConditionUnsatisfied = !!el.hasUnsatisfiedCondition;
+        const isConditionUnsatisfied =
+          shouldShowConditionState && !!el.hasUnsatisfiedCondition;
         const baseConnectionColor = el.color || '#000000';
         const stateStroke = isConditionUnsatisfied
           ? '#B0B0B0'
@@ -5173,14 +5215,18 @@ const Canvas: React.FC<CanvasProps> = ({
 
         const labelX = labelPoint.x - left;
         const labelY = labelPoint.y - top;
+        const isEndpointPoint = (point: { x: number; y: number }) =>
+          (point.x === startPoint.x && point.y === startPoint.y) ||
+          (point.x === endPoint.x && point.y === endPoint.y);
 
         const targetElement = elements.find(
           element => element.id === el.connectedToEnd
         );
         const isConditionUnsatisfied =
-          (targetElement && targetElement.hasUnsatisfiedCondition) ||
-          (typeof targetElement === 'undefined' &&
-            el.conditionSatisfied === false);
+          shouldShowConditionState &&
+          ((targetElement && targetElement.hasUnsatisfiedCondition) ||
+            (typeof targetElement === 'undefined' &&
+              el.conditionSatisfied === false));
         // const stateStroke = isConditionUnsatisfied ? '#B0B0B0' : '#000000';
         // const markerStroke = stateStroke;
         const labelFill = isConditionUnsatisfied ? '#888888' : '#000000';
@@ -5254,26 +5300,34 @@ const Canvas: React.FC<CanvasProps> = ({
                 </text>
               )}
             </svg>
-            {isSelected && (
-              <>
+            {(el.points ?? [])
+              .map((point, index) => ({ point, index }))
+              .filter(({ point }) => !isEndpointPoint(point))
+              .map(({ point, index }) => (
                 <div
-                  className="arrow-handle"
+                  key={`${el.id}-corner-${index}`}
                   style={{
-                    left: startPoint.x - left - 4,
-                    top: startPoint.y - top - 4,
+                    position: 'absolute',
+                    left: point.x - left - 4,
+                    top: point.y - top - 4,
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: el.color || '#000000',
+                    border: '1px solid #ffffff',
+                    cursor: 'move',
+                    zIndex: 2,
                   }}
-                  onMouseDown={e => handleArrowResizeStart(e, el.id, 'start')}
-                />
-                <div
-                  className="arrow-handle"
-                  style={{
-                    left: endPoint.x - left - 4,
-                    top: endPoint.y - top - 4,
+                  onMouseDown={e => {
+                    if (isRunning) return;
+                    e.stopPropagation();
+                    setDraggingCorner({
+                      connectionId: el.id,
+                      pointIndex: index,
+                    });
                   }}
-                  onMouseDown={e => handleArrowResizeStart(e, el.id, 'end')}
                 />
-              </>
-            )}
+              ))}
           </div>
         );
       }
