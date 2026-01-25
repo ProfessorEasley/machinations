@@ -129,10 +129,6 @@ interface CanvasProps {
   };
 }
 
-interface CustomWindow extends Window {
-  __GAME_ENDED__?: boolean;
-}
-
 type GraphElementType =
   | 'Text Label'
   | 'Group'
@@ -169,8 +165,6 @@ interface GraphElement {
   number?: number;
   max?: number;
   displayLimit?: number;
-
-  resourcesByColor?: Record<string, number>;
 
   actions?: number;
 
@@ -212,816 +206,6 @@ interface GraphElement {
   currentPoints?: number;
   hasStarted?: boolean;
   inhibited?: boolean;
-  labelPosition?: number;
-
-  // Artificial Intelligence node script (from XML import + toolProperties)
-  script?: string;
-}
-
-// ------------------------------
-// XML Import (Upload + Parse)
-// ------------------------------
-
-type XmlImportResult = {
-  elements: GraphElement[];
-  warnings: string[];
-};
-
-const isProbablyXmlFile = (f: File) => {
-  const nameOk = f.name.toLowerCase().endsWith('.xml');
-  const typeOk = (f.type || '').toLowerCase().includes('xml');
-  return nameOk || typeOk;
-};
-
-const attrAny = (el: Element, names: string[]): string | undefined => {
-  for (const n of names) {
-    const v = el.getAttribute(n);
-    if (v != null && String(v).trim() !== '') return String(v);
-  }
-  return undefined;
-};
-
-const numAttrAny = (
-  el: Element,
-  names: string[],
-  fallback?: number
-): number | undefined => {
-  const raw = attrAny(el, names);
-  if (raw == null) return fallback;
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : fallback;
-};
-
-const textAny = (el: Element, names: string[]): string | undefined => {
-  const a = attrAny(el, names);
-  if (a != null) return a;
-  // also allow <label> or <text> children
-  for (const tag of names) {
-    const child = el.querySelector(tag);
-    if (child && child.textContent && child.textContent.trim()) {
-      return child.textContent.trim();
-    }
-  }
-  const t = el.textContent?.trim();
-  return t ? t : undefined;
-};
-
-const normalizeActivation = (
-  raw?: string
-): GraphElement['activation'] | undefined => {
-  if (!raw) return undefined;
-  const s = raw.trim().toLowerCase();
-  if (s === 'passive') return 'passive';
-  if (s === 'interactive') return 'interactive';
-  if (s === 'automatic') return 'automatic';
-  if (s === 'onstart' || s === 'on start') return 'onstart';
-  return undefined;
-};
-
-const normalizePullMode = (
-  raw?: string
-): GraphElement['pullMode'] | undefined => {
-  if (!raw) return undefined;
-  const s = raw.trim().toLowerCase().replace(/[_]+/g, ' ');
-  if (s === 'pull any') return 'pull any';
-  if (s === 'pull all') return 'pull all';
-  if (s === 'push any') return 'push any';
-  if (s === 'push all') return 'push all';
-  return undefined;
-};
-
-const normalizeGateType = (
-  raw?: string
-): GraphElement['gateType'] | undefined => {
-  if (!raw) return undefined;
-  const s = raw.trim().toLowerCase();
-  if (s === 'deterministic') return 'deterministic';
-  if (s === 'dice') return 'dice';
-  if (s === 'skill') return 'skill';
-  if (s === 'multiplayer') return 'multiplayer';
-  if (s === 'strategy') return 'strategy';
-  return undefined;
-};
-
-const normalizeGraphElementType = (
-  raw?: string
-): GraphElementType | undefined => {
-  if (!raw) return undefined;
-  const s = raw.trim().toLowerCase();
-
-  // common aliases
-  if (s === 'text label' || s === 'textlabel' || s === 'label' || s === 'text')
-    return 'Text Label';
-  if (s === 'group') return 'Group';
-  if (s === 'chart') return 'Chart';
-  if (s === 'pool') return 'Pool';
-  if (s === 'gate') return 'Gate';
-  if (
-    s === 'resource connection' ||
-    s === 'resourceconnection' ||
-    s === 'resource'
-  )
-    return 'Resource Connection';
-  if (s === 'state connection' || s === 'stateconnection' || s === 'state')
-    return 'State Connection';
-  if (s === 'source') return 'Source';
-  if (s === 'drain') return 'Drain';
-  if (s === 'convertor' || s === 'converter') return 'Convertor';
-  if (s === 'trader') return 'Trader';
-  if (s === 'delay') return 'Delay';
-  if (s === 'register') return 'Register';
-  if (s === 'end condition' || s === 'endcondition') return 'End Condition';
-  if (
-    s === 'artificial intelligence' ||
-    s === 'ai' ||
-    s === 'artifical intelligence'
-  )
-    return 'Artifical Intelligence'; // (your union spelling)
-
-  return undefined;
-};
-
-const tagNameToType = (tag: string): GraphElementType | undefined => {
-  const t = tag.toLowerCase();
-  return normalizeGraphElementType(
-    t.replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim()
-  );
-};
-
-const parsePointsAttr = (raw?: string): { x: number; y: number }[] => {
-  if (!raw) return [];
-  // supports:
-  // "x1,y1 x2,y2 x3,y3"
-  // or "x1 y1; x2 y2; ..."
-  const cleaned = raw.trim().replace(/;/g, ' ');
-  const parts = cleaned.split(/\s+/).filter(Boolean);
-
-  const pts: { x: number; y: number }[] = [];
-  for (const p of parts) {
-    const m = p.split(',');
-    if (m.length === 2) {
-      const x = Number(m[0]);
-      const y = Number(m[1]);
-      if (Number.isFinite(x) && Number.isFinite(y)) pts.push({ x, y });
-    }
-  }
-  return pts;
-};
-
-const parseChildPoints = (el: Element): { x: number; y: number }[] => {
-  const pts: { x: number; y: number }[] = [];
-  const pointEls = Array.from(el.querySelectorAll('point, pt, waypoint'));
-  for (const p of pointEls) {
-    const x = numAttrAny(p, ['x', 'cx', 'px']);
-    const y = numAttrAny(p, ['y', 'cy', 'py']);
-    if (x != null && y != null) pts.push({ x, y });
-  }
-  return pts;
-};
-
-// // stable-ish string -> number (32-bit)
-// const hashToInt = (s: string): number => {
-//   let h = 2166136261;
-//   for (let i = 0; i < s.length; i++) {
-//     h ^= s.charCodeAt(i);
-//     h = Math.imul(h, 16777619);
-//   }
-//   // keep positive, within safe int
-//   return h >>> 0 || 1;
-// };
-
-// const coerceId = (raw: string | undefined, fallback: number): number => {
-//   if (!raw) return fallback;
-//   const trimmed = raw.trim();
-//   if (/^\d+$/.test(trimmed)) {
-//     const n = Number(trimmed);
-//     return Number.isFinite(n) ? n : fallback;
-//   }
-//   return hashToInt(trimmed);
-// };
-
-function parseGraphFromXml(xmlText: string): XmlImportResult {
-  if (typeof DOMParser === 'undefined') {
-    throw new Error('XML parsing is not available in this environment.');
-  }
-
-  const warnings: string[] = [];
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(xmlText, 'text/xml');
-
-  // detect parsererror
-  const perr = doc.getElementsByTagName('parsererror')[0];
-  if (perr) {
-    throw new Error(
-      `Invalid XML: ${perr.textContent?.trim() || 'parsererror'}`
-    );
-  }
-
-  // ------------------------------------------------------------------
-  // STEP 1: Collect node+connection candidates IN ONE query (doc order)
-  // ------------------------------------------------------------------
-  const NODE_TAGS = [
-    'element',
-    'node',
-    'item',
-    'pool',
-    'gate',
-    'source',
-    'drain',
-    'convertor',
-    'converter',
-    'trader',
-    'delay',
-    'register',
-    'endCondition',
-    'end-condition',
-    'textLabel',
-    'text-label',
-    'group',
-    'ai',
-    'artificialIntelligence',
-    'artificalIntelligence',
-  ];
-
-  const CONN_TAGS = [
-    'connection',
-    'edge',
-    'link',
-    'resourceConnection',
-    'resource-connection',
-    'stateConnection',
-    'state-connection',
-  ];
-
-  const CANDIDATE_SELECTOR = [...NODE_TAGS, ...CONN_TAGS].join(',');
-  const orderedCandidates = Array.from(
-    doc.querySelectorAll(CANDIDATE_SELECTOR)
-  );
-
-  // ✅ shared for nodes + connections
-  const xmlRefToId = new Map<string, number>();
-
-  const addXmlKey = (key: string | undefined, id: number) => {
-    if (!key) return;
-    const t = key.trim();
-    if (!t) return;
-    if (!xmlRefToId.has(t)) xmlRefToId.set(t, id);
-  };
-
-  const registerElementKeys = (el: Element, assignedId: number) => {
-    void el; // (avoid unused var TS error)
-    // ✅ ordinal reference support (1-based)
-    addXmlKey(String(assignedId), assignedId);
-  };
-
-  // ------------------------------------------------------------------
-  // STEP 2: Sequential ID assignment state (1..n) across ALL elements
-  // ------------------------------------------------------------------
-
-  let nextSequentialId = 0;
-
-  // Map any node reference tokens in XML -> our assigned node id
-  // (supports id/uid/key/name AND also numeric node-index references)
-  const nodeKeyToId = new Map<string, number>();
-  const nodeIndexToId: number[] = []; // nodeOrdinal -> assigned nodeId
-
-  const nodeElements: GraphElement[] = [];
-
-  type ConnStub = {
-    id: number;
-    connType: GraphElementType;
-    fromRaw?: string;
-    toRaw?: string;
-    color?: string;
-    thickness?: number;
-    label?: string;
-    labelPosition?: number; // ✅ NEW
-    allPts: { x: number; y: number }[];
-    explicitStartX?: number;
-    explicitStartY?: number;
-    explicitEndX?: number;
-    explicitEndY?: number;
-    idRaw?: string;
-  };
-
-  const connStubs: ConnStub[] = [];
-
-  const addNodeKey = (key: string | undefined, nodeId: number) => {
-    if (!key) return;
-    const t = key.trim();
-    if (!t) return;
-    if (!nodeKeyToId.has(t)) nodeKeyToId.set(t, nodeId);
-  };
-
-  let nodeOrdinal = 0;
-
-  // ------------------------------------------------------------------
-  // STEP 3: One pass over orderedCandidates (top->bottom in XML),
-  // assign IDs sequentially to nodes + connections.
-  // ------------------------------------------------------------------
-  for (const el of orderedCandidates) {
-    const rawType =
-      attrAny(el, ['symbol', 'type', 'kind', 'class']) ??
-      tagNameToType(el.tagName);
-    const type = normalizeGraphElementType(rawType);
-    if (!type) continue;
-
-    const tagLower = el.tagName.toLowerCase();
-
-    const isConnection =
-      type === 'Resource Connection' ||
-      type === 'State Connection' ||
-      tagLower === 'connection' ||
-      tagLower === 'edge' ||
-      tagLower === 'link' ||
-      tagLower.includes('connection');
-
-    const assignedId = nextSequentialId++;
-    registerElementKeys(el, assignedId);
-
-    // ---------------- NODE ----------------
-    if (!isConnection) {
-      // (defensive) skip if it somehow maps to connection types
-      // if (type === 'Resource Connection' || type === 'State Connection') continue;
-
-      const x =
-        numAttrAny(el, ['x', 'posX', 'cx', 'left']) ??
-        numAttrAny(el, ['px', 'screenX']) ??
-        100;
-      const y =
-        numAttrAny(el, ['y', 'posY', 'cy', 'top']) ??
-        numAttrAny(el, ['py', 'screenY']) ??
-        100;
-
-      const color = attrAny(el, ['color', 'stroke', 'borderColor']);
-      const thickness = numAttrAny(el, [
-        'thickness',
-        'strokeWidth',
-        'borderWidth',
-      ]);
-      const label = textAny(el, ['text', 'label', 'title', 'name']);
-
-      const activation = normalizeActivation(
-        attrAny(el, [
-          'activation',
-          'activationMode',
-          'activation_mode',
-          'activationmode',
-          'actionMode',
-          'action_mode',
-          'mode',
-        ])
-      );
-
-      const pullMode = normalizePullMode(
-        attrAny(el, ['pullMode', 'pull', 'pushMode'])
-      );
-      const gateType = normalizeGateType(
-        attrAny(el, ['gateType', 'typeMode', 'gate'])
-      );
-
-      const number = numAttrAny(el, [
-        'number',
-        'value',
-        'start',
-        'startingValue',
-        'startingResources',
-      ]);
-      const max = numAttrAny(el, ['max', 'cap', 'limit']);
-      const displayLimit = numAttrAny(el, [
-        'displayLimit',
-        'display',
-        'showMax',
-      ]);
-      const actions = numAttrAny(el, ['actions', 'actionCount']);
-
-      const formula = attrAny(el, ['formula', 'expr', 'expression']);
-      const minValue = numAttrAny(el, ['minValue', 'min']);
-      const maxValue = numAttrAny(el, ['maxValue', 'max']);
-      const interactiveRaw = attrAny(el, ['interactive']);
-      const interactive =
-        interactiveRaw != null
-          ? interactiveRaw.trim().toLowerCase() === 'true'
-          : undefined;
-
-      const step = numAttrAny(el, ['step']);
-      const startingValue = numAttrAny(el, ['startingValue', 'startValue']);
-
-      const script = textAny(el, ['script']);
-
-      const base: GraphElement = {
-        id: assignedId,
-        type,
-        x,
-        y,
-        text: label,
-        color,
-        thickness,
-        activation,
-        pullMode,
-        gateType,
-        actions: actions != null ? Math.max(1, actions) : undefined,
-        number: number != null ? Math.floor(number) : undefined,
-        max: max != null ? Math.floor(max) : undefined,
-        displayLimit:
-          displayLimit != null ? Math.floor(displayLimit) : undefined,
-
-        // Register-specific
-        formula: type === 'Register' ? (formula ?? '') : undefined,
-        minValue: type === 'Register' ? (minValue ?? -9999) : undefined,
-        maxValue: type === 'Register' ? (maxValue ?? 9999) : undefined,
-        interactive: type === 'Register' ? (interactive ?? false) : undefined,
-        startingValue: type === 'Register' ? (startingValue ?? 0) : undefined,
-        step: type === 'Register' ? (step ?? 1) : undefined,
-
-        ...(type === 'Artifical Intelligence' ? { script: script ?? '' } : {}),
-      };
-
-      // Pool init
-      if (type === 'Pool') {
-        const startVal = base.number ?? 0;
-        const c = base.color || '#000000';
-        base.resourcesByColor = startVal > 0 ? { [c]: startVal } : {};
-        base.currentPoints = startVal;
-      }
-
-      // Register init
-      if (type === 'Register') {
-        const sv = base.startingValue ?? 0;
-        base.currentValue = base.interactive ? sv : 0;
-      }
-
-      // End condition defaults
-      if (type === 'End Condition') {
-        base.inhibited = true;
-        base.isBlinking = false;
-      }
-
-      nodeElements.push(base);
-
-      addNodeKey(String(nodeOrdinal), assignedId);
-      nodeIndexToId[nodeOrdinal] = assignedId;
-      nodeOrdinal++;
-
-      continue;
-    }
-
-    // ---------------- CONNECTION ----------------
-    const isState = type === 'State Connection' || tagLower.includes('state');
-
-    const connType: GraphElementType = isState
-      ? 'State Connection'
-      : 'Resource Connection';
-
-    const fromRaw = attrAny(el, [
-      'from',
-      'start',
-      'source',
-      'startId',
-      'fromId',
-      'a',
-    ]);
-    const toRaw = attrAny(el, ['to', 'end', 'target', 'endId', 'toId', 'b']);
-
-    const color = attrAny(el, ['color', 'stroke']);
-    const thickness = numAttrAny(el, ['thickness', 'strokeWidth']);
-    const label = textAny(el, ['text', 'label']);
-    const rawPos = numAttrAny(el, ['position', 'labelPosition', 'labelPos']);
-    const labelPosition =
-      rawPos == null ? 0.5 : Math.max(-1, Math.min(1, rawPos)); // default middle
-
-    const ptsFromAttr = parsePointsAttr(
-      attrAny(el, ['points', 'path', 'polyline'])
-    );
-    const ptsFromChildren = parseChildPoints(el);
-    const allPts = ptsFromChildren.length > 0 ? ptsFromChildren : ptsFromAttr;
-
-    const explicitStartX = numAttrAny(el, ['startX', 'x1', 'sx']);
-    const explicitStartY = numAttrAny(el, ['startY', 'y1', 'sy']);
-    const explicitEndX = numAttrAny(el, ['endX', 'x2', 'ex']);
-    const explicitEndY = numAttrAny(el, ['endY', 'y2', 'ey']);
-
-    const dumpAttrs = (el: Element) =>
-      Array.from(el.attributes)
-        .map(a => `${a.name}="${a.value}"`)
-        .join(' ');
-
-    if (!fromRaw || !toRaw) {
-      console.warn('Missing endpoints on:', el.tagName, dumpAttrs(el));
-    }
-
-    connStubs.push({
-      id: assignedId,
-      connType,
-      fromRaw,
-      toRaw,
-      color,
-      thickness,
-      label,
-      labelPosition, // ✅ NEW
-      allPts,
-      explicitStartX,
-      explicitStartY,
-      explicitEndX,
-      explicitEndY,
-      idRaw: attrAny(el, ['id', 'uid', 'key']),
-    });
-  }
-
-  if (nodeElements.length === 0) {
-    warnings.push(
-      'No node elements recognized. Your XML schema may need mapping tweaks.'
-    );
-  }
-
-  // ------------------------------------------------------------------
-  // STEP 4: Resolve connection endpoints AFTER we know all node ids,
-  // while keeping connection ids already assigned in XML order.
-  // ------------------------------------------------------------------
-  const resolveRefToId = (raw?: string): number | undefined => {
-    if (!raw) return undefined;
-    const t = raw.trim();
-    if (!t) return undefined;
-
-    const mapped = xmlRefToId.get(t);
-    if (mapped != null) return mapped;
-
-    // numeric fallback (try 0-based then 1-based)
-    if (/^\d+$/.test(t)) {
-      const n = Number(t);
-      if (Number.isFinite(n))
-        return xmlRefToId.get(String(n)) ?? xmlRefToId.get(String(n - 1));
-    }
-
-    return undefined;
-  };
-
-  const nodeById = new Map<number, GraphElement>(
-    nodeElements.map(n => [n.id, n])
-  );
-
-  const connElements: GraphElement[] = [];
-
-  for (const stub of connStubs) {
-    const connectedToStart = resolveRefToId(stub.fromRaw);
-    const connectedToEnd = resolveRefToId(stub.toRaw);
-
-    const startNode =
-      connectedToStart != null ? nodeById.get(connectedToStart) : undefined;
-    const endNode =
-      connectedToEnd != null ? nodeById.get(connectedToEnd) : undefined;
-
-    // Treat XML <point> children as INTERMEDIATE waypoints
-    const EPS = 5; // px tolerance in case endpoints are also included as points
-    const startAnchor = startNode ? { x: startNode.x, y: startNode.y } : null;
-    const endAnchor = endNode ? { x: endNode.x, y: endNode.y } : null;
-
-    const pts = stub.allPts.slice(); // candidate intermediate points
-
-    // If schema includes endpoints inside <point>, strip them when they're basically on the node
-    if (startAnchor && pts.length) {
-      const d0 = Math.hypot(pts[0].x - startAnchor.x, pts[0].y - startAnchor.y);
-      if (d0 <= EPS) pts.shift();
-    }
-    if (endAnchor && pts.length) {
-      const last = pts[pts.length - 1];
-      const d1 = Math.hypot(last.x - endAnchor.x, last.y - endAnchor.y);
-      if (d1 <= EPS) pts.pop();
-    }
-
-    // Endpoints come from the actual start/end elements (or explicit coords if present)
-    const fallbackFirst = stub.allPts[0];
-    const fallbackLast = stub.allPts[stub.allPts.length - 1];
-
-    const startX =
-      stub.explicitStartX ?? startAnchor?.x ?? fallbackFirst?.x ?? 50;
-    const startY =
-      stub.explicitStartY ?? startAnchor?.y ?? fallbackFirst?.y ?? 50;
-
-    const endX = stub.explicitEndX ?? endAnchor?.x ?? fallbackLast?.x ?? 200;
-    const endY = stub.explicitEndY ?? endAnchor?.y ?? fallbackLast?.y ?? 200;
-
-    const conn: GraphElement = {
-      id: stub.id,
-      type: stub.connType,
-      x: startX,
-      y: startY,
-      startX,
-      startY,
-      endX,
-      endY,
-      points: pts.length ? pts : undefined,
-      text: stub.label,
-      color: stub.color,
-      thickness: stub.thickness,
-      connectedToStart,
-      connectedToEnd,
-      labelPosition: stub.labelPosition, // ✅ NEW
-    };
-
-    console.log(stub.id, connectedToStart, connectedToEnd);
-
-    if (connectedToStart == null || connectedToEnd == null) {
-      warnings.push(
-        `Connection ${stub.idRaw ?? stub.id} missing endpoint mapping (from="${stub.fromRaw}", to="${stub.toRaw}").`
-      );
-    }
-
-    connElements.push(conn);
-  }
-
-  // ------------------------------------------------------------------
-  // STEP 4.5: If a State Connection starts/ends at a connection,
-  // snap its endpoint to the TARGET connection's label position.
-  // ------------------------------------------------------------------
-
-  const clamp01Local = (v: number) => Math.max(0, Math.min(1, v));
-
-  const getPolylineForAnyConn = (c: GraphElement) => {
-    const sx = c.startX ?? c.x;
-    const sy = c.startY ?? c.y;
-    const ex = c.endX ?? c.x;
-    const ey = c.endY ?? c.y;
-    return [{ x: sx, y: sy }, ...(c.points ?? []), { x: ex, y: ey }];
-  };
-
-  const getPointAndNormalOnPolylineAtTLocal = (
-    points: { x: number; y: number }[],
-    t: number
-  ): { point: { x: number; y: number }; normal: { x: number; y: number } } => {
-    if (points.length < 2) {
-      const p = points[0] ?? { x: 0, y: 0 };
-      return { point: p, normal: { x: 0, y: -1 } };
-    }
-
-    const clampedT = clamp01Local(t);
-
-    let totalLength = 0;
-    const segments: Array<{
-      start: { x: number; y: number };
-      end: { x: number; y: number };
-      length: number;
-    }> = [];
-
-    for (let i = 0; i < points.length - 1; i++) {
-      const a = points[i];
-      const b = points[i + 1];
-      const len = Math.hypot(b.x - a.x, b.y - a.y);
-      if (len === 0) continue;
-      segments.push({ start: a, end: b, length: len });
-      totalLength += len;
-    }
-
-    if (segments.length === 0) {
-      return { point: points[0], normal: { x: 0, y: -1 } };
-    }
-
-    const target = clampedT * totalLength;
-    let traversed = 0;
-
-    for (const seg of segments) {
-      if (traversed + seg.length >= target) {
-        const remaining = target - traversed;
-        const localT = seg.length === 0 ? 0 : remaining / seg.length;
-
-        const dx = seg.end.x - seg.start.x;
-        const dy = seg.end.y - seg.start.y;
-        const dlen = Math.hypot(dx, dy) || 1;
-
-        const dir = { x: dx / dlen, y: dy / dlen };
-        const normal = { x: -dir.y, y: dir.x };
-
-        return {
-          point: {
-            x: seg.start.x + dx * localT,
-            y: seg.start.y + dy * localT,
-          },
-          normal,
-        };
-      }
-      traversed += seg.length;
-    }
-
-    const last = segments[segments.length - 1];
-    const dx = last.end.x - last.start.x;
-    const dy = last.end.y - last.start.y;
-    const dlen = Math.hypot(dx, dy) || 1;
-    const dir = { x: dx / dlen, y: dy / dlen };
-    const normal = { x: -dir.y, y: dir.x };
-    return { point: last.end, normal };
-  };
-
-  // NOTE: offsetPx should match how you render labels.
-  // If you want the State Connection to attach ON the line (not offset label text),
-  // set offsetPx = 0.
-  const getLabelAnchorForConnectionLocal = (
-    targetConn: GraphElement,
-    offsetPx = 16
-  ) => {
-    const rawPos = targetConn.labelPosition ?? 0.5;
-    const pos = Math.max(-1, Math.min(1, rawPos));
-    const side = pos < 0 ? -1 : 1;
-    const t = clamp01Local(Math.abs(pos));
-
-    const poly = getPolylineForAnyConn(targetConn);
-    const { point, normal } = getPointAndNormalOnPolylineAtTLocal(poly, t);
-
-    return {
-      x: point.x + normal.x * offsetPx * side,
-      y: point.y + normal.y * offsetPx * side,
-    };
-  };
-
-  const allById = new Map<number, GraphElement>(
-    [...nodeElements, ...connElements].map(el => [el.id, el])
-  );
-
-  type ConnEl = GraphElement & {
-    type: 'Resource Connection' | 'State Connection';
-  };
-
-  const isConnEl = (e: GraphElement | undefined): e is ConnEl =>
-    e != null &&
-    (e.type === 'Resource Connection' || e.type === 'State Connection');
-
-  // A few passes lets State->State->Resource chains settle.
-  for (let iter = 0; iter < 4; iter++) {
-    let changed = false;
-
-    for (const sc of connElements) {
-      if (sc.type !== 'State Connection') continue;
-
-      // START can also be a connection (optional, but makes it consistent)
-      if (sc.connectedToStart != null) {
-        const startTarget = allById.get(sc.connectedToStart);
-        if (isConnEl(startTarget)) {
-          const p = getLabelAnchorForConnectionLocal(startTarget);
-          if (
-            sc.startX !== p.x ||
-            sc.startY !== p.y ||
-            sc.x !== p.x ||
-            sc.y !== p.y
-          ) {
-            sc.startX = p.x;
-            sc.startY = p.y;
-            sc.x = p.x;
-            sc.y = p.y;
-            changed = true;
-          }
-        }
-      }
-
-      // END snaps to target connection label anchor
-      if (sc.connectedToEnd != null) {
-        const endTarget = allById.get(sc.connectedToEnd);
-        if (isConnEl(endTarget)) {
-          const p = getLabelAnchorForConnectionLocal(endTarget);
-          if (sc.endX !== p.x || sc.endY !== p.y) {
-            sc.endX = p.x;
-            sc.endY = p.y;
-            changed = true;
-          }
-        }
-      }
-    }
-
-    if (!changed) break;
-  }
-
-  if (connElements.length === 0) {
-    warnings.push(
-      'No connection elements recognized. If your XML uses different tags/attrs, add them to selectors / endpoint attrs.'
-    );
-  }
-  // Final: return combined
-  // return { elements: [...nodeElements, ...connElements], warnings };
-  return {
-    elements: [...nodeElements, ...connElements].sort((a, b) => a.id - b.id),
-    warnings,
-  };
-}
-
-interface ResourceTransfer {
-  connectionId: number;
-  units: number;
-  color: string;
-}
-
-interface MovingToken {
-  id: number;
-  connectionId: number;
-  color: string;
-  path: { x: number; y: number }[];
-  startTime: number;
-  currentX: number;
-  currentY: number;
-}
-
-// For tracking fractional resource dispatch progress
-interface FractionalDispatchState {
-  connectionId: number;
-  accumulator: number; // Accumulates fractional values until we can dispatch a full resource
-  lastTick: number; // Track when this was last updated
 }
 
 const isResourceLikeConnection = (element: GraphElement) =>
@@ -1075,174 +259,57 @@ const getClosestPointOnPolyline = (
   return { point: closestPoint, distance: closestDistance };
 };
 
-const getPointOnPolylineAtT = (
-  points: { x: number; y: number }[],
-  t: number
-): { x: number; y: number } => {
-  if (points.length === 0) return { x: 0, y: 0 };
-  if (points.length === 1) return points[0];
-
-  const clampedT = Math.max(0, Math.min(1, t));
-
-  let totalLength = 0;
-  const segments: {
-    start: { x: number; y: number };
-    end: { x: number; y: number };
-    length: number;
-  }[] = [];
-
-  for (let i = 0; i < points.length - 1; i++) {
-    const start = points[i];
-    const end = points[i + 1];
-    const length = Math.hypot(end.x - start.x, end.y - start.y);
-    if (length === 0) continue;
-
-    segments.push({ start, end, length });
-    totalLength += length;
-  }
-
-  if (segments.length === 0) return points[0];
-
-  const target = clampedT * totalLength;
-  let traversed = 0;
-
-  for (const segment of segments) {
-    if (traversed + segment.length >= target) {
-      const remaining = target - traversed;
-      const localT = segment.length === 0 ? 0 : remaining / segment.length;
-      return {
-        x: segment.start.x + (segment.end.x - segment.start.x) * localT,
-        y: segment.start.y + (segment.end.y - segment.start.y) * localT,
-      };
-    }
-    traversed += segment.length;
-  }
-
-  const last = segments[segments.length - 1];
-  return last.end;
-};
-
-const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
-
-const getPointAndNormalOnPolylineAtT = (
-  points: { x: number; y: number }[],
-  t: number
-): { point: { x: number; y: number }; normal: { x: number; y: number } } => {
-  if (points.length < 2) {
-    const p = points[0] ?? { x: 0, y: 0 };
-    return { point: p, normal: { x: 0, y: -1 } };
-  }
-
-  const clampedT = clamp01(t);
-
-  let totalLength = 0;
-  const segments: Array<{
-    start: { x: number; y: number };
-    end: { x: number; y: number };
-    length: number;
-  }> = [];
-
-  for (let i = 0; i < points.length - 1; i++) {
-    const a = points[i];
-    const b = points[i + 1];
-    const len = Math.hypot(b.x - a.x, b.y - a.y);
-    if (len === 0) continue;
-    segments.push({ start: a, end: b, length: len });
-    totalLength += len;
-  }
-
-  if (segments.length === 0) {
-    return { point: points[0], normal: { x: 0, y: -1 } };
-  }
-
-  const target = clampedT * totalLength;
-  let traversed = 0;
-
-  for (const seg of segments) {
-    if (traversed + seg.length >= target) {
-      const remaining = target - traversed;
-      const localT = seg.length === 0 ? 0 : remaining / seg.length;
-
-      const dx = seg.end.x - seg.start.x;
-      const dy = seg.end.y - seg.start.y;
-      const len = Math.hypot(dx, dy) || 1;
-
-      const dir = { x: dx / len, y: dy / len };
-      const normal = { x: -dir.y, y: dir.x };
-
-      return {
-        point: {
-          x: seg.start.x + dx * localT,
-          y: seg.start.y + dy * localT,
-        },
-        normal,
-      };
-    }
-    traversed += seg.length;
-  }
-
-  // fallback to end
-  const last = segments[segments.length - 1];
-  const dx = last.end.x - last.start.x;
-  const dy = last.end.y - last.start.y;
-  const len = Math.hypot(dx, dy) || 1;
-  const dir = { x: dx / len, y: dy / len };
-  const normal = { x: -dir.y, y: dir.x };
-
-  return { point: last.end, normal };
-};
-
-const getLabelPointForConnection = (
-  polyline: { x: number; y: number }[],
-  labelPosition?: number,
-  offsetPx = 16
-) => {
-  const pos =
-    labelPosition == null ? 0.5 : Math.max(-1, Math.min(1, labelPosition));
-  const side = pos < 0 ? -1 : 1; // which side of the line
-  const t = clamp01(Math.abs(pos)); // 0..1 along the line start->end
-
-  const { point, normal } = getPointAndNormalOnPolylineAtT(polyline, t);
-
-  return {
-    x: point.x + normal.x * offsetPx * side,
-    y: point.y + normal.y * offsetPx * side,
-  };
-};
-
 const RESOURCE_LABEL_EPSILON = 1e-6;
 
+const parseTriggerChance = (raw?: string): number | null => {
+  const trimmed = (raw ?? '').trim().toLowerCase();
+  if (!trimmed) return null;
+  if (trimmed === '*' || trimmed === 'trigger' || trimmed === 'fire') {
+    return 1;
+  }
+  const match = trimmed.match(/^(\d+(?:\.\d+)?)\s*%$/);
+  if (!match) return null;
+  const pct = parseFloat(match[1]);
+  if (!Number.isFinite(pct)) return null;
+  const clamped = Math.min(Math.max(pct, 0), 100);
+  return clamped / 100;
+};
+
+const shouldActivateTrigger = (raw?: string): boolean => {
+  const chance = parseTriggerChance(raw);
+  if (chance === null) return false;
+  if (chance >= 1) return true;
+  return Math.random() < chance;
+};
+
 function getElementValue(element: GraphElement | undefined): number {
-  if (!element) return 0;
-
-  if (element.type === 'Pool') {
-    // ✅ Sum all colors to get true total
-    if (
-      element.resourcesByColor &&
-      Object.keys(element.resourcesByColor).length > 0
-    ) {
-      return Object.values(element.resourcesByColor).reduce(
-        (sum, val) => sum + val,
-        0
-      );
-    }
-    return (
-      element.currentPoints ??
-      (typeof element.number === 'string'
-        ? parseInt(element.number)
-        : element.number || 0)
-    );
+  if (!element) {
+    return 0;
   }
 
-  if (element.type === 'Register') return element.currentValue || 0;
+  switch (element.type) {
+    case 'Pool':
+      if (
+        element.currentPoints !== undefined &&
+        element.currentPoints !== null
+      ) {
+        return element.currentPoints;
+      }
+      return typeof element.number === 'string'
+        ? parseInt(element.number, 10) || 0
+        : element.number || 0;
 
-  if (element.type === 'Source') {
-    return typeof element.number === 'string'
-      ? parseInt(element.number) || 0
-      : element.number || 0;
+    case 'Register':
+      return element.currentValue || 0;
+
+    case 'Source':
+      return typeof element.number === 'string'
+        ? parseInt(element.number, 10) || 0
+        : element.number || 0;
+
+    default:
+      return 0;
   }
-
-  return 0;
 }
 
 const sanitizeResourceLabelValue = (value: number): number => {
@@ -1332,9 +399,7 @@ function applyDynamicResourceLabelsMutable(elementsList: GraphElement[]): void {
 
   const stateConnections = elementsList.filter(
     el =>
-      el.type === 'State Connection' &&
-      el.connectedToStart != null &&
-      el.connectedToEnd != null
+      el.type === 'State Connection' && el.connectedToStart && el.connectedToEnd
   );
 
   if (stateConnections.length === 0) return;
@@ -1403,308 +468,6 @@ function applyDynamicResourceLabels(
   return clonedElements;
 }
 
-// Helper to normalize color strings
-const normalizeColor = (color?: string) => color || '#000000';
-
-const recordTransfer = (
-  transfers: ResourceTransfer[] | undefined,
-  conn: GraphElement | undefined,
-  units: number,
-  sourceElement?: GraphElement
-): void => {
-  if (!transfers || !conn || conn.type !== 'Resource Connection') return;
-  if (units <= 0) return;
-
-  // Determine the color to use for the tokens
-  // Priority: source element's resources color > connection color
-  let tokenColor = normalizeColor(conn.color); // Default to connection color
-
-  // If source element has a resources color property and it's not black/default, use that instead
-  if (sourceElement && sourceElement.resources) {
-    const resourceColorStr = sourceElement.resources.trim();
-    if (resourceColorStr) {
-      const resourceColor = normalizeColor(resourceColorStr);
-      // Use source element's resource color if it's explicitly set (not black/default)
-      if (
-        resourceColor &&
-        resourceColor !== '#000000' &&
-        resourceColor !== '#000' &&
-        resourceColor.toLowerCase() !== 'black'
-      ) {
-        tokenColor = resourceColor;
-      }
-    }
-  }
-
-  transfers.push({
-    connectionId: conn.id,
-    units,
-    color: tokenColor,
-  });
-};
-
-// Helper functions for decimal resource dispatching
-function handleDecimalResourceDispatch(
-  connection: GraphElement,
-  labelValue: number,
-  fractionalDispatchMap: Map<number, FractionalDispatchState>,
-  currentTick: number
-): number {
-  if (labelValue >= 1) {
-    // For values >= 1, dispatch as normal (can be fractional like 1.5)
-    return labelValue;
-  }
-
-  if (labelValue <= 0) return 0;
-
-  // For values < 1 (like 0.5, 0.2), use accumulator approach
-  const connectionId = connection.id;
-  let state = fractionalDispatchMap.get(connectionId);
-
-  if (!state) {
-    state = {
-      connectionId,
-      accumulator: 0,
-      lastTick: currentTick,
-    };
-    fractionalDispatchMap.set(connectionId, state);
-  }
-
-  // Add the fractional value to accumulator
-  state.accumulator += labelValue;
-  state.lastTick = currentTick;
-
-  // Check if we can dispatch full resources
-  const resourcesToDispatch = Math.floor(state.accumulator);
-  if (resourcesToDispatch > 0) {
-    state.accumulator -= resourcesToDispatch;
-    console.log(
-      `Decimal dispatch: Connection ${connectionId}, label ${labelValue}, dispatching ${resourcesToDispatch} resources, remaining accumulator: ${state.accumulator}`
-    );
-    return resourcesToDispatch;
-  }
-
-  return 0;
-}
-
-const randInt = (min: number, max: number) =>
-  Math.floor(Math.random() * (max - min + 1)) + min;
-
-// Supports: "5", "2-5", "1/2", "0.5", default 1
-function parseConnectionLabel(label?: string): number {
-  const s = (label ?? '').trim();
-  if (!s) return 1;
-
-  const rangeMatch = s.match(/^(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)$/);
-  if (rangeMatch) {
-    const min = parseFloat(rangeMatch[1]);
-    const max = parseFloat(rangeMatch[2]);
-    if (!isNaN(min) && !isNaN(max)) {
-      return randInt(
-        Math.floor(Math.min(min, max)),
-        Math.floor(Math.max(min, max))
-      );
-    }
-  }
-
-  const fractionMatch = s.match(/^(\d+)\/(\d+)$/);
-  if (fractionMatch) {
-    const num = parseInt(fractionMatch[1], 10);
-    const den = parseInt(fractionMatch[2], 10);
-    if (!isNaN(num) && !isNaN(den) && den > 0) {
-      return Math.random() < num / den ? num : 0;
-    }
-  }
-
-  const num = parseFloat(s);
-  if (!isNaN(num)) return num; // Changed: Keep decimal values instead of flooring
-
-  return 1;
-}
-
-function isTriggerOutput(label?: string): boolean {
-  return (label ?? '').trim().includes('*');
-}
-
-type LabelKind = 'prob' | 'cond' | 'interval' | 'else' | 'empty' | 'invalid';
-
-function classifyLabel(raw?: string): LabelKind {
-  const s0 = (raw ?? '').trim();
-  if (!s0) return 'empty';
-  if (s0.toLowerCase() === 'else') return 'else';
-  const s = s0.replace(/[–—]/g, '-');
-
-  if (/^[+-]?\d+\s*%$/.test(s)) return 'prob';
-  if (/^[+-]?\d+(\.\d+)?$/.test(s)) return 'prob';
-  if (/^(==|!=|>=|<=|>|<)\s*-?\d+(\.\d+)?$/.test(s)) return 'cond';
-  if (/^-?\d+(\.\d+)?\s*-\s*-?\d+(\.\d+)?$/.test(s)) return 'interval';
-  return 'invalid';
-}
-
-function parseInterval(raw: string): [number, number] | null {
-  const norm = raw.trim().replace(/[–—]/g, '-');
-  const m = norm.match(/^\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\s*$/);
-  if (!m) return null;
-  const a = parseFloat(m[1]);
-  const b = parseFloat(m[2]);
-  return a <= b ? [a, b] : [b, a];
-}
-
-function parseCond(raw: string): ((v: number) => boolean) | null {
-  const m = raw.trim().match(/^(==|!=|>=|<=|>|<)\s*(-?\d+(?:\.\d+)?)$/);
-  if (!m) return null;
-  const op = m[1];
-  const rhs = parseFloat(m[2]);
-  return (v: number) => {
-    switch (op) {
-      case '==':
-        return v === rhs;
-      case '!=':
-        return v !== rhs;
-      case '>=':
-        return v >= rhs;
-      case '<=':
-        return v <= rhs;
-      case '>':
-        return v > rhs;
-      case '<':
-        return v < rhs;
-      default:
-        return false;
-    }
-  };
-}
-
-function getIntervalWrapMax(outputs: GraphElement[]): number | null {
-  let hi = -Infinity;
-  for (const o of outputs) {
-    if (!o.text) continue;
-    if (classifyLabel(o.text) === 'interval') {
-      const rng = parseInterval(o.text);
-      if (rng) hi = Math.max(hi, rng[1]);
-    }
-  }
-  return isFinite(hi) ? hi : null;
-}
-
-function getDiceSides(gate: GraphElement, outputs: GraphElement[]): number {
-  const t = (gate.text ?? '').trim().toLowerCase();
-  const m1 = t.match(/^d\s*(\d+)$/);
-  const m2 = t.match(/^(\d+)\s*d\s*(\d+)$/);
-  if (m1) return Math.max(2, parseInt(m1[1], 10));
-  if (m2) return Math.max(2, parseInt(m2[2], 10));
-  const wrap = getIntervalWrapMax(outputs);
-  if (wrap && wrap >= 2) return wrap;
-  return 6;
-}
-
-function generateGateValue(
-  gate: GraphElement,
-  outputs: GraphElement[]
-): number {
-  if (gate.gateType === 'dice') {
-    const sides = getDiceSides(gate, outputs);
-    return randInt(1, sides);
-  }
-
-  const wrapMax = getIntervalWrapMax(outputs);
-  const prev = gate.lastGateValue ?? 0;
-  const next = prev + 1;
-
-  if (wrapMax && wrapMax >= 1) {
-    return ((next - 1) % wrapMax) + 1;
-  }
-  return next;
-}
-
-function chooseGateOutputs(
-  gate: GraphElement,
-  outputs: GraphElement[]
-): GraphElement[] {
-  if (outputs.length === 0) return [];
-
-  const kinds = outputs.map(o => classifyLabel(o.text));
-  const hasRealCondition = kinds.some(k => k === 'cond' || k === 'interval');
-
-  if (hasRealCondition) {
-    const v = generateGateValue(gate, outputs);
-    gate.lastGateValue = v;
-
-    const matches: number[] = [];
-    for (let i = 0; i < outputs.length; i++) {
-      const o = outputs[i];
-      const kind = kinds[i];
-      if (!o.text) continue;
-
-      if (kind === 'cond') {
-        const fn = parseCond(o.text);
-        if (fn && fn(v)) matches.push(i);
-      } else if (kind === 'interval') {
-        const pair = parseInterval(o.text);
-        if (pair && v >= pair[0] && v <= pair[1]) matches.push(i);
-      }
-    }
-
-    if (matches.length === 0) {
-      const elseIdx = kinds.findIndex(k => k === 'else');
-      return elseIdx >= 0 ? [outputs[elseIdx]] : [];
-    }
-
-    return matches.map(i => outputs[i]);
-  }
-
-  const isPercent = outputs.some(
-    (o, i) => kinds[i] === 'prob' && /%$/.test((o.text ?? '').trim())
-  );
-  const elseIdx = kinds.findIndex(k => k === 'else');
-
-  if (isPercent) {
-    let sumPercent = 0;
-    const weights = outputs.map((o, i) => {
-      const s = (o.text ?? '').trim();
-      if (kinds[i] === 'prob' && /%$/.test(s)) {
-        const w = Math.max(0, parseInt(s, 10) || 0);
-        sumPercent += w;
-        return w;
-      }
-      return 0;
-    });
-
-    if (elseIdx >= 0) {
-      const rem = Math.max(0, 100 - sumPercent);
-      weights[elseIdx] = rem;
-      sumPercent += rem;
-    }
-
-    if (sumPercent <= 0) return elseIdx >= 0 ? [outputs[elseIdx]] : [];
-
-    let r = Math.random() * sumPercent;
-    for (let i = 0; i < outputs.length; i++) {
-      r -= weights[i];
-      if (r <= 0 && weights[i] > 0) return [outputs[i]];
-    }
-    return [outputs[outputs.length - 1]];
-  }
-
-  const weights = outputs.map((o, i) => {
-    const s = (o.text ?? '').trim();
-    if (kinds[i] === 'prob' && !/%$/.test(s))
-      return Math.max(0, parseFloat(s) || 0);
-    if (kinds[i] === 'empty') return 1;
-    return 0;
-  });
-
-  const total = weights.reduce((a, b) => a + b, 0);
-  if (total <= 0) return elseIdx >= 0 ? [outputs[elseIdx]] : [];
-
-  let r = Math.random() * total;
-  for (let i = 0; i < outputs.length; i++) {
-    r -= weights[i];
-    if (r <= 0 && weights[i] > 0) return [outputs[i]];
-  }
-  return [outputs[outputs.length - 1]];
-}
-
 const Canvas: React.FC<CanvasProps> = ({
   isRunning,
   selectedTool,
@@ -1723,13 +486,6 @@ const Canvas: React.FC<CanvasProps> = ({
 
   const elements = externalElements ?? internalElements;
   const selectedId = externalSelectedIds ?? internalSelectedIds;
-
-  // Keep the latest elements in a ref so we can use them in stable callbacks
-  const elementsRef = useRef<GraphElement[]>(elements);
-
-  useEffect(() => {
-    elementsRef.current = elements;
-  }, [elements]);
 
   // const setElements = useCallback(
   //   (
@@ -1806,146 +562,150 @@ const Canvas: React.FC<CanvasProps> = ({
     x: number;
     y: number;
   } | null>(null);
-
-  // Waypoint dragging state
-  const [draggingWaypoint, setDraggingWaypoint] = useState<{
-    connectionId: number;
-    waypointIndex: number;
-  } | null>(null);
+  //setConnectionStart
+  // const [connectionStart, setConnectionStart] = useState<{
+  //   x: number;
+  //   y: number;
+  // } | null>(null);
+  // const [connectionEnd, setConnectionEnd] = useState<{
+  //   x: number;
+  //   y: number;
+  // } | null>(null);
+  // const [connectionType, setConnectionType] = useState<GraphElementType | null>(
+  //   null
+  // );
 
   const [gameEnded, setGameEnded] = useState(false);
-  const gameEndedRef = useRef(false);
-  const nextIdRef = useRef(0);
-
-  // Sync ref with state
-  useEffect(() => {
-    gameEndedRef.current = gameEnded;
-  }, [gameEnded]);
-
-  useEffect(() => {
-    // Whenever the tool changes (e.g., from 'Select' to 'Pool'), clears selection.
-    if (selectedTool !== 'Select') {
-      setSelectedId([]);
-    }
-  }, [selectedTool, setSelectedId]);
 
   const canvasRef = useRef<HTMLDivElement>(null);
 
-  // ---------- Moving Tokens (for Resource Connections) ----------
-  const TOKEN_TRAVEL_TIME = 600; // ms
+  // ---------- Gate helpers ----------
+  const randInt = (min: number, max: number) =>
+    Math.floor(Math.random() * (max - min + 1)) + min;
 
-  const [movingTokens, setMovingTokens] = useState<MovingToken[]>([]);
-  const nextTokenIdRef = useRef(1);
+  // ---------- Label parsing utilities ----------
+  /**
+   * Parse a connection label to get the resource amount.
+   * Supports:
+   * - Simple number: "5" -> 5
+   * - Random range: "2-5" or "2-8" -> random value in range
+   * - Fraction: "1/2" or "3/4" -> random based on probability
+   * - Default: empty or invalid -> 1
+   */
+  function parseConnectionLabel(label?: string): number {
+    const s = (label ?? '').trim();
+    if (!s) return 1;
 
-  // Track fractional dispatch progress for decimal-labeled connections
-  const fractionalDispatchRef = useRef<Map<number, FractionalDispatchState>>(
-    new Map()
-  );
-  const currentTickRef = useRef(0);
-
-  const spawnMovingTokens = useCallback(
-    (transfers: ResourceTransfer[], elementsSnapshot: GraphElement[]) => {
-      const tokensToAdd: MovingToken[] = [];
-      const now =
-        typeof performance !== 'undefined' ? performance.now() : Date.now();
-
-      for (const tr of transfers) {
-        const conn = elementsSnapshot.find(el => el.id === tr.connectionId);
-        if (!conn) continue;
-
-        // Full polyline for this connection (start + points + end)
-        const basePolyline = getResourcePolylinePoints(conn);
-        if (basePolyline.length < 2) continue;
-
-        const unitsToShow = Math.min(tr.units, 5); // Cap for performance
-
-        for (let i = 0; i < unitsToShow; i++) {
-          const id = nextTokenIdRef.current++;
-
-          // Slight offset so multiple tokens don't sit exactly on top of each other
-          let path = basePolyline;
-          if (unitsToShow > 1 && basePolyline.length >= 2) {
-            const offset = (i - (unitsToShow - 1) / 2) * 4;
-            const dx = basePolyline[1].x - basePolyline[0].x;
-            const dy = basePolyline[1].y - basePolyline[0].y;
-            const len = Math.hypot(dx, dy) || 1;
-            const nx = -dy / len;
-            const ny = dx / len;
-
-            path = basePolyline.map(p => ({
-              x: p.x + nx * offset,
-              y: p.y + ny * offset,
-            }));
-          }
-
-          tokensToAdd.push({
-            id,
-            connectionId: tr.connectionId,
-            color: tr.color, // ✅ Use specific color
-            path,
-            startTime: now,
-            currentX: path[0].x,
-            currentY: path[0].y,
-          });
-          setTimeout(() => {
-            setMovingTokens(prev => prev.filter(t => t.id !== id));
-          }, TOKEN_TRAVEL_TIME + 50);
-        }
+    // Check for random range (e.g., "2-5")
+    const rangeMatch = s.match(/^(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)$/);
+    if (rangeMatch) {
+      const min = parseFloat(rangeMatch[1]);
+      const max = parseFloat(rangeMatch[2]);
+      if (!isNaN(min) && !isNaN(max)) {
+        return randInt(
+          Math.floor(Math.min(min, max)),
+          Math.floor(Math.max(min, max))
+        );
       }
+    }
 
-      if (tokensToAdd.length) {
-        setMovingTokens(prev => [...prev, ...tokensToAdd]);
+    // Check for fraction (e.g., "1/2", "3/4")
+    const fractionMatch = s.match(/^(\d+)\/(\d+)$/);
+    if (fractionMatch) {
+      const num = parseInt(fractionMatch[1], 10);
+      const den = parseInt(fractionMatch[2], 10);
+      if (!isNaN(num) && !isNaN(den) && den > 0) {
+        // Return num with probability num/den, 0 otherwise
+        return Math.random() < num / den ? num : 0;
       }
-    },
-    []
-  );
+    }
 
-  useEffect(() => {
-    if (movingTokens.length === 0) return;
+    // Check for simple number
+    const num = parseFloat(s);
+    if (!isNaN(num)) {
+      return Math.floor(num);
+    }
 
-    let animationFrameId: number;
+    // Default to 1 if can't parse
+    return 1;
+  }
 
-    const animate = (time: number) => {
-      const now =
-        time ||
-        (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  /**
+   * Check if a connection label represents a trigger output (marked with "*")
+   */
+  function isTriggerOutput(label?: string): boolean {
+    return (label ?? '').trim().includes('*');
+  }
 
-      setMovingTokens(prevTokens => {
-        if (prevTokens.length === 0) return prevTokens;
+  type LabelKind = 'prob' | 'cond' | 'interval' | 'else' | 'empty' | 'invalid';
 
-        const updated: MovingToken[] = [];
+  // replace your classifyLabel with this
+  function classifyLabel(raw?: string): LabelKind {
+    const s0 = (raw ?? '').trim();
+    if (!s0) return 'empty';
+    if (s0.toLowerCase() === 'else') return 'else';
+    const s = s0.replace(/[–—]/g, '-'); // normalize en/em dashes
 
-        for (const token of prevTokens) {
-          const elapsed = now - token.startTime;
-          const t = Math.min(1, elapsed / TOKEN_TRAVEL_TIME); // 0 → 1 over lifetime
-          const p = getPointOnPolylineAtT(token.path, t);
+    if (/^\d+\s*%$/.test(s)) return 'prob'; // "70%"
+    if (/^\d+(\.\d+)?$/.test(s)) return 'prob'; // "4"
+    if (/^(==|!=|>=|<=|>|<)\s*-?\d+(\.\d+)?$/.test(s)) return 'cond';
+    if (/^-?\d+(\.\d+)?\s*-\s*-?\d+(\.\d+)?$/.test(s)) return 'interval';
+    return 'invalid';
+  }
 
-          if (elapsed < TOKEN_TRAVEL_TIME + 50) {
-            updated.push({
-              ...token,
-              currentX: p.x,
-              currentY: p.y,
-            });
-          }
-        }
+  // replace your parseInterval with this
+  function parseInterval(raw: string): [number, number] | null {
+    const norm = raw.trim().replace(/[–—]/g, '-');
+    const m = norm.match(/^\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\s*$/);
+    if (!m) return null;
+    const a = parseFloat(m[1]),
+      b = parseFloat(m[2]);
+    return a <= b ? [a, b] : [b, a]; // inclusive range
+  }
 
-        return updated;
-      });
-
-      animationFrameId = requestAnimationFrame(animate);
+  function parseCond(raw: string): ((v: number) => boolean) | null {
+    const m = raw.trim().match(/^(==|!=|>=|<=|>|<)\s*(-?\d+(?:\.\d+)?)$/);
+    if (!m) return null;
+    const op = m[1],
+      rhs = parseFloat(m[2]);
+    return (v: number) => {
+      switch (op) {
+        case '==':
+          return v === rhs;
+        case '!=':
+          return v !== rhs;
+        case '>=':
+          return v >= rhs;
+        case '<=':
+          return v <= rhs;
+        case '>':
+          return v > rhs;
+        case '<':
+          return v < rhs;
+        default:
+          return false;
+      }
     };
+  }
 
-    animationFrameId = requestAnimationFrame(animate);
-
-    return () => cancelAnimationFrame(animationFrameId);
-  }, [movingTokens.length]);
+  function getIntervalWrapMax(outputs: GraphElement[]): number | null {
+    let hi = -Infinity;
+    for (const o of outputs) {
+      if (!o.text) continue;
+      if (classifyLabel(o.text) === 'interval') {
+        const rng = parseInterval(o.text);
+        if (rng) hi = Math.max(hi, rng[1]);
+      }
+    }
+    return isFinite(hi) ? hi : null;
+  }
 
   const evaluateStateCondition = useCallback(
     (
       connection: GraphElement,
       elementMap: Map<number, GraphElement>
     ): { evaluated: boolean; satisfied: boolean } => {
-      if (connection.connectedToStart == null) {
+      if (!connection.connectedToStart) {
         return { evaluated: false, satisfied: false };
       }
       const startEl = elementMap.get(connection.connectedToStart);
@@ -1974,7 +734,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
       return { evaluated: false, satisfied: false };
     },
-    []
+    [classifyLabel, parseCond, parseInterval]
   );
 
   const updateStateConnectionVisualState = useCallback(
@@ -1987,13 +747,10 @@ const Canvas: React.FC<CanvasProps> = ({
       for (const connection of elementsList) {
         if (
           connection.type !== 'State Connection' ||
-          connection.connectedToStart == null ||
-          connection.connectedToEnd == null
+          !connection.connectedToStart ||
+          !connection.connectedToEnd
         ) {
-          if (
-            connection.type !== 'Resource Connection' &&
-            'hasUnsatisfiedCondition' in connection
-          ) {
+          if ('hasUnsatisfiedCondition' in connection) {
             connection.hasUnsatisfiedCondition = false;
           }
           continue;
@@ -2029,122 +786,201 @@ const Canvas: React.FC<CanvasProps> = ({
   );
 
   const setElements = useCallback(
-    (updater: GraphElement[] | ((prev: GraphElement[]) => GraphElement[])) => {
+    (
+      newElements: GraphElement[] | ((prev: GraphElement[]) => GraphElement[])
+    ) => {
+      const updatedElements =
+        typeof newElements === 'function' ? newElements(elements) : newElements;
+
+      const processedElements = applyDynamicResourceLabels(updatedElements);
+      updateStateConnectionVisualState(processedElements);
+
       if (onElementsChange) {
-        // ✅ Controlled mode: use latest from ref
-        const base = elementsRef.current;
-        const updated = typeof updater === 'function' ? updater(base) : updater;
-
-        const processed = applyDynamicResourceLabels(updated);
-        updateStateConnectionVisualState(processed);
-
-        onElementsChange(processed);
-        // Keep ref in sync with what we just sent up
-        elementsRef.current = processed;
+        onElementsChange(processedElements);
       } else {
-        // ✅ Internal mode: let React compose updates (auto + interactive)
-        setInternalElements(prev => {
-          const updated =
-            typeof updater === 'function' ? updater(prev) : updater;
-
-          const processed = applyDynamicResourceLabels(updated);
-          updateStateConnectionVisualState(processed);
-
-          // Keep ref in sync for the next update
-          elementsRef.current = processed;
-
-          return processed;
-        });
+        setInternalElements(processedElements);
       }
     },
-    [onElementsChange, updateStateConnectionVisualState]
+    [elements, onElementsChange, updateStateConnectionVisualState]
   );
 
-  // ------------------------------
-  // XML Import wiring (inside Canvas)
-  // ------------------------------
-  const xmlFileInputRef = useRef<HTMLInputElement>(null);
-  const [xmlImportError, setXmlImportError] = useState<string | null>(null);
+  // Optional: allow "d6", "6", or "1d6" in gate.text. Fallback to 6.
+  function getDiceSides(gate: GraphElement, outputs: GraphElement[]): number {
+    const t = (gate.text ?? '').trim().toLowerCase();
+    const m1 = t.match(/^d\s*(\d+)$/);
+    const m2 = t.match(/^(\d+)\s*d\s*(\d+)$/);
+    if (m1) return Math.max(2, parseInt(m1[1], 10));
+    if (m2) return Math.max(2, parseInt(m2[2], 10));
+    const wrap = getIntervalWrapMax(outputs);
+    if (wrap && wrap >= 2) return wrap; // sensible default from labels
+    return 6; // final fallback
+  }
 
-  const importXmlText = useCallback(
-    (xmlText: string) => {
-      setXmlImportError(null);
+  // change signature to accept outputs
+  function generateGateValue(
+    gate: GraphElement,
+    outputs: GraphElement[]
+  ): number {
+    // Random (dice) mode
+    if (gate.gateType === 'dice') {
+      const sides = getDiceSides(gate, outputs);
+      return randInt(1, sides); // 1..sides
+    }
 
-      const { elements: imported, warnings } = parseGraphFromXml(xmlText);
-      if (warnings.length) {
-        console.warn('XML import warnings:', warnings);
-      }
+    // Deterministic: cycle and wrap at the highest interval upper bound (if any)
+    const wrapMax = getIntervalWrapMax(outputs);
+    const prev = gate.lastGateValue ?? 0;
+    const next = prev + 1;
 
-      // stop any running visuals/state
-      setMovingTokens([]);
-      setGameEnded(false);
-      gameEndedRef.current = false;
+    if (wrapMax && wrapMax >= 1) {
+      const wrapped = ((next - 1) % wrapMax) + 1; // 1..wrapMax
+      return wrapped;
+    }
+    return next; // no intervals -> monotone counter, no wrap
+  }
 
-      // Reset fractional dispatch state
-      fractionalDispatchRef.current.clear();
-      currentTickRef.current = 0;
+  /**
+   * Choose one output connection given labels.
+   * Condition-mode if there is ANY cond/interval label (ELSE ALONE does NOT trigger cond-mode).
+   * Otherwise probability-mode:
+   *  - If any '%' are present, '%'-labels are used and 'else' gets (100 - sum%).
+   *  - If no '%', numeric weights & empty labels (weight 1) are used. 'else' has weight 0 by default.
+   */
+  function chooseGateOutputs(
+    gate: GraphElement,
+    outputs: GraphElement[]
+  ): GraphElement[] {
+    if (outputs.length === 0) return [];
 
-      const maxId = imported.reduce((m, el) => Math.max(m, el.id), -1);
-      nextIdRef.current = maxId + 1;
-      // load the imported diagram
-      setElements(imported);
-      setSelectedId([]);
-    },
-    [setElements, setSelectedId]
-  );
+    const kinds = outputs.map(o => classifyLabel(o.text));
+    const hasRealCondition = kinds.some(k => k === 'cond' || k === 'interval');
 
-  const handleXmlFileChosen = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      try {
-        const file = e.target.files?.[0];
-        // allow re-upload same file
-        e.target.value = '';
+    // ---------- Condition / Interval mode ----------
+    if (hasRealCondition) {
+      const v = generateGateValue(gate, outputs); // NOTE: uses outputs
+      gate.lastGateValue = v;
 
-        if (!file) return;
-        if (!isProbablyXmlFile(file)) {
-          throw new Error('Please select an .xml file.');
+      const matches: number[] = [];
+      for (let i = 0; i < outputs.length; i++) {
+        const o = outputs[i];
+        const kind = kinds[i];
+        if (!o.text) continue;
+
+        if (kind === 'cond') {
+          const fn = parseCond(o.text);
+          if (fn && fn(v)) matches.push(i);
+        } else if (kind === 'interval') {
+          const pair = parseInterval(o.text!);
+          if (pair && v >= pair[0] && v <= pair[1]) matches.push(i);
         }
-
-        const text = await file.text();
-        importXmlText(text);
-      } catch (err) {
-        const msg =
-          err instanceof Error ? err.message : 'Failed to import XML.';
-        console.error(err);
-        setXmlImportError(msg);
-      }
-    },
-    [importXmlText]
-  );
-
-  const openXmlPicker = useCallback(() => {
-    xmlFileInputRef.current?.click();
-  }, []);
-
-  // Optional: allow other UI (TopBar) to trigger it via event
-  useEffect(() => {
-    const onImport = (ev: Event) => {
-      const ce = ev as CustomEvent<{ xmlText?: string; fileName?: string }>;
-
-      // If sidebar provided the XML text, import immediately
-      if (ce.detail?.xmlText) {
-        importXmlText(ce.detail.xmlText);
-        return;
       }
 
-      // Otherwise fallback to file picker
-      openXmlPicker();
-    };
+      if (matches.length === 0) {
+        const elseIdx = kinds.findIndex(k => k === 'else');
+        return elseIdx >= 0 ? [outputs[elseIdx]] : [];
+      }
 
-    document.addEventListener('canvas-import-xml', onImport as EventListener);
+      // IMPORTANT: If labels overlap, duplicate to *every* match.
+      // (This makes overlaps work even if the gate's pullMode is 'pull any'.)
+      if (matches.length > 1) {
+        return matches.map(i => outputs[i]);
+      }
 
-    return () => {
-      document.removeEventListener(
-        'canvas-import-xml',
-        onImport as EventListener
-      );
-    };
-  }, [openXmlPicker, importXmlText]);
+      // Single match
+      return [outputs[matches[0]]];
+    }
+
+    // ---------- Probability mode (unchanged: pick ONE) ----------
+    const isPercent = outputs.some(
+      (o, i) => kinds[i] === 'prob' && /%$/.test((o.text ?? '').trim())
+    );
+    const elseIdx = kinds.findIndex(k => k === 'else');
+
+    if (isPercent) {
+      let sumPercent = 0;
+      const weights = outputs.map((o, i) => {
+        const s = (o.text ?? '').trim();
+        if (kinds[i] === 'prob' && /%$/.test(s)) {
+          const w = Math.max(0, parseInt(s, 10) || 0);
+          sumPercent += w;
+          return w;
+        }
+        return 0;
+      });
+      if (elseIdx >= 0) {
+        const rem = Math.max(0, 100 - sumPercent);
+        weights[elseIdx] = rem;
+        sumPercent += rem;
+      }
+      if (sumPercent <= 0) return elseIdx >= 0 ? [outputs[elseIdx]] : [];
+
+      let r = Math.random() * sumPercent;
+      for (let i = 0; i < outputs.length; i++) {
+        r -= weights[i];
+        if (r <= 0 && weights[i] > 0) return [outputs[i]];
+      }
+      return [outputs[outputs.length - 1]];
+    } else {
+      const weights = outputs.map((o, i) => {
+        const s = (o.text ?? '').trim();
+        if (kinds[i] === 'prob' && !/%$/.test(s))
+          return Math.max(0, parseFloat(s) || 0);
+        if (kinds[i] === 'empty') return 1;
+        return 0; // else/invalid default 0
+      });
+      const total = weights.reduce((a, b) => a + b, 0);
+      if (total <= 0) return elseIdx >= 0 ? [outputs[elseIdx]] : [];
+
+      let r = Math.random() * total;
+      for (let i = 0; i < outputs.length; i++) {
+        r -= weights[i];
+        if (r <= 0 && weights[i] > 0) return [outputs[i]];
+      }
+      return [outputs[outputs.length - 1]];
+    }
+  }
+
+  /**
+   * get current value of an element
+   */
+  const getElementValue = (element: GraphElement | undefined): number => {
+    if (!element) {
+      // console.log('⚠️ [getElementValue] Element is undefined');
+      return 0;
+    }
+
+    //console.log('📈 [getElementValue] Getting value from:', {
+    // type: element.type,
+    // id: element.id,
+    // currentPoints: element.currentPoints,
+    // currentValue: element.currentValue,
+    // number: element.number,
+    // });
+
+    switch (element.type) {
+      case 'Pool':
+        if (
+          element.currentPoints !== undefined &&
+          element.currentPoints !== null
+        ) {
+          return element.currentPoints;
+        }
+        return typeof element.number === 'string'
+          ? parseInt(element.number, 10) || 0
+          : element.number || 0;
+
+      case 'Register':
+        return element.currentValue || 0;
+
+      case 'Source':
+        return typeof element.number === 'string'
+          ? parseInt(element.number, 10) || 0
+          : element.number || 0;
+
+      default:
+        return 0;
+    }
+  };
 
   const applyStateConnectionDelta = (
     target: GraphElement,
@@ -2154,33 +990,9 @@ const Canvas: React.FC<CanvasProps> = ({
 
     if (target.type === 'Pool') {
       const max = target.max ?? Infinity;
-
-      // ✅ FIX: Update the specific color wallet so it persists
-      if (!target.resourcesByColor) target.resourcesByColor = {};
-
-      // Use the pool's defined color (or black) for the modifier
-      const colorKey = target.color || '#000000';
-      const currentVal = target.resourcesByColor[colorKey] || 0;
-
-      // Calculate new total to check against MAX
-      const currentTotal = getElementValue(target); // Use our robust getter
-      const space = max - currentTotal;
-
-      // Only add what fits (or remove whatever amount)
-      // If delta is negative, we can go down. If positive, check space.
-      let actualDelta = delta;
-      if (delta > 0) {
-        actualDelta = Math.min(delta, space);
-      }
-
-      const nextVal = Math.max(0, currentVal + actualDelta);
-      target.resourcesByColor[colorKey] = nextVal;
-
-      // Update total for display immediately
-      target.currentPoints = Object.values(target.resourcesByColor).reduce(
-        (a, b) => a + b,
-        0
-      );
+      const next = (target.currentPoints ?? 0) + delta;
+      target.currentPoints =
+        delta >= 0 ? Math.min(next, max) : Math.max(0, next);
       return;
     }
 
@@ -2197,239 +1009,77 @@ const Canvas: React.FC<CanvasProps> = ({
     (
       elementsToUpdate: GraphElement[],
       activationType: 'automatic' | 'onstart' | 'interactive',
-      interactiveElementId?: number,
-      transfers?: ResourceTransfer[]
+      interactiveElementId?: number
     ): GraphElement[] => {
-      // Increment tick counter for fractional dispatch tracking
-      currentTickRef.current += 1;
-      const currentTick = currentTickRef.current;
-
       const nextElements = JSON.parse(
         JSON.stringify(elementsToUpdate)
       ) as GraphElement[];
       const elementMap = new Map<number, GraphElement>(
         nextElements.map(el => [el.id, el])
       );
-
-      // Accumulate register modifiers here so PASS 5 can apply them (and not get overwritten by formulas)
-      const registerDeltaById = new Map<number, number>();
-
-      // =======================================================================
-      // Helper: Check if a ResourceConnection is inhibited by StateConnections
-      // This mirrors the original Machinations checkInhibition() logic
-      // =======================================================================
-      const isConnectionInhibitedByState = (conn: GraphElement): boolean => {
-        if (conn.type !== 'Resource Connection') return false;
-
-        // =========================================================
-        // Check 1: Is any incoming StateConnection's condition unsatisfied?
-        // =========================================================
-        const incomingStateConnections = nextElements.filter(
-          el => el.type === 'State Connection' && el.connectedToEnd === conn.id
-        );
-
-        for (const stateConn of incomingStateConnections) {
-          const labelText = (stateConn.text ?? '').trim();
-          const kind = classifyLabel(labelText);
-          const isActivator = kind === 'cond' || kind === 'interval';
-
-          if (isActivator) {
-            const startEl = elementMap.get(stateConn.connectedToStart!);
-            if (!startEl) continue;
-
-            const value = getElementValue(startEl);
-            let conditionSatisfied = false;
-
-            if (kind === 'cond') {
-              const fn = parseCond(labelText);
-              if (fn) conditionSatisfied = fn(value);
-            } else if (kind === 'interval') {
-              const range = parseInterval(labelText);
-              if (range)
-                conditionSatisfied = value >= range[0] && value <= range[1];
-            }
-
-            if (!conditionSatisfied) {
-              return true;
-            }
-          }
-        }
-
-        // =========================================================
-        // Check 2: Is the START NODE inhibited by any StateConnection?
-        // =========================================================
-        const startNodeId = conn.connectedToStart;
-        if (startNodeId != null) {
-          // Find all StateConnections that point TO the start node with condition labels
-          const stateConnsToStartNode = nextElements.filter(
-            el =>
-              el.type === 'State Connection' &&
-              el.connectedToEnd === startNodeId
-          );
-
-          for (const stateConn of stateConnsToStartNode) {
-            const labelText = (stateConn.text ?? '').trim();
-            const kind = classifyLabel(labelText);
-            const isActivator = kind === 'cond' || kind === 'interval';
-
-            if (isActivator) {
-              const sourceEl = elementMap.get(stateConn.connectedToStart!);
-              if (!sourceEl) continue;
-
-              const value = getElementValue(sourceEl);
-              let conditionSatisfied = false;
-
-              if (kind === 'cond') {
-                const fn = parseCond(labelText);
-                if (fn) conditionSatisfied = fn(value);
-              } else if (kind === 'interval') {
-                const range = parseInterval(labelText);
-                if (range)
-                  conditionSatisfied = value >= range[0] && value <= range[1];
-              }
-
-              // If the start node has an unsatisfied condition, this connection is inhibited
-              if (!conditionSatisfied) {
-                console.log(
-                  `[DEBUG] ResourceConn ${conn.id} inhibited because start node ${startNodeId} has unsatisfied condition from StateConn ${stateConn.id} (${labelText})`
-                );
-                return true;
-              }
-            }
-          }
-        }
-
-        return false;
-      };
-
-      const updateAllConnectionInhibitionState = () => {
-        for (const conn of nextElements) {
-          if (conn.type === 'Resource Connection') {
-            const isInhibited = isConnectionInhibitedByState(conn);
-            conn.inhibited = isInhibited;
-            conn.hasUnsatisfiedCondition = isInhibited;
-          }
-        }
-      };
-
-      // --- Internal Helpers for Color Logic ---
-      const normalizeColor = (c?: string) => c || '#000000';
-
-      const getResCount = (el: GraphElement, color: string): number => {
-        if (!el.resourcesByColor) return 0;
-        return el.resourcesByColor[color] || 0;
-      };
-
-      const modResCount = (el: GraphElement, color: string, delta: number) => {
-        if (!el.resourcesByColor) el.resourcesByColor = {};
-        const current = el.resourcesByColor[color] || 0;
-        const next = Math.max(0, current + delta);
-        el.resourcesByColor[color] = Math.round(next * 100) / 100;
-
-        // Sync total
-        el.currentPoints = Object.values(el.resourcesByColor).reduce(
-          (a, b) => a + b,
-          0
-        );
-      };
-
-      const canTakeUnits = (
-        start: GraphElement,
-        units: number,
-        color: string
-      ): boolean => {
-        if (units <= 0) return false;
-        if (start.type === 'Source') return true;
-        if (start.type === 'Pool') return getResCount(start, color) >= units;
-        return false;
-      };
-
-      const takeUnits = (
-        start: GraphElement,
-        units: number,
-        color: string
-      ): number => {
-        if (units <= 0) return 0;
-        if (start.type === 'Source') return units;
-        if (start.type === 'Pool') {
-          const have = getResCount(start, color);
-          const used = Math.min(have, units);
-          modResCount(start, color, -used);
-          return used;
-        }
-        return 0;
-      };
-
-      const deliverUnits = (
-        outConn: GraphElement,
-        units: number,
-        sourceElement?: GraphElement
-      ) => {
-        if (units <= 0) return;
-        const end = elementMap.get(outConn.connectedToEnd!);
-        if (!end) return;
-
-        const color = normalizeColor(outConn.color);
-
-        // Use recordTransfer for Resource Connections to apply source element's resources color
-        if (outConn.type === 'Resource Connection') {
-          if (transfers)
-            recordTransfer(transfers, outConn, units, sourceElement);
-        } else if (transfers) {
-          // For State Connections, push directly (no color from source needed)
-          transfers.push({ connectionId: outConn.id, units, color });
-        }
-
-        if (outConn.type === 'State Connection') {
-          end.triggerCount = (end.triggerCount ?? 0) + units;
-          return;
-        }
-
-        if (end.type === 'Pool') {
-          const currentTotal = end.currentPoints ?? 0;
-          const max = end.max ?? Infinity;
-          const space = max - currentTotal;
-          const accepted = Math.min(units, space);
-          if (accepted > 0) modResCount(end, color, accepted);
-        }
-      };
-
-      // =======================================================================
-      // PASS 0: Initialization
-      // =======================================================================
-      if (activationType === 'onstart') {
-        for (const element of nextElements) {
-          if (element.type === 'Pool') {
-            if (!element.resourcesByColor) {
-              element.resourcesByColor = {};
-              const startVal =
-                typeof element.number === 'string'
-                  ? parseInt(element.number) || 0
-                  : element.number || 0;
-              if (startVal > 0) {
-                const poolColor = normalizeColor(element.color);
-                element.resourcesByColor[poolColor] = startVal;
-                element.currentPoints = startVal;
-              } else {
-                element.currentPoints = 0;
-              }
-            }
-          }
-          if (element.type === 'End Condition') {
-            element.inhibited = true;
-            element.isBlinking = false;
-          }
-          // Init storage for advanced elements
-          if (element.type === 'Convertor' && !element.inputResources)
-            element.inputResources = {};
-          if (element.type === 'Trader') {
-            if (!element.traderInputs) element.traderInputs = {};
-            if (!element.traderOutputs) element.traderOutputs = {};
+      const stateConnectionsByStart = new Map<number, GraphElement[]>();
+      for (const connection of nextElements) {
+        if (
+          connection.type === 'State Connection' &&
+          connection.connectedToStart &&
+          connection.connectedToEnd
+        ) {
+          const list = stateConnectionsByStart.get(connection.connectedToStart);
+          if (list) {
+            list.push(connection);
+          } else {
+            stateConnectionsByStart.set(connection.connectedToStart, [connection]);
           }
         }
       }
 
-      // Reset tick flags
+      const triggerFromArrival = (startElementId?: number) => {
+        if (!startElementId) return;
+        const outgoing = stateConnectionsByStart.get(startElementId);
+        if (!outgoing || outgoing.length === 0) return;
+        for (const conn of outgoing) {
+          if (!shouldActivateTrigger(conn.text)) continue;
+          const target = conn.connectedToEnd
+            ? elementMap.get(conn.connectedToEnd)
+            : undefined;
+          if (!target) continue;
+          target.triggerCount = (target.triggerCount ?? 0) + 1;
+        }
+      };
+
+      // PASS 0: initialize check
+      if (activationType === 'onstart') {
+        // console.log('🔄 [PASS 0] Initializing elements...');
+        for (const element of nextElements) {
+          if (element.type === 'Pool') {
+            if (
+              element.currentPoints === undefined ||
+              element.currentPoints === null
+            ) {
+              const startingPoints =
+                typeof element.number === 'string'
+                  ? parseInt(element.number, 10) || 0
+                  : element.number || 0;
+              element.currentPoints = startingPoints;
+              // console.log('  ✓ Pool initialized:', {
+              // id: element.id,
+              // currentPoints: element.currentPoints,
+              // });
+            }
+          }
+
+          if (element.type === 'End Condition') {
+            element.inhibited = true;
+            element.isBlinking = false;
+            console.log('🎯 [EndCondition] Initialized:', {
+              id: element.id,
+              text: element.text,
+              inhibited: element.inhibited,
+            });
+          }
+        }
+      }
+
       for (const resetEl of nextElements) {
         if (resetEl.type === 'State Connection') {
           resetEl.conditionSatisfied = undefined;
@@ -2438,75 +1088,95 @@ const Canvas: React.FC<CanvasProps> = ({
           resetEl.hasUnsatisfiedCondition = false;
         }
       }
-      updateAllConnectionInhibitionState();
 
-      // =======================================================================
-      // PASS 0.5: State Connections (Modifiers & Triggers)
-      // =======================================================================
+      const targetConditionStates = new Map<number, boolean>();
+
+      // --------- PASS 0.5: process State Connections (conditions & triggers, always on) ---------
       for (const connection of nextElements) {
         if (
           connection.type !== 'State Connection' ||
-          connection.connectedToStart == null ||
-          connection.connectedToEnd == null
-        )
+          !connection.connectedToStart ||
+          !connection.connectedToEnd
+        ) {
           continue;
+        }
 
         const startEl = elementMap.get(connection.connectedToStart);
         const endEl = elementMap.get(connection.connectedToEnd);
         if (!startEl || !endEl) continue;
 
-        // SKIP End Conditions (Handled in Pass 6)
-        if (endEl.type === 'End Condition') continue;
-
-        // SKIP Resource Connections (Handled by label parser later)
-        if (endEl.type === 'Resource Connection') continue;
-
         const rawLabel = (connection.text ?? '').trim();
-        const kind = classifyLabel(rawLabel);
 
-        // Apply Modifiers
-        if (kind === 'prob' || kind === 'empty') {
-          const perUnit = parseConnectionLabel(rawLabel);
-
-          // ✅ Pool -> Register: apply per resource in the pool
-          if (endEl.type === 'Register') {
-            let delta = perUnit;
-            if (startEl.type === 'Pool') {
-              const unitsInPool = getElementValue(startEl); // sums all colors
-              delta = perUnit * unitsInPool;
-            }
-            if (delta !== 0) {
-              registerDeltaById.set(
-                endEl.id,
-                (registerDeltaById.get(endEl.id) ?? 0) + delta
-              );
-            }
-          } else {
-            // existing behavior for Pools / other targets
-            // applyStateConnectionDelta(endEl, perUnit);
+        if (endEl.type === 'Resource Connection') {
+          const { matched } = evaluateDynamicResourceLabel(rawLabel, startEl);
+          if (matched) {
+            continue;
           }
         }
 
-        // Handle Triggers
-        const labelLower = rawLabel.toLowerCase();
-        if (
-          labelLower === 'trigger' ||
-          labelLower === 'fire' ||
-          startEl.type === 'Gate'
-        ) {
-          endEl.triggerCount = (endEl.triggerCount ?? 0) + 1;
+        const { evaluated, satisfied } = evaluateStateCondition(
+          connection,
+          elementMap
+        );
+
+        if (evaluated) {
+          connection.conditionSatisfied = satisfied;
+          connection.hasUnsatisfiedCondition = !satisfied;
+          endEl.inhibited = !satisfied;
+          const prev = targetConditionStates.get(endEl.id);
+          if (prev === undefined) {
+            targetConditionStates.set(endEl.id, satisfied);
+          } else {
+            targetConditionStates.set(endEl.id, prev && satisfied);
+          }
+        }
+
+        const labelText = rawLabel;
+        const kind = classifyLabel(labelText);
+
+        if (kind === 'cond') {
+          const fn = parseCond(labelText);
+          if (fn) {
+            const value = getElementValue(startEl);
+            endEl.inhibited = !fn(value);
+          }
+        } else if (kind === 'interval') {
+          const range = parseInterval(labelText);
+          if (range) {
+            const value = getElementValue(startEl);
+            endEl.inhibited = !(value >= range[0] && value <= range[1]);
+          }
+        }
+        // const percentMatch = rawLabel.match(/^(\d+(?:\.\d+)?)\s*%$/);
+        // if (percentMatch) {
+        //   const pctRaw = parseFloat(percentMatch[1]);
+        //   const pctClamped = Math.min(Math.max(pctRaw, 0), 100);
+        //   const probability = pctClamped / 100;
+        //   if (Math.random() < probability) {
+        //     endEl.triggerCount = (endEl.triggerCount ?? 0) + 1;
+        //   }
+        //   continue;
+        // }
+
+        if (parseTriggerChance(labelText) !== null) {
+          continue;
+        }
+
+        if (kind === 'prob' || kind === 'empty') {
+          const delta = parseConnectionLabel(labelText);
+          applyStateConnectionDelta(endEl, delta);
         }
       }
 
-      // Update visuals for labels (e.g. Resource Connections "+x")
+      updateStateConnectionVisualState(nextElements);
       applyDynamicResourceLabelsMutable(nextElements);
 
       // --------- PASS 1: generic connections (but SKIP Gate outputs) ---------
       for (const connection of nextElements) {
         if (
           !isResourceLikeConnection(connection) ||
-          connection.connectedToStart == null ||
-          connection.connectedToEnd == null
+          !connection.connectedToStart ||
+          !connection.connectedToEnd
         ) {
           continue;
         }
@@ -2534,410 +1204,705 @@ const Canvas: React.FC<CanvasProps> = ({
         return false;
       };
 
-      // =======================================================================
-      // PASS 1: Pools
-      // =======================================================================
+      // --------- PASS 1.5: process Pools with active firing modes ----------
       for (const pool of nextElements) {
         if (pool.type !== 'Pool') continue;
 
+        // Activation check
         let isTriggerActive = false;
         if (activationType === 'automatic') {
           if (pool.activation === 'automatic') isTriggerActive = true;
-          else if (pool.activation === 'passive' && consumePassiveTrigger(pool))
-            isTriggerActive = true;
+        } else if (
+          pool.activation === 'passive' &&
+          consumePassiveTrigger(pool)
+        ) {
+          isTriggerActive = true;
         } else if (activationType === 'interactive') {
-          if (
-            pool.activation === 'interactive' &&
-            interactiveElementId === pool.id
-          )
-            isTriggerActive = true;
+          if (pool.activation === 'interactive') {
+            isTriggerActive =
+              !interactiveElementId || pool.id === interactiveElementId;
+          }
         } else if (activationType === 'onstart') {
           if (pool.activation === 'onstart' && !pool.hasStarted)
             isTriggerActive = true;
         }
+        // Passive pools only fire when triggered externally (not in this pass)
 
         if (!isTriggerActive) continue;
 
-        // PULL
-        const inputConns = nextElements.filter(
-          c =>
-            isResourceLikeConnection(c) &&
-            c.connectedToEnd === pool.id &&
-            !c.inhibited // Filter out inhibited connections
+        const poolPullMode = pool.pullMode || 'pull any';
+        const currentResources = pool.currentPoints || 0;
+
+        // Get input connections (connections ending at this pool)
+        const inputConns = nextElements
+          .filter(
+            c => isResourceLikeConnection(c) && c.connectedToEnd === pool.id
+          )
+          .filter(conn => {
+            const startEl = conn.connectedToStart
+              ? elementMap.get(conn.connectedToStart)
+              : undefined;
+            // Sources push resources in their own pass; skip here to avoid double counting.
+            return !startEl || startEl.type !== 'Source';
+          });
+
+        // Get output connections (connections starting at this pool)
+        const outputConns = nextElements.filter(
+          c => isResourceLikeConnection(c) && c.connectedToStart === pool.id
         );
-        const validInputs = inputConns.filter(c => {
-          const start = elementMap.get(c.connectedToStart!);
-          return !start || start.type !== 'Source';
-        });
 
-        const requirements = validInputs
-          .map(conn => {
-            const labelValue = parseConnectionLabel(conn.text);
-            // For pool pulls, use decimal logic when pool is triggered
-            const unitsToRequest = handleDecimalResourceDispatch(
-              conn,
-              labelValue,
-              fractionalDispatchRef.current,
-              currentTick
-            );
-            return {
-              conn,
-              units: unitsToRequest,
-              color: normalizeColor(conn.color),
-              startEl: elementMap.get(conn.connectedToStart!),
-            };
-          })
-          .filter(r => r.startEl && r.units > 0);
+        // Handle PULL modes (pull resources from inputs)
+        if (poolPullMode === 'pull any' || poolPullMode === 'pull all') {
+          if (inputConns.length === 0) continue;
 
-        if (pool.pullMode === 'pull all') {
-          if (
-            requirements.every(r => canTakeUnits(r.startEl!, r.units, r.color))
-          ) {
-            requirements.forEach(r => {
-              const taken = takeUnits(r.startEl!, r.units, r.color);
-              const space = (pool.max ?? Infinity) - (pool.currentPoints ?? 0);
-              const accepted = Math.min(taken, space);
-              modResCount(pool, r.color, accepted);
-              if (transfers)
-                recordTransfer(transfers, r.conn, accepted, r.startEl);
-            });
-          }
-        } else {
-          // pull any
-          for (const r of requirements) {
-            if (canTakeUnits(r.startEl!, r.units, r.color)) {
-              const taken = takeUnits(r.startEl!, r.units, r.color);
-              const space = (pool.max ?? Infinity) - (pool.currentPoints ?? 0);
-              const accepted = Math.min(taken, space);
-              modResCount(pool, r.color, accepted);
-              if (transfers)
-                recordTransfer(transfers, r.conn, accepted, r.startEl);
-              break;
-            }
-          }
-        }
-
-        // PUSH
-        if (pool.pullMode === 'push any' || pool.pullMode === 'push all') {
-          const outputConns = nextElements.filter(
-            c =>
-              isResourceLikeConnection(c) &&
-              c.connectedToStart === pool.id &&
-              !c.inhibited // Filter out inhibited connections
+          // Parse required amounts from input connections
+          const requiredAmounts: number[] = inputConns.map(conn =>
+            parseConnectionLabel(conn.text)
           );
-          const outputs = outputConns
-            .map(conn => {
-              const labelValue = parseConnectionLabel(conn.text);
-              // Calculate actual units to dispatch using decimal logic
-              const unitsToDispatch = handleDecimalResourceDispatch(
-                conn,
-                labelValue,
-                fractionalDispatchRef.current,
-                currentTick
-              );
-              return {
-                conn,
-                units: unitsToDispatch,
-                color: normalizeColor(conn.color),
-                endEl: elementMap.get(conn.connectedToEnd!),
-              };
-            })
-            .filter(o => o.endEl && o.units > 0);
 
-          if (pool.pullMode === 'push all') {
-            const allAvail = outputs.every(
-              o => getResCount(pool, o.color) >= o.units
-            );
-            if (allAvail) {
-              outputs.forEach(o => {
-                let canDeliver = true;
-                if (o.endEl!.type === 'Pool') {
-                  const cap =
-                    (o.endEl!.max ?? Infinity) - (o.endEl!.currentPoints ?? 0);
-                  if (cap < o.units) canDeliver = false;
+          if (poolPullMode === 'pull all') {
+            // Pull all: need all inputs available simultaneously
+            const allAvailable = inputConns.every((conn, idx) => {
+              const startEl = elementMap.get(conn.connectedToStart!);
+              if (!startEl) return false;
+              const required = requiredAmounts[idx];
+              if (startEl.type === 'Source') return true; // Source is infinite
+              if (startEl.type === 'Pool')
+                return (startEl.currentPoints ?? 0) >= required;
+              return false;
+            });
+
+            if (allAvailable) {
+              // Consume from all inputs
+              inputConns.forEach((conn, idx) => {
+                const startEl = elementMap.get(conn.connectedToStart!);
+                if (!startEl) return;
+                const required = requiredAmounts[idx];
+                if (startEl.type === 'Source') {
+                  // Source produces, nothing to consume
+                } else if (startEl.type === 'Pool') {
+                  startEl.currentPoints = Math.max(
+                    0,
+                    (startEl.currentPoints ?? 0) - required
+                  );
                 }
-                if (canDeliver) {
-                  modResCount(pool, o.color, -o.units);
-                  if (o.endEl!.type === 'Pool')
-                    modResCount(o.endEl!, o.color, o.units);
-                  if (transfers)
-                    recordTransfer(transfers, o.conn, o.units, pool);
-                }
+                // Add to this pool
+                const max = pool.max ?? Infinity;
+                pool.currentPoints = Math.min(
+                  (pool.currentPoints ?? 0) + required,
+                  max
+                );
+                if (required > 0) triggerFromArrival(pool.id);
               });
             }
           } else {
-            for (const o of outputs) {
-              if (getResCount(pool, o.color) >= o.units) {
-                let canDeliver = true;
-                if (o.endEl!.type === 'Pool') {
-                  const cap =
-                    (o.endEl!.max ?? Infinity) - (o.endEl!.currentPoints ?? 0);
-                  if (cap < o.units) canDeliver = false;
+            // Pull any: attempt to pull from any available input
+            for (let idx = 0; idx < inputConns.length; idx++) {
+              const conn = inputConns[idx];
+              const startEl = elementMap.get(conn.connectedToStart!);
+              if (!startEl) continue;
+              const required = requiredAmounts[idx];
+
+              let canPull = false;
+              if (startEl.type === 'Source') {
+                canPull = true;
+              } else if (startEl.type === 'Pool') {
+                canPull = (startEl.currentPoints ?? 0) >= required;
+              }
+
+              if (canPull) {
+                if (startEl.type === 'Pool') {
+                  startEl.currentPoints = Math.max(
+                    0,
+                    (startEl.currentPoints ?? 0) - required
+                  );
                 }
-                if (canDeliver) {
-                  modResCount(pool, o.color, -o.units);
-                  if (o.endEl!.type === 'Pool')
-                    modResCount(o.endEl!, o.color, o.units);
-                  if (transfers)
-                    recordTransfer(transfers, o.conn, o.units, pool);
-                }
+                const max = pool.max ?? Infinity;
+                pool.currentPoints = Math.min(
+                  (pool.currentPoints ?? 0) + required,
+                  max
+                );
+                if (required > 0) triggerFromArrival(pool.id);
+                break; // Only pull from one input in pull any mode
               }
             }
           }
         }
+        // Handle PUSH modes (push resources to outputs)
+        if (poolPullMode === 'push any' || poolPullMode === 'push all') {
+          if (outputConns.length === 0 || currentResources <= 0) continue;
+
+          // Parse amounts for output connections
+          const outputAmounts: number[] = outputConns.map(conn =>
+            parseConnectionLabel(conn.text)
+          );
+          const totalOutput = outputAmounts.reduce((sum, amt) => sum + amt, 0);
+
+          if (poolPullMode === 'push all') {
+            // Push all: only push if all outputs can accept resources
+            const allCanAccept = outputConns.every((conn, idx) => {
+              const endEl = elementMap.get(conn.connectedToEnd!);
+              if (!endEl) return false;
+              const amount = outputAmounts[idx];
+              if (endEl.type === 'Drain') return true; // Drain always accepts
+              if (endEl.type === 'Pool') {
+                const max = endEl.max ?? Infinity;
+                return (endEl.currentPoints ?? 0) + amount <= max;
+              }
+              return false;
+            });
+
+            if (allCanAccept && currentResources >= totalOutput) {
+              // Push to all outputs
+              outputConns.forEach((conn, idx) => {
+                const endEl = elementMap.get(conn.connectedToEnd!);
+                if (!endEl) return;
+                const amount = outputAmounts[idx];
+                if (endEl.type === 'Drain') {
+                  // Drain consumes, do nothing
+                } else if (endEl.type === 'Pool') {
+                  const max = endEl.max ?? Infinity;
+                  endEl.currentPoints = Math.min(
+                    (endEl.currentPoints ?? 0) + amount,
+                    max
+                  );
+                }
+                if (amount > 0) triggerFromArrival(endEl.id);
+              });
+              pool.currentPoints = Math.max(0, currentResources - totalOutput);
+            }
+          } else {
+            // Push any: push maximum possible, evenly distribute if needed
+            const available = currentResources;
+            if (available > 0 && totalOutput > 0) {
+              // Calculate how much we can actually push
+              const actualAmount = Math.min(available, totalOutput);
+
+              // Evenly distribute to all outputs
+              const perOutput = Math.floor(actualAmount / outputConns.length);
+              const remainder = actualAmount % outputConns.length;
+
+              outputConns.forEach((conn, idx) => {
+                const endEl = elementMap.get(conn.connectedToEnd!);
+                if (!endEl) return;
+                const amount = perOutput + (idx < remainder ? 1 : 0);
+                if (amount <= 0) return;
+
+                if (endEl.type === 'Drain') {
+                  // Drain consumes
+                } else if (endEl.type === 'Pool') {
+                  const max = endEl.max ?? Infinity;
+                  endEl.currentPoints = Math.min(
+                    (endEl.currentPoints ?? 0) + amount,
+                    max
+                  );
+                }
+                triggerFromArrival(endEl.id);
+              });
+              pool.currentPoints = Math.max(0, available - actualAmount);
+            }
+          }
+        }
+
+        // Handle PUSH modes (push resources to outputs)
+        if (poolPullMode === 'push any' || poolPullMode === 'push all') {
+          if (outputConns.length === 0 || currentResources <= 0) continue;
+
+          // Parse amounts for output connections
+          const outputAmounts: number[] = outputConns.map(conn =>
+            parseConnectionLabel(conn.text)
+          );
+          const totalOutput = outputAmounts.reduce((sum, amt) => sum + amt, 0);
+
+          if (poolPullMode === 'push all') {
+            // Push all: only push if all outputs can accept resources
+            const allCanAccept = outputConns.every((conn, idx) => {
+              const endEl = elementMap.get(conn.connectedToEnd!);
+              if (!endEl) return false;
+              const amount = outputAmounts[idx];
+              if (endEl.type === 'Drain') return true; // Drain always accepts
+              if (endEl.type === 'Pool') {
+                const max = endEl.max ?? Infinity;
+                return (endEl.currentPoints ?? 0) + amount <= max;
+              }
+              return false;
+            });
+
+            if (allCanAccept && currentResources >= totalOutput) {
+              // Push to all outputs
+              outputConns.forEach((conn, idx) => {
+                const endEl = elementMap.get(conn.connectedToEnd!);
+                if (!endEl) return;
+                const amount = outputAmounts[idx];
+                if (endEl.type === 'Drain') {
+                  // Drain consumes, do nothing
+                } else if (endEl.type === 'Pool') {
+                  const max = endEl.max ?? Infinity;
+                  endEl.currentPoints = Math.min(
+                    (endEl.currentPoints ?? 0) + amount,
+                    max
+                  );
+                }
+                if (amount > 0) triggerFromArrival(endEl.id);
+              });
+              pool.currentPoints = Math.max(0, currentResources - totalOutput);
+            }
+          } else {
+            // Push any: push maximum possible, evenly distribute if needed
+            const available = currentResources;
+            if (available > 0 && totalOutput > 0) {
+              // Calculate how much we can actually push
+              // const actualAmount = Math.min(available, totalOutput);
+              // // Evenly distribute to all outputs
+              // const perOutput = Math.floor(actualAmount / outputConns.length);
+              // const remainder = actualAmount % outputConns.length;
+              // outputConns.forEach((conn, idx) => {
+              //   const endEl = elementMap.get(conn.connectedToEnd!);
+              //   if (!endEl) return;
+              //   const amount = perOutput + (idx < remainder ? 1 : 0);
+              //   if (amount <= 0) return;
+              //   if (endEl.type === 'Drain') {
+              //     // Drain consumes
+              //   } else if (endEl.type === 'Pool') {
+              //     const max = endEl.max ?? Infinity;
+              //     endEl.currentPoints = Math.min(
+              //       (endEl.currentPoints ?? 0) + amount,
+              //       max
+              //     );
+              //   }
+              // });
+              // pool.currentPoints = Math.max(0, available - actualAmount);
+            }
+          }
+        }
+
         if (activationType === 'onstart') pool.hasStarted = true;
       }
 
-      // =======================================================================
-      // PASS 2: Gates
-      // =======================================================================
+      // --------- PASS 2: process Gates ----------
       for (const gate of nextElements) {
         if (gate.type !== 'Gate') continue;
+
+        // Activation gate check
         let isTriggerActive = false;
         if (activationType === 'automatic') {
           if (gate.activation === 'automatic') isTriggerActive = true;
-          else if (gate.activation === 'passive' && consumePassiveTrigger(gate))
-            isTriggerActive = true;
-        } else if (activationType === 'interactive') {
-          if (
-            gate.activation === 'interactive' &&
-            interactiveElementId === gate.id
-          )
-            isTriggerActive = true;
-        } else if (activationType === 'onstart') {
-          if (gate.activation === 'onstart' && !gate.hasStarted)
-            isTriggerActive = true;
+        } else if (
+          gate.activation === 'passive' &&
+          consumePassiveTrigger(gate)
+        ) {
+          isTriggerActive = true;
+        } else {
+          if (gate.activation === activationType) isTriggerActive = true;
         }
-        if (
-          !isTriggerActive ||
-          (activationType !== 'onstart' && gate.hasStarted)
-        )
-          continue;
+        const canFire = activationType !== 'onstart' || !gate.hasStarted;
+        const isTarget =
+          !interactiveElementId || gate.id === interactiveElementId;
 
+        if (!(isTriggerActive && canFire && isTarget)) continue;
+
+        // Collect inputs (resource connections ending at this gate)
         const inputConns = nextElements.filter(
-          c =>
-            isResourceLikeConnection(c) &&
-            c.connectedToEnd === gate.id &&
-            !c.inhibited // Filter out inhibited connections
+          c => isResourceLikeConnection(c) && c.connectedToEnd === gate.id
         );
+
+        // Collect outputs (both resource and state connections starting at this gate)
         const outputConns = nextElements.filter(
           c =>
-            (isResourceLikeConnection(c) || c.type === 'State Connection') &&
-            c.connectedToStart === gate.id &&
-            !(c.type === 'Resource Connection' && c.inhibited) // Filter inhibited Resource Connections
+            (c.type === 'Resource Connection' ||
+              c.type === 'State Connection') &&
+            c.connectedToStart === gate.id
         );
+
+        if (outputConns.length === 0) {
+          if (activationType === 'onstart') gate.hasStarted = true;
+          continue;
+        }
+
+        // Determine actions this tick
         const actions = Math.max(1, gate.actions ?? 1);
 
-        for (let a = 0; a < actions; a++) {
-          const inputs = inputConns
-            .map(conn => ({
-              conn,
-              units: parseConnectionLabel(conn.text),
-              color: normalizeColor(conn.color),
-              startEl: elementMap.get(conn.connectedToStart!),
-            }))
-            .filter(i => i.startEl && i.units > 0);
+        // Helper: can we take 1 unit from a start element?
+        const canTakeOne = (start: GraphElement): boolean => {
+          if (start.type === 'Source') return true; // infinite
+          if (start.type === 'Pool') return (start.currentPoints ?? 0) > 0;
+          return false; // not supported as input (yet)
+        };
 
-          if (gate.pullMode === 'pull all') {
-            const allAvail = inputs.every(i =>
-              canTakeUnits(i.startEl!, i.units, i.color)
-            );
-            if (!allAvail) break;
-            inputs.forEach(i => {
-              const taken = takeUnits(i.startEl!, i.units, i.color);
-              if (taken > 0) {
-                if (transfers)
-                  recordTransfer(transfers, i.conn, taken, i.startEl);
-                for (let k = 0; k < taken; k++) {
-                  const chosen = chooseGateOutputs(gate, outputConns);
-                  chosen.forEach(out => deliverUnits(out, 1, i.startEl));
-                }
-              }
-            });
-          } else {
-            for (const i of inputs) {
-              if (canTakeUnits(i.startEl!, i.units, i.color)) {
-                const taken = takeUnits(i.startEl!, i.units, i.color);
-                if (taken > 0) {
-                  if (transfers)
-                    recordTransfer(transfers, i.conn, taken, i.startEl);
-                  for (let k = 0; k < taken; k++) {
-                    const chosen = chooseGateOutputs(gate, outputConns);
-                    chosen.forEach(out => deliverUnits(out, 1, i.startEl));
-                  }
-                }
-              }
+        const takeOne = (start: GraphElement): boolean => {
+          if (start.type === 'Source') return true;
+          if (start.type === 'Pool') {
+            const have = start.currentPoints ?? 0;
+            if (have > 0) {
+              start.currentPoints = have - 1;
+              return true;
             }
           }
+          return false;
+        };
+
+        const deliverOne = (outConn: GraphElement) => {
+          const end = elementMap.get(outConn.connectedToEnd!);
+          if (!end) return;
+
+          if (outConn.type === 'State Connection') {
+            // Trigger-only: discard resource, bump instrumentation
+            end.triggerCount = (end.triggerCount ?? 0) + 1;
+            // You can also flip flags or enqueue effects here if needed.
+            return;
+          }
+
+          // Resource delivery
+          if (end.type === 'Pool') {
+            const cur = end.currentPoints ?? 0;
+            const cap = end.max ?? Infinity;
+            if (cur < cap) end.currentPoints = cur + 1;
+            triggerFromArrival(end.id);
+            return;
+          }
+
+          // If Drain (via resource path) => "lost", do nothing.
+          if (end.type === 'Drain') {
+            triggerFromArrival(end.id);
+            return;
+          }
+
+          // If other types later need resource, add handling here.
+        };
+
+        // Run actions
+        for (let a = 0; a < actions; a++) {
+          // Build a list of inputs to consume from based on pullMode
+          let inputsToUse: GraphElement[] = [];
+
+          if ((gate.pullMode ?? 'pull any') === 'pull all') {
+            for (const ic of inputConns) {
+              const startEl = elementMap.get(ic.connectedToStart!);
+              if (startEl && canTakeOne(startEl)) inputsToUse.push(startEl);
+            }
+            if (inputsToUse.length === 0) break; // nothing available this action
+          } else {
+            // pull any
+            const best = inputConns.find(ic => {
+              const se = elementMap.get(ic.connectedToStart!);
+              return !!se && canTakeOne(se);
+            });
+            if (!best) break;
+            const se = elementMap.get(best.connectedToStart!)!;
+            inputsToUse = [se];
+          }
+
+          // Choose output once per resource taken
+          for (const startEl of inputsToUse) {
+            // Consume one unit
+            if (!takeOne(startEl)) continue;
+
+            // Decide which output gets it
+            // NOTE: we give chooseGateOutput the *full* output list so labels compete
+            // Decide which outputs get it (may be multiple on overlap)
+            const chosenList = chooseGateOutputs(gate, outputConns);
+            for (const ch of chosenList) {
+              deliverOne(ch);
+            }
+
+            // If no match and no else, nothing is delivered (token dropped)
+
+            // else: dropped on the floor (no match and no 'else')
+          }
         }
+
         if (activationType === 'onstart') gate.hasStarted = true;
       }
 
-      // =======================================================================
-      // PASS 2.5: Sources
-      // =======================================================================
+      // --------- PASS 2.5: process Sources ----------
       for (const source of nextElements) {
         if (source.type !== 'Source') continue;
+
+        // Activation check - Source produces based on output streams
         let isTriggerActive = false;
         if (activationType === 'automatic') {
           if (source.activation === 'automatic') isTriggerActive = true;
-          else if (
-            source.activation === 'passive' &&
-            consumePassiveTrigger(source)
-          )
-            isTriggerActive = true;
-        } else if (activationType === 'interactive') {
-          if (
-            source.activation === 'interactive' &&
-            interactiveElementId === source.id
-          )
-            isTriggerActive = true;
-        } else if (activationType === 'onstart') {
-          if (source.activation === 'onstart' && !source.hasStarted)
-            isTriggerActive = true;
+        } else if (
+          source.activation === 'passive' &&
+          consumePassiveTrigger(source)
+        ) {
+          isTriggerActive = true;
+        } else {
+          if (source.activation === activationType) isTriggerActive = true;
+        }
+        const canFire = activationType !== 'onstart' || !source.hasStarted;
+        const isTarget =
+          !interactiveElementId || source.id === interactiveElementId;
+
+        if (!(isTriggerActive && canFire && isTarget)) continue;
+
+        // Collect output connections (resource connections starting at this source)
+        const outputConns = nextElements.filter(
+          c => isResourceLikeConnection(c) && c.connectedToStart === source.id
+        );
+
+        if (outputConns.length === 0) {
+          if (activationType === 'onstart') source.hasStarted = true;
+          continue;
         }
 
-        if (
-          isTriggerActive &&
-          (activationType === 'onstart' ? !source.hasStarted : true)
-        ) {
-          const outputConns = nextElements.filter(
-            c =>
-              isResourceLikeConnection(c) &&
-              c.connectedToStart === source.id &&
-              !c.inhibited // Filter out inhibited connections
-          );
-          outputConns.forEach(conn => {
-            const labelValue = parseConnectionLabel(conn.text);
-            if (labelValue > 0) {
-              // Use decimal dispatch logic for fractional labels
-              const amountToDispatch = handleDecimalResourceDispatch(
-                conn,
-                labelValue,
-                fractionalDispatchRef.current,
-                currentTick
-              );
-              if (amountToDispatch > 0) {
-                deliverUnits(conn, amountToDispatch, source);
-              }
+        // Source produces resources equal to value of all output streams
+        // Each output connection label is evaluated separately (for random/fraction)
+        outputConns.forEach(outputConn => {
+          const amount = parseConnectionLabel(outputConn.text);
+          const endElement = elementMap.get(outputConn.connectedToEnd!);
+
+          if (!endElement) return;
+
+          // Check if this is a trigger output (marked with "*")
+          const isTrigger = isTriggerOutput(outputConn.text);
+
+          if (isTrigger) {
+            // Trigger output: activate the target element
+            endElement.triggerCount = (endElement.triggerCount ?? 0) + 1;
+          } else {
+            // Normal resource output
+            if (endElement.type === 'Pool') {
+              const current = endElement.currentPoints || 0;
+              const max = endElement.max ?? Infinity;
+              endElement.currentPoints = Math.min(current + amount, max);
+              if (amount > 0) triggerFromArrival(endElement.id);
             }
-          });
-          if (activationType === 'onstart') source.hasStarted = true;
-        }
+          }
+        });
+
+        if (activationType === 'onstart') source.hasStarted = true;
       }
 
-      // =======================================================================
-      // PASS 2.7: Drains
-      // =======================================================================
+      // // --------- PASS 2.5: process Sources ----------
+      // for (const source of nextElements) {
+      //   if (source.type !== 'Source') continue;
+
+      //   // Activation check - Source produces based on output streams
+      //   let isTriggerActive = false;
+      //   if (activationType === 'automatic') {
+      //     if (source.activation === 'automatic') isTriggerActive = true;
+      //   } else if (
+      //     source.activation === 'passive' &&
+      //     consumePassiveTrigger(source)
+      //   ) {
+      //     isTriggerActive = true;
+      //   } else {
+      //     if (source.activation === activationType) isTriggerActive = true;
+      //   }
+      //   const canFire = activationType !== 'onstart' || !source.hasStarted;
+      //   const isTarget =
+      //     !interactiveElementId || source.id === interactiveElementId;
+
+      //   if (!(isTriggerActive && canFire && isTarget)) continue;
+
+      //   // Collect output connections (resource connections starting at this source)
+      //   const outputConns = nextElements.filter(
+      //     c => isResourceLikeConnection(c) && c.connectedToStart === source.id
+      //   );
+
+      //   if (outputConns.length === 0) {
+      //     if (activationType === 'onstart') source.hasStarted = true;
+      //     continue;
+      //   }
+
+      //   // Source produces resources equal to value of all output streams
+      //   // Each output connection label is evaluated separately (for random/fraction)
+      //   outputConns.forEach(outputConn => {
+      //     const amount = parseConnectionLabel(outputConn.text);
+      //     const endElement = elementMap.get(outputConn.connectedToEnd!);
+
+      //     if (!endElement) return;
+
+      //     // Check if this is a trigger output (marked with "*")
+      //     const isTrigger = isTriggerOutput(outputConn.text);
+
+      //     if (isTrigger) {
+      //       // Trigger output: activate the target element
+      //       endElement.triggerCount = (endElement.triggerCount ?? 0) + 1;
+      //     } else {
+      //       // Normal resource output
+      //       if (endElement.type === 'Pool') {
+      //         const current = endElement.currentPoints || 0;
+      //         const max = endElement.max ?? Infinity;
+      //         endElement.currentPoints = Math.min(current + amount, max);
+      //       }
+      //     }
+      //   });
+
+      //   if (activationType === 'onstart') source.hasStarted = true;
+      // }
+
+      // --------- PASS 2.7: process Drains ----------
       for (const drain of nextElements) {
         if (drain.type !== 'Drain') continue;
+
+        // Activation check
         let isTriggerActive = false;
         if (activationType === 'automatic') {
           if (drain.activation === 'automatic') isTriggerActive = true;
-          else if (
-            drain.activation === 'passive' &&
-            consumePassiveTrigger(drain)
-          )
-            isTriggerActive = true;
-        } else if (activationType === 'interactive') {
-          if (
-            drain.activation === 'interactive' &&
-            interactiveElementId === drain.id
-          )
-            isTriggerActive = true;
-        } else if (activationType === 'onstart') {
-          if (drain.activation === 'onstart' && !drain.hasStarted)
-            isTriggerActive = true;
-        }
-
-        if (
-          isTriggerActive &&
-          (activationType === 'onstart' ? !drain.hasStarted : true)
+        } else if (
+          drain.activation === 'passive' &&
+          consumePassiveTrigger(drain)
         ) {
-          const inputConns = nextElements.filter(
-            c =>
-              isResourceLikeConnection(c) &&
-              c.connectedToEnd === drain.id &&
-              !c.inhibited // Filter out inhibited connections
-          );
-          inputConns.forEach(conn => {
+          isTriggerActive = true;
+        } else {
+          if (drain.activation === activationType) isTriggerActive = true;
+        }
+        const canFire = activationType !== 'onstart' || !drain.hasStarted;
+        const isTarget =
+          !interactiveElementId || drain.id === interactiveElementId;
+
+        if (!(isTriggerActive && canFire && isTarget)) continue;
+
+        // Collect input connections (resource connections ending at this drain)
+        const inputConns = nextElements.filter(
+          c => isResourceLikeConnection(c) && c.connectedToEnd === drain.id
+        );
+
+        // Collect output connections (state connections for trigger outputs)
+        const outputConns = nextElements.filter(
+          c => c.type === 'State Connection' && c.connectedToStart === drain.id
+        );
+
+        // Check if drain has trigger output (marked with "*")
+        const hasTriggerOutput = outputConns.some(conn =>
+          isTriggerOutput(conn.text)
+        );
+
+        // Parse input connection labels
+        const requiredAmounts: number[] = inputConns.map(conn =>
+          parseConnectionLabel(conn.text)
+        );
+
+        const drainPullMode = drain.pullMode || 'pull any';
+
+        if (drainPullMode === 'pull all') {
+          // Pull all: need all inputs available simultaneously
+          const allAvailable = inputConns.every((conn, idx) => {
             const startEl = elementMap.get(conn.connectedToStart!);
-            const labelValue = parseConnectionLabel(conn.text);
-            const color = normalizeColor(conn.color);
+            if (!startEl) return false;
+            const required = requiredAmounts[idx];
+            if (startEl.type === 'Source') return true; // Source is infinite
+            if (startEl.type === 'Pool')
+              return (startEl.currentPoints ?? 0) >= required;
+            return false;
+          });
 
-            if (startEl && labelValue > 0) {
-              // Use decimal dispatch logic for fractional labels
-              const amountToTake = handleDecimalResourceDispatch(
-                conn,
-                labelValue,
-                fractionalDispatchRef.current,
-                currentTick
-              );
-
-              if (
-                amountToTake > 0 &&
-                canTakeUnits(startEl, amountToTake, color)
-              ) {
-                const taken = takeUnits(startEl, amountToTake, color);
-                if (transfers) recordTransfer(transfers, conn, taken, startEl);
-                const stateOuts = nextElements.filter(
-                  c =>
-                    c.type === 'State Connection' &&
-                    c.connectedToStart === drain.id &&
-                    isTriggerOutput(c.text)
+          if (allAvailable) {
+            // Consume from all inputs
+            inputConns.forEach((conn, idx) => {
+              const startEl = elementMap.get(conn.connectedToStart!);
+              if (!startEl) return;
+              const required = requiredAmounts[idx];
+              if (startEl.type === 'Pool') {
+                startEl.currentPoints = Math.max(
+                  0,
+                  (startEl.currentPoints ?? 0) - required
                 );
-                stateOuts.forEach(out => {
-                  const target = elementMap.get(out.connectedToEnd!);
-                  if (target)
-                    target.triggerCount = (target.triggerCount ?? 0) + 1;
+              }
+              // Resource is destroyed (Drain consumes)
+            });
+            triggerFromArrival(drain.id);
+
+            // If trigger output exists, only trigger when all resources received
+            if (hasTriggerOutput) {
+              outputConns.forEach(conn => {
+                if (isTriggerOutput(conn.text)) {
+                  const endEl = elementMap.get(conn.connectedToEnd!);
+                  if (endEl) {
+                    endEl.triggerCount = (endEl.triggerCount ?? 0) + 1;
+                  }
+                }
+              });
+            }
+          }
+        } else {
+          // Pull any: attempt to pull from any available input
+          for (let idx = 0; idx < inputConns.length; idx++) {
+            const conn = inputConns[idx];
+            const startEl = elementMap.get(conn.connectedToStart!);
+            if (!startEl) continue;
+            const required = requiredAmounts[idx];
+
+            let canPull = false;
+            if (startEl.type === 'Source') {
+              canPull = true;
+            } else if (startEl.type === 'Pool') {
+              canPull = (startEl.currentPoints ?? 0) >= required;
+            }
+
+            if (canPull) {
+              if (startEl.type === 'Pool') {
+                startEl.currentPoints = Math.max(
+                  0,
+                  (startEl.currentPoints ?? 0) - required
+                );
+              }
+              // Resource is destroyed (Drain consumes)
+
+              // For pull any, trigger immediately when resource is consumed
+              triggerFromArrival(drain.id);
+              if (hasTriggerOutput) {
+                outputConns.forEach(conn => {
+                  if (isTriggerOutput(conn.text)) {
+                    const endEl = elementMap.get(conn.connectedToEnd!);
+                    if (endEl) {
+                      endEl.triggerCount = (endEl.triggerCount ?? 0) + 1;
+                    }
+                  }
                 });
               }
+              break; // Only pull from one input in pull any mode
             }
-          });
-          if (activationType === 'onstart') drain.hasStarted = true;
+          }
         }
+
+        if (activationType === 'onstart') drain.hasStarted = true;
       }
 
-      // =======================================================================
-      // PASS 3: Convertors
-      // =======================================================================
+      // --------- PASS 3: process Convertors ----------
       for (const convertor of nextElements) {
         if (convertor.type !== 'Convertor') continue;
 
+        // Activation check
         let isTriggerActive = false;
         if (activationType === 'automatic') {
           if (convertor.activation === 'automatic') isTriggerActive = true;
-          else if (
-            convertor.activation === 'passive' &&
-            consumePassiveTrigger(convertor)
-          )
-            isTriggerActive = true;
-        } else if (activationType === 'interactive') {
-          if (
-            convertor.activation === 'interactive' &&
-            interactiveElementId === convertor.id
-          )
-            isTriggerActive = true;
-        } else if (activationType === 'onstart') {
-          if (convertor.activation === 'onstart' && !convertor.hasStarted)
-            isTriggerActive = true;
+        } else if (
+          convertor.activation === 'passive' &&
+          consumePassiveTrigger(convertor)
+        ) {
+          isTriggerActive = true;
+        } else {
+          if (convertor.activation === activationType) isTriggerActive = true;
+        }
+        const canFire = activationType !== 'onstart' || !convertor.hasStarted;
+        const isTarget =
+          !interactiveElementId || convertor.id === interactiveElementId;
+
+        if (!(isTriggerActive && canFire && isTarget)) continue;
+
+        // Initialize convertor storage if not exists
+        if (!convertor.inputResources) {
+          convertor.inputResources = {};
+        }
+        if (!convertor.outputResources) {
+          convertor.outputResources = {};
+        }
+        if (!convertor.conversionRate) {
+          convertor.conversionRate = {};
         }
 
-        if (!isTriggerActive) continue;
-
-        if (!convertor.inputResources) convertor.inputResources = {};
-
+        // Collect input connections (resource connections ending at this convertor)
         const inputConns = nextElements.filter(
-          c =>
-            isResourceLikeConnection(c) &&
-            c.connectedToEnd === convertor.id &&
-            !c.inhibited // Filter out inhibited connections
+          c => isResourceLikeConnection(c) && c.connectedToEnd === convertor.id
         );
+
+        // Collect output connections (resource connections starting at this convertor)
         const outputConns = nextElements.filter(
           c =>
-            isResourceLikeConnection(c) &&
-            c.connectedToStart === convertor.id &&
-            !c.inhibited // Filter out inhibited connections
+            isResourceLikeConnection(c) && c.connectedToStart === convertor.id
         );
 
         if (inputConns.length === 0 || outputConns.length === 0) {
@@ -2945,134 +1910,187 @@ const Canvas: React.FC<CanvasProps> = ({
           continue;
         }
 
+        // Determine actions this tick
         const actions = Math.max(1, convertor.actions ?? 1);
 
+        // Process each action
         for (let a = 0; a < actions; a++) {
-          const inputs = inputConns
-            .map(conn => ({
-              conn,
-              units: parseConnectionLabel(conn.text),
-              color: normalizeColor(conn.color),
-              key: conn.text || 'default',
-              startEl: elementMap.get(conn.connectedToStart!),
-            }))
-            .filter(i => i.units > 0);
+          // Parse input connection labels to determine required resources
+          // Use connection ID as key to handle multiple connections with same label
+          const requiredInputs: Map<number, number> = new Map();
+          for (const inputConn of inputConns) {
+            const amount = parseConnectionLabel(inputConn.text);
+            if (amount > 0) {
+              requiredInputs.set(inputConn.id, amount);
+            }
+          }
 
-          const outputs = outputConns
-            .map(conn => ({
-              conn,
-              units: parseConnectionLabel(conn.text),
-              color: normalizeColor(conn.color),
-              endEl: elementMap.get(conn.connectedToEnd!),
-            }))
-            .filter(o => o.units > 0);
+          // Parse output connection labels to determine output resources
+          // Use connection ID as key to handle multiple connections with same label
+          const outputAmounts: Map<number, number> = new Map();
+          for (const outputConn of outputConns) {
+            const amount = parseConnectionLabel(outputConn.text);
+            if (amount > 0) {
+              outputAmounts.set(outputConn.id, amount);
+            }
+          }
 
+          // Check if we can satisfy all input requirements
           let canConvert = true;
-
           if (convertor.pullMode === 'pull all') {
-            canConvert = inputs.every(i => {
-              const stored = convertor.inputResources![i.key] || 0;
-              if (stored >= i.units) return true;
-              return i.startEl && canTakeUnits(i.startEl, i.units, i.color);
-            });
+            // For pull all: need all inputs available simultaneously
+            for (const [connId, requiredAmount] of requiredInputs.entries()) {
+              const connection = inputConns.find(c => c.id === connId);
+              if (!connection) {
+                canConvert = false;
+                break;
+              }
+              const inputElement = connection.connectedToStart
+                ? elementMap.get(connection.connectedToStart)
+                : undefined;
+              if (
+                !inputElement ||
+                (inputElement.type === 'Pool' &&
+                  (inputElement.currentPoints ?? 0) < requiredAmount) ||
+                (inputElement.type === 'Source' && false) // Source is always available
+              ) {
+                if (inputElement?.type !== 'Source') {
+                  canConvert = false;
+                  break;
+                }
+              }
+            }
           } else {
-            canConvert = inputs.some(i => {
-              const stored = convertor.inputResources![i.key] || 0;
-              if (stored >= i.units) return true;
-              return i.startEl && canTakeUnits(i.startEl, i.units, i.color);
-            });
+            // For pull any: check if we have stored enough resources
+            // Use connection text as key for storage
+            for (const [connId, requiredAmount] of requiredInputs.entries()) {
+              const connection = inputConns.find(c => c.id === connId);
+              if (!connection) continue;
+              const resourceKey = connection.text || 'default';
+              const stored = convertor.inputResources![resourceKey] || 0;
+              if (stored < requiredAmount) {
+                canConvert = false;
+                break;
+              }
+            }
           }
 
           if (canConvert) {
-            inputs.forEach(i => {
-              let amountNeeded = i.units;
-              const stored = convertor.inputResources![i.key] || 0;
-              if (stored >= amountNeeded) {
-                convertor.inputResources![i.key] = stored - amountNeeded;
-                amountNeeded = 0;
-              } else if (stored > 0) {
-                amountNeeded -= stored;
-                convertor.inputResources![i.key] = 0;
-              }
-
-              if (amountNeeded > 0 && i.startEl) {
-                if (
-                  convertor.pullMode === 'pull all' ||
-                  canTakeUnits(i.startEl, amountNeeded, i.color)
-                ) {
-                  const taken = takeUnits(i.startEl, amountNeeded, i.color);
-                  if (
-                    taken < amountNeeded &&
-                    convertor.pullMode === 'pull any'
-                  ) {
-                    convertor.inputResources![i.key] =
-                      (convertor.inputResources![i.key] || 0) + taken;
+            let inputConsumed = 0;
+            // Consume input resources
+            if (convertor.pullMode === 'pull all') {
+              // Consume directly from input pools
+              for (const [connId, requiredAmount] of requiredInputs.entries()) {
+                const inputConn = inputConns.find(c => c.id === connId);
+                if (inputConn && inputConn.connectedToStart) {
+                  const inputElement = elementMap.get(
+                    inputConn.connectedToStart
+                  );
+                  if (inputElement && inputElement.type === 'Pool') {
+                    inputElement.currentPoints = Math.max(
+                      0,
+                      (inputElement.currentPoints ?? 0) - requiredAmount
+                    );
+                    if (requiredAmount > 0) {
+                      inputConsumed += requiredAmount;
+                    }
                   }
-                  if (taken > 0 && transfers)
-                    recordTransfer(transfers, i.conn, taken, i.startEl);
                 }
               }
-            });
+            } else {
+              // Consume from stored resources
+              for (const [connId, requiredAmount] of requiredInputs.entries()) {
+                const connection = inputConns.find(c => c.id === connId);
+                if (!connection) continue;
+                const resourceKey = connection.text || 'default';
+                const current = convertor.inputResources![resourceKey] || 0;
+                convertor.inputResources![resourceKey] =
+                  current - requiredAmount;
+              }
+            }
+            if (inputConsumed > 0) {
+              triggerFromArrival(convertor.id);
+            }
 
-            outputs.forEach(o => deliverUnits(o.conn, o.units, convertor));
+            // Produce output resources
+            for (const [connId, outputAmount] of outputAmounts.entries()) {
+              const outputConn = outputConns.find(c => c.id === connId);
+              if (outputConn && outputConn.connectedToEnd) {
+                const outputElement = elementMap.get(outputConn.connectedToEnd);
+                if (outputElement && outputElement.type === 'Pool') {
+                  const current = outputElement.currentPoints ?? 0;
+                  const max = outputElement.max ?? Infinity;
+                  outputElement.currentPoints = Math.min(
+                    current + outputAmount,
+                    max
+                  );
+                  if (outputAmount > 0) triggerFromArrival(outputElement.id);
+                }
+              }
+            }
           } else {
+            // For pull any mode, try to pull and store resources
             if (convertor.pullMode === 'pull any') {
+              let collected = 0;
               for (const inputConn of inputConns) {
                 const inputElement = elementMap.get(
                   inputConn.connectedToStart!
                 );
-                const req = inputs.find(i => i.conn.id === inputConn.id);
-                if (!req) continue;
-
                 if (
                   inputElement &&
                   inputElement.type === 'Pool' &&
-                  getResCount(inputElement, req.color) > 0
+                  (inputElement.currentPoints ?? 0) > 0
                 ) {
+                  const amount = parseConnectionLabel(inputConn.text);
                   const available = Math.min(
-                    req.units,
-                    getResCount(inputElement, req.color)
+                    amount,
+                    inputElement.currentPoints ?? 0
                   );
+
                   if (available > 0) {
-                    modResCount(inputElement, req.color, -available);
-                    recordTransfer(
-                      transfers,
-                      inputConn,
-                      available,
-                      inputElement
-                    );
+                    inputElement.currentPoints =
+                      (inputElement.currentPoints ?? 0) - available;
                     const resourceKey = inputConn.text || 'default';
+                    const current = convertor.inputResources![resourceKey] || 0;
                     convertor.inputResources![resourceKey] =
-                      (convertor.inputResources![resourceKey] || 0) + available;
+                      current + available;
+                    collected += available;
                   }
                 }
+              }
+              if (collected > 0) {
+                triggerFromArrival(convertor.id);
               }
             }
           }
         }
+
         if (activationType === 'onstart') convertor.hasStarted = true;
       }
 
-      // =======================================================================
-      // PASS 4: Traders
-      // =======================================================================
+      // --------- PASS 4: process Traders ----------
       for (const trader of nextElements) {
         if (trader.type !== 'Trader') continue;
-        if (!trader.traderInputs) trader.traderInputs = {};
-        if (!trader.traderOutputs) trader.traderOutputs = {};
 
+        // Initialize trader storage if not exists
+        if (!trader.traderInputs) {
+          trader.traderInputs = {};
+        }
+        if (!trader.traderOutputs) {
+          trader.traderOutputs = {};
+        }
+
+        // Collect input connections (resource connections ending at this trader)
         const inputConns = nextElements.filter(
-          c =>
-            isResourceLikeConnection(c) &&
-            c.connectedToEnd === trader.id &&
-            !c.inhibited // Filter out inhibited connections
+          c => isResourceLikeConnection(c) && c.connectedToEnd === trader.id
         );
+
+        // Collect output connections (resource connections starting at this trader)
         const outputConns = nextElements.filter(
-          c =>
-            isResourceLikeConnection(c) &&
-            c.connectedToStart === trader.id &&
-            !c.inhibited // Filter out inhibited connections
+          c => isResourceLikeConnection(c) && c.connectedToStart === trader.id
         );
+
+        // Collect trigger connections (state connections ending at this trader)
         const triggerConns = nextElements.filter(
           c => c.type === 'State Connection' && c.connectedToEnd === trader.id
         );
@@ -3082,29 +2100,42 @@ const Canvas: React.FC<CanvasProps> = ({
           continue;
         }
 
+        // Check if trader is incomplete (< 2 inputs or < 2 outputs)
         const isIncomplete = inputConns.length < 2 || outputConns.length < 2;
         trader.isIncompleteTrader = isIncomplete;
 
+        // ACTIVATION: Trader activates in two ways:
+        // 1. Input Activation: Resources arrive at the trader (check if any input has resources available)
+        // 2. Gate/Trigger Activation: A gate or trigger connection fires into the trader
         let isActivated = false;
+
+        // Check for trigger activation (gate/trigger connection)
         if (triggerConns.length > 0) {
+          // Check if any trigger connection has fired (has triggerCount)
           if ((trader.triggerCount ?? 0) > 0) {
             isActivated = true;
+            // Consume one trigger
             trader.triggerCount = (trader.triggerCount ?? 0) - 1;
           }
         }
+
+        // Check for input activation (resources arriving)
         if (!isActivated) {
+          // Check if any input connection has resources available
           for (const inputConn of inputConns) {
             const inputElement = inputConn.connectedToStart
               ? elementMap.get(inputConn.connectedToStart)
               : undefined;
             if (inputElement) {
               if (inputElement.type === 'Source') {
+                // Source always has resources
                 isActivated = true;
                 break;
               } else if (
                 inputElement.type === 'Pool' &&
                 (inputElement.currentPoints ?? 0) > 0
               ) {
+                // Pool has resources available
                 isActivated = true;
                 break;
               }
@@ -3112,299 +2143,381 @@ const Canvas: React.FC<CanvasProps> = ({
           }
         }
 
+        // Also check activation type (for automatic/passive/interactive/onstart)
         let isTriggerActive = false;
         if (activationType === 'automatic') {
           if (trader.activation === 'automatic') isTriggerActive = true;
-          else if (
-            trader.activation === 'passive' &&
-            consumePassiveTrigger(trader)
-          )
-            isTriggerActive = true;
-        } else if (activationType === 'interactive') {
-          if (
-            trader.activation === 'interactive' &&
-            interactiveElementId === trader.id
-          )
-            isTriggerActive = true;
-        } else if (activationType === 'onstart') {
-          if (trader.activation === 'onstart' && !trader.hasStarted)
-            isTriggerActive = true;
+        } else if (
+          trader.activation === 'passive' &&
+          consumePassiveTrigger(trader)
+        ) {
+          isTriggerActive = true;
+        } else {
+          if (trader.activation === activationType) isTriggerActive = true;
         }
-
         const canFire = activationType !== 'onstart' || !trader.hasStarted;
+        const isTarget =
+          !interactiveElementId || trader.id === interactiveElementId;
 
-        if (trader.pullMode === 'pull any' && isTriggerActive && canFire) {
-          for (const inputConn of inputConns) {
-            const inputElement = inputConn.connectedToStart
-              ? elementMap.get(inputConn.connectedToStart)
-              : undefined;
-            const amount = parseConnectionLabel(inputConn.text);
-            const color = normalizeColor(inputConn.color);
-
-            if (inputElement && inputElement.type === 'Pool') {
-              const avail = Math.min(amount, getResCount(inputElement, color));
-              if (avail > 0) {
-                modResCount(inputElement, color, -avail);
-                const key = `conn_${inputConn.id}`;
-                const current = trader.traderInputs![key] || 0;
-                trader.traderInputs![key] = current + avail;
-                // Show animation for resources entering trader
-                if (transfers) {
-                  recordTransfer(transfers, inputConn, avail, inputElement);
-                }
-              }
-            } else if (inputElement && inputElement.type === 'Source') {
-              const key = `conn_${inputConn.id}`;
-              const current = trader.traderInputs![key] || 0;
-              trader.traderInputs![key] = current + amount;
-              // Show animation for resources entering trader from Source
-              if (transfers) {
-                recordTransfer(transfers, inputConn, amount, inputElement);
-              }
-            }
-          }
+        // In Pull Any mode, always try to collect available resources (even if not fully activated)
+        // This allows the trader to accumulate resources over time
+        if (
+          trader.pullMode === 'pull any' &&
+          isTriggerActive &&
+          canFire &&
+          isTarget
+        ) {
+          collectResourcesForPullAny(
+            trader,
+            inputConns,
+            elementMap,
+            triggerFromArrival
+          );
         }
 
-        if (!(isActivated && isTriggerActive && canFire)) {
+        // Trader only processes trades if:
+        // - It is activated (by resources or trigger) AND
+        // - The activation type matches (automatic/passive/interactive/onstart) AND
+        // - It can fire (hasn't started yet for onstart) AND
+        // - It's the target (for interactive mode)
+        if (!(isActivated && isTriggerActive && canFire && isTarget)) {
           if (activationType === 'onstart') trader.hasStarted = true;
           continue;
         }
 
+        // Determine actions this tick
         const actions = Math.max(1, trader.actions ?? 1);
 
+        // Process each action
         for (let a = 0; a < actions; a++) {
           if (isIncomplete) {
+            // Incomplete trader behaves like a convertor
             processIncompleteTrader(
               trader,
               inputConns,
               outputConns,
               elementMap,
-              transfers
+              triggerFromArrival
             );
           } else {
+            // Complete trader - ensure resource conservation
             processCompleteTrader(
               trader,
               inputConns,
               outputConns,
               elementMap,
-              transfers
+              triggerFromArrival
             );
           }
         }
+
         if (activationType === 'onstart') trader.hasStarted = true;
       }
 
-      // =======================================================================
-      // PASS 5: Registers
-      // =======================================================================
+      // --------- PASS 5: Calculate Registers ----------
+      // console.log('🔧 [PASS 5] Starting Register calculation...');
       for (const register of nextElements) {
         if (register.type !== 'Register') continue;
 
-        const min = register.minValue ?? -9999;
-        const max = register.maxValue ?? 9999;
+        // console.log('📊 [Register] Found register:', {
+        // id: register.id,
+        // formula: register.formula,
+        // interactive: register.interactive,
+        // currentValue: register.currentValue,
+        // });
 
-        // ✅ Always apply Pool->Register modifiers (summed in PASS 0.5)
-        const delta = registerDeltaById.get(register.id) ?? 0;
-
-        const isInteractive =
-          register.interactive === true || register.interactive === 'true';
-
-        // Ensure there is always a stable base
-        if (register.currentValue === undefined) {
-          register.currentValue = register.startingValue ?? 0;
-        }
-
-        // Interactive registers: keep existing behavior (user-controlled base),
-        // but still apply the computed delta.
-        if (isInteractive) {
-          if (delta !== 0) applyStateConnectionDelta(register, delta);
+        if (register.interactive === true || register.interactive === 'true') {
+          if (
+            register.currentValue === undefined ||
+            register.currentValue === null
+          ) {
+            register.currentValue = register.startingValue || 0;
+            // console.log('🎮 Interactive Register initialized:', {
+            // id: register.id,
+            // startingValue: register.startingValue,
+            // currentValue: register.currentValue,
+            // });
+          }
           continue;
         }
-
-        // Non-interactive registers:
-        // 1) Compute base from formula if present
-        // 2) Otherwise base = startingValue
-        let baseValue = register.startingValue ?? 0;
-
+        // Collect input state connections ending at this register
         const inputConns = nextElements.filter(
           c => c.type === 'State Connection' && c.connectedToEnd === register.id
         );
-        if (inputConns.length > 0 && register.formula) {
-          try {
-            const variables = new Array(23).fill(0);
-            for (const conn of inputConns) {
-              const label = (conn.text || '').trim().toLowerCase();
-              if (label.length === 1 && RegisterExpression.isVariable(label)) {
-                const idx = label.charCodeAt(0) - 97;
-                const src = elementMap.get(conn.connectedToStart!);
-                variables[idx] = getElementValue(src);
-              }
-            }
-            const postfix = RegisterExpression.toPostfix(register.formula);
-            const val = RegisterExpression.evaluate(postfix, variables);
 
-            // formula gives the base (clamped + floored like your original)
-            baseValue = Math.floor(Math.min(Math.max(val, min), max));
-          } catch (e) {
-            console.log(e);
-            baseValue = 0;
+        // console.log('📊 [Register] Input connections:', {
+        // count: inputConns.length,
+        // connections: inputConns.map(c => ({
+        // id: c.id,
+        // text: c.text,
+        // from: c.connectedToStart,
+        // to: c.connectedToEnd,
+        // })),
+        // });
+
+        const formula = register.formula || register.text || '';
+        if (!formula && inputConns.length === 0) {
+          register.currentValue = 0;
+          // console.log('📊 [Register] No inputs, value = 0');
+          continue;
+        }
+        // console.log('📊 [Register] Formula:', formula);
+
+        // max
+        if (formula.toLowerCase() === 'max') {
+          if (inputConns.length === 0) {
+            register.currentValue = 0;
+            continue;
           }
+          let maxVal = -Infinity;
+          for (const conn of inputConns) {
+            const sourceEl = elementMap.get(conn.connectedToStart!);
+            const sourceValue = getElementValue(sourceEl);
+            // console.log('📊 [Register] Max - checking:', sourceValue);
+            if (sourceValue > maxVal) maxVal = sourceValue;
+          }
+          register.currentValue = maxVal === -Infinity ? 0 : maxVal;
+          // console.log('📊 [Register] Max result:', register.currentValue);
+          continue;
         }
 
-        // ✅ Final register value always includes the computed delta
-        const nextVal = baseValue + delta;
-        register.currentValue = Math.min(
-          Math.max(Math.floor(nextVal), min),
-          max
-        );
+        // min
+        if (formula.toLowerCase() === 'min') {
+          if (inputConns.length === 0) {
+            register.currentValue = 0;
+            continue;
+          }
+          let minVal = Infinity;
+          for (const conn of inputConns) {
+            const sourceEl = elementMap.get(conn.connectedToStart!);
+            const sourceValue = getElementValue(sourceEl);
+            // console.log('📊 [Register] Min - checking:', sourceValue);
+            if (sourceValue < minVal) minVal = sourceValue;
+          }
+          register.currentValue = minVal === Infinity ? 0 : minVal;
+          // console.log('📊 [Register] Min result:', register.currentValue);
+          continue;
+        }
+
+        // calculate expression
+        try {
+          const variables = new Array(23).fill(0);
+          // console.log('📊 [Register] Building variables...');
+
+          for (const conn of inputConns) {
+            const label = (conn.text || '').trim().toLowerCase();
+
+            // console.log('📊 [Register] Processing connection:', {
+            // label,
+            // isVariable: label.length === 1 && RegisterExpression.isVariable(label),
+            // });
+
+            if (label.length === 1 && RegisterExpression.isVariable(label)) {
+              const varIndex = label.charCodeAt(0) - 97; // a=0, b=1, ...
+              const sourceEl = elementMap.get(conn.connectedToStart!);
+              const sourceValue = getElementValue(sourceEl);
+
+              variables[varIndex] = sourceValue;
+
+              // console.log('📊 [Register] Variable set:', {
+              // variable: label,
+              // index: varIndex,
+              // value: sourceValue,
+              // sourceElement: sourceEl?.type,
+              // sourceId: sourceEl?.id,
+              // });
+            }
+          }
+
+          // console.log('📊 [Register] Variables array:', variables.slice(0, 5));
+
+          const postfix = RegisterExpression.toPostfix(formula);
+          // console.log('📊 [Register] Postfix:', postfix);
+          let calculatedValue = RegisterExpression.evaluate(postfix, variables);
+          // console.log('📊 [Register] Calculated value (raw):', calculatedValue);
+
+          const min = register.minValue ?? -9999;
+          const max = register.maxValue ?? 9999;
+          calculatedValue = Math.min(Math.max(calculatedValue, min), max);
+
+          register.currentValue = Math.floor(calculatedValue);
+          // console.log('📊 [Register] Final value:', register.currentValue);
+        } catch (error) {
+          console.error('Register expression error:', error);
+          register.currentValue = 0;
+        }
       }
+      // console.log('✅ [PASS 5] Register calculation complete');
 
-      // =======================================================================
-      // PASS 6: End Conditions
-      // =======================================================================
-      for (const endCond of nextElements) {
-        if (endCond.type !== 'End Condition') continue;
+      // --------- PASS 6: Check EndConditions ----------
+      console.log('🎯 [PASS 6] Starting EndCondition check...');
+      for (const endCondition of nextElements) {
+        if (endCondition.type !== 'End Condition') continue;
+
+        // collect all input State Connections
         const inputConns = nextElements.filter(
-          c => c.type === 'State Connection' && c.connectedToEnd === endCond.id
+          c =>
+            c.type === 'State Connection' &&
+            c.connectedToEnd === endCondition.id
         );
-        if (inputConns.length === 0) continue;
 
-        let allMet = true;
+        console.log('🎯 [EndCondition] Checking:', {
+          id: endCondition.id,
+          text: endCondition.text,
+          inputCount: inputConns.length,
+          currentInhibited: endCondition.inhibited,
+        });
+
+        // if no input connections, matain inhibited state
+        if (inputConns.length === 0) {
+          console.log(
+            '⚠️ [EndCondition] No input connections, remaining inhibited'
+          );
+          continue;
+        }
+
+        // check if all input connections are met
+        let allConditionsMet = true;
+        const conditionDetails: Array<{
+          label: string;
+          value: number;
+          met: boolean;
+        }> = [];
+
         for (const conn of inputConns) {
           const startEl = elementMap.get(conn.connectedToStart!);
-          const label = (conn.text || '').trim();
-          const kind = classifyLabel(label);
+          if (!startEl) {
+            allConditionsMet = false;
+            continue;
+          }
 
-          if (startEl && kind === 'cond') {
-            const fn = parseCond(label);
+          const labelText = (conn.text ?? '').trim();
+          const kind = classifyLabel(labelText);
+
+          // only check condition types (cond or interval)
+          if (kind === 'cond') {
+            const fn = parseCond(labelText);
             if (fn) {
-              const val = getElementValue(startEl);
-              const satisfied = fn(val);
-              conn.conditionSatisfied = satisfied;
-              conn.hasUnsatisfiedCondition = !satisfied;
-              if (!satisfied) allMet = false;
+              const value = getElementValue(startEl);
+              const conditionMet = fn(value);
+
+              conditionDetails.push({
+                label: labelText,
+                value: value,
+                met: conditionMet,
+              });
+
+              if (!conditionMet) {
+                allConditionsMet = false;
+              }
             }
-          } else if (startEl && kind === 'interval') {
-            const range = parseInterval(label);
+          } else if (kind === 'interval') {
+            const range = parseInterval(labelText);
             if (range) {
-              const val = getElementValue(startEl);
-              const satisfied = val >= range[0] && val <= range[1];
-              conn.conditionSatisfied = satisfied;
-              conn.hasUnsatisfiedCondition = !satisfied;
-              if (!satisfied) allMet = false;
+              const value = getElementValue(startEl);
+              const conditionMet = value >= range[0] && value <= range[1];
+
+              conditionDetails.push({
+                label: labelText,
+                value: value,
+                met: conditionMet,
+              });
+
+              if (!conditionMet) {
+                allConditionsMet = false;
+              }
             }
           }
         }
 
-        const wasInhibited = endCond.inhibited;
-        endCond.inhibited = !allMet;
+        console.log('🎯 [EndCondition] Condition details:', conditionDetails);
 
-        if (
-          wasInhibited &&
-          !endCond.inhibited &&
-          (activationType === 'automatic' || activationType === 'onstart')
-        ) {
-          endCond.isBlinking = true;
+        // update inhibited state
+        const wasInhibited = endCondition.inhibited;
+        endCondition.inhibited = !allConditionsMet;
 
-          // ✅ STOP THE LOOP IMMEDIATELY
-          if (typeof window !== 'undefined') {
-            (window as unknown as CustomWindow).__GAME_ENDED__ = true;
-          }
+        console.log('🎯 [EndCondition] Final state:', {
+          id: endCondition.id,
+          text: endCondition.text,
+          allConditionsMet: allConditionsMet,
+          wasInhibited: wasInhibited,
+          nowInhibited: endCondition.inhibited,
+        });
 
-          document.dispatchEvent(
-            new CustomEvent('game-end', {
-              detail: { message: endCond.text || 'Victory!' },
-            })
-          );
+        // if changed from inhibited to not inhibited, trigger game end
+        if (wasInhibited && !endCondition.inhibited) {
+          console.log('🎊🎊🎊 [EndCondition] VICTORY! Game Over!');
+          console.log('🎊 Victory condition:', endCondition.text || 'Unnamed');
+          endCondition.isBlinking = true;
+
+          // send game end event
+          const gameEndEvent = new CustomEvent('game-end', {
+            detail: {
+              endConditionId: endCondition.id,
+              message: endCondition.text || 'Victory!',
+              timestamp: Date.now(),
+            },
+          });
+          document.dispatchEvent(gameEndEvent);
+          break;
         }
       }
-      // console.log('✅ [PASS 6] EndCondition check complete');
+      console.log('✅ [PASS 6] EndCondition check complete');
 
-      // applyDynamicResourceLabelsMutable(nextElements);
+      applyDynamicResourceLabelsMutable(nextElements);
       updateStateConnectionVisualState(nextElements);
 
       return nextElements;
     },
-    [updateStateConnectionVisualState]
+    []
   );
-
-  const runSimulationAndCollectTransfers = useCallback(
-    (
-      elementsToUpdate: GraphElement[],
-      activationType: 'automatic' | 'onstart' | 'interactive',
-      interactiveElementId?: number
-    ): { nextElements: GraphElement[]; transfers: ResourceTransfer[] } => {
-      const transfers: ResourceTransfer[] = [];
-      const nextElements = runSimulationTick(
-        elementsToUpdate,
-        activationType,
-        interactiveElementId,
-        transfers
-      );
-      return { nextElements, transfers };
-    },
-    [runSimulationTick]
-  );
-
-  const setElementsRef = useRef(setElements);
-  const spawnMovingTokensRef = useRef(spawnMovingTokens);
-  const runSimulationRef = useRef(runSimulationAndCollectTransfers);
-
-  useEffect(() => {
-    setElementsRef.current = setElements;
-  }, [setElements]);
-
-  useEffect(() => {
-    spawnMovingTokensRef.current = spawnMovingTokens;
-  }, [spawnMovingTokens]);
-
-  useEffect(() => {
-    runSimulationRef.current = runSimulationAndCollectTransfers;
-  }, [runSimulationAndCollectTransfers]);
 
   // Helper function to collect resources for Pull Any mode
-  // const collectResourcesForPullAny = (
-  //   trader: GraphElement,
-  //   inputConns: GraphElement[],
-  //   elementMap: Map<number, GraphElement>
-  // ) => {
-  //   for (const inputConn of inputConns) {
-  //     const inputElement = inputConn.connectedToStart
-  //       ? elementMap.get(inputConn.connectedToStart)
-  //       : undefined;
-  //     if (
-  //       inputElement &&
-  //       inputElement.type === 'Pool' &&
-  //       (inputElement.currentPoints ?? 0) > 0
-  //     ) {
-  //       const amount = parseConnectionLabel(inputConn.text);
-  //       const available = Math.min(amount, inputElement.currentPoints ?? 0);
+  const collectResourcesForPullAny = (
+    trader: GraphElement,
+    inputConns: GraphElement[],
+  elementMap: Map<number, GraphElement>,
+  onArrival: (startElementId?: number) => void
+  ) => {
+    for (const inputConn of inputConns) {
+      const inputElement = inputConn.connectedToStart
+        ? elementMap.get(inputConn.connectedToStart)
+        : undefined;
+      if (
+        inputElement &&
+        inputElement.type === 'Pool' &&
+        (inputElement.currentPoints ?? 0) > 0
+      ) {
+        const amount = parseConnectionLabel(inputConn.text);
+        const available = Math.min(amount, inputElement.currentPoints ?? 0);
 
-  //       if (available > 0) {
-  //         inputElement.currentPoints =
-  //           (inputElement.currentPoints ?? 0) - available;
-  //         // Use connection ID as key to uniquely identify each input connection
-  //         const resourceKey = `conn_${inputConn.id}`;
-  //         const current = trader.traderInputs![resourceKey] || 0;
-  //         trader.traderInputs![resourceKey] = current + available;
-  //       }
-  //     } else if (inputElement && inputElement.type === 'Source') {
-  //       // Source has infinite resources, collect the amount specified
-  //       const amount = parseConnectionLabel(inputConn.text);
-  //       const resourceKey = `conn_${inputConn.id}`;
-  //       const current = trader.traderInputs![resourceKey] || 0;
-  //       trader.traderInputs![resourceKey] = current + amount;
-  //     }
-  //   }
-  // };
+        if (available > 0) {
+          inputElement.currentPoints =
+            (inputElement.currentPoints ?? 0) - available;
+          // Use connection ID as key to uniquely identify each input connection
+          const resourceKey = `conn_${inputConn.id}`;
+          const current = trader.traderInputs![resourceKey] || 0;
+          trader.traderInputs![resourceKey] = current + available;
+          onArrival(trader.id);
+        }
+      } else if (inputElement && inputElement.type === 'Source') {
+        // Source has infinite resources, collect the amount specified
+        const amount = parseConnectionLabel(inputConn.text);
+        const resourceKey = `conn_${inputConn.id}`;
+        const current = trader.traderInputs![resourceKey] || 0;
+        trader.traderInputs![resourceKey] = current + amount;
+        if (amount > 0) onArrival(trader.id);
+      }
+    }
+  };
 
   // Helper function for incomplete trader (behaves like convertor - can create/destroy resources)
   const processIncompleteTrader = (
     trader: GraphElement,
     inputConns: GraphElement[],
     outputConns: GraphElement[],
-    elementMap: Map<number, GraphElement>,
-    transfers?: ResourceTransfer[]
+  elementMap: Map<number, GraphElement>,
+  onArrival: (startElementId?: number) => void
   ) => {
     // Parse input connection labels to determine required resources
     // Use connection ID as key to handle multiple connections
@@ -3460,6 +2573,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
       if (canTrade) {
         // Consume all inputs
+        let totalInputConsumed = 0;
         for (const [connId, requiredAmount] of requiredInputs.entries()) {
           const inputConn = inputConns.find(c => c.id === connId);
           if (inputConn) {
@@ -3469,24 +2583,15 @@ const Canvas: React.FC<CanvasProps> = ({
                 0,
                 (inputElement.currentPoints ?? 0) - requiredAmount
               );
-              recordTransfer(
-                transfers,
-                inputConn,
-                requiredAmount,
-                inputElement
-              );
-            } else if (inputElement && inputElement.type === 'Source') {
-              // Source doesn't need to be consumed (infinite), but show animation
-              if (transfers) {
-                recordTransfer(
-                  transfers,
-                  inputConn,
-                  requiredAmount,
-                  inputElement
-                );
+              if (requiredAmount > 0) {
+                totalInputConsumed += requiredAmount;
               }
             }
+            // Source doesn't need to be consumed (infinite)
           }
+        }
+        if (totalInputConsumed > 0) {
+          onArrival(trader.id);
         }
 
         // INCOMPLETE TRADER LOGIC:
@@ -3504,11 +2609,8 @@ const Canvas: React.FC<CanvasProps> = ({
           if (outputElement && outputElement.type === 'Pool') {
             const current = outputElement.currentPoints ?? 0;
             const max = outputElement.max ?? Infinity;
-            const accepted = Math.min(totalInput, max - current);
-            if (accepted > 0 && transfers) {
-              recordTransfer(transfers, outputConn, accepted, trader);
-            }
             outputElement.currentPoints = Math.min(current + totalInput, max);
+            if (totalInput > 0) onArrival(outputElement.id);
           }
         } else if (inputConns.length === 1 && outputConns.length > 1) {
           // Single input, multiple outputs: split input to all outputs
@@ -3519,14 +2621,11 @@ const Canvas: React.FC<CanvasProps> = ({
             if (outputElement && outputElement.type === 'Pool') {
               const current = outputElement.currentPoints ?? 0;
               const max = outputElement.max ?? Infinity;
-              const accepted = Math.min(inputAmount, max - current);
-              if (accepted > 0 && transfers) {
-                recordTransfer(transfers, outputConn, accepted, trader);
-              }
               outputElement.currentPoints = Math.min(
                 current + inputAmount,
                 max
               );
+              if (inputAmount > 0) onArrival(outputElement.id);
             }
           }
         } else {
@@ -3538,14 +2637,11 @@ const Canvas: React.FC<CanvasProps> = ({
               if (outputElement && outputElement.type === 'Pool') {
                 const current = outputElement.currentPoints ?? 0;
                 const max = outputElement.max ?? Infinity;
-                const accepted = Math.min(outputAmount, max - current);
-                if (accepted > 0 && transfers) {
-                  recordTransfer(transfers, outputConn, accepted, trader);
-                }
                 outputElement.currentPoints = Math.min(
                   current + outputAmount,
                   max
                 );
+                if (outputAmount > 0) onArrival(outputElement.id);
               }
             }
           }
@@ -3599,12 +2695,13 @@ const Canvas: React.FC<CanvasProps> = ({
           if (outputElement && outputElement.type === 'Pool') {
             const current = outputElement.currentPoints ?? 0;
             const max = outputElement.max ?? Infinity;
-            const totalOutput = totalInputPerTrade * tradesToExecute;
-            const accepted = Math.min(totalOutput, max - current);
-            if (accepted > 0 && transfers) {
-              recordTransfer(transfers, outputConn, accepted, trader);
+            outputElement.currentPoints = Math.min(
+              current + totalInputPerTrade * tradesToExecute,
+              max
+            );
+            if (totalInputPerTrade * tradesToExecute > 0) {
+              onArrival(outputElement.id);
             }
-            outputElement.currentPoints = Math.min(current + totalOutput, max);
           }
         } else if (inputConns.length === 1 && outputConns.length > 1) {
           // Single input, multiple outputs: split input to all outputs
@@ -3615,15 +2712,13 @@ const Canvas: React.FC<CanvasProps> = ({
             if (outputElement && outputElement.type === 'Pool') {
               const current = outputElement.currentPoints ?? 0;
               const max = outputElement.max ?? Infinity;
-              const totalOutput = inputAmount * tradesToExecute;
-              const accepted = Math.min(totalOutput, max - current);
-              if (accepted > 0 && transfers) {
-                recordTransfer(transfers, outputConn, accepted, trader);
-              }
               outputElement.currentPoints = Math.min(
-                current + totalOutput,
+                current + inputAmount * tradesToExecute,
                 max
               );
+              if (inputAmount * tradesToExecute > 0) {
+                onArrival(outputElement.id);
+              }
             }
           }
         } else {
@@ -3635,15 +2730,13 @@ const Canvas: React.FC<CanvasProps> = ({
               if (outputElement && outputElement.type === 'Pool') {
                 const current = outputElement.currentPoints ?? 0;
                 const max = outputElement.max ?? Infinity;
-                const totalOutput = outputAmount * tradesToExecute;
-                const accepted = Math.min(totalOutput, max - current);
-                if (accepted > 0 && transfers) {
-                  recordTransfer(transfers, outputConn, accepted, trader);
-                }
                 outputElement.currentPoints = Math.min(
-                  current + totalOutput,
+                  current + outputAmount * tradesToExecute,
                   max
                 );
+                if (outputAmount * tradesToExecute > 0) {
+                  onArrival(outputElement.id);
+                }
               }
             }
           }
@@ -3657,8 +2750,8 @@ const Canvas: React.FC<CanvasProps> = ({
     trader: GraphElement,
     inputConns: GraphElement[],
     outputConns: GraphElement[],
-    elementMap: Map<number, GraphElement>,
-    transfers?: ResourceTransfer[]
+  elementMap: Map<number, GraphElement>,
+  onArrival: (startElementId?: number) => void
   ) => {
     // Parse input connection labels to determine required resources
     // Use connection ID as key to handle multiple connections
@@ -3813,6 +2906,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
       if (canTrade) {
         // Consume all inputs
+        let totalInputConsumed = 0;
         for (const [connId, requiredAmount] of requiredInputs.entries()) {
           const inputConn = inputConns.find(c => c.id === connId);
           if (inputConn) {
@@ -3822,24 +2916,15 @@ const Canvas: React.FC<CanvasProps> = ({
                 0,
                 (inputElement.currentPoints ?? 0) - requiredAmount
               );
-              recordTransfer(
-                transfers,
-                inputConn,
-                requiredAmount,
-                inputElement
-              );
-            } else if (inputElement && inputElement.type === 'Source') {
-              // Source doesn't need to be consumed (infinite), but show animation
-              if (transfers) {
-                recordTransfer(
-                  transfers,
-                  inputConn,
-                  requiredAmount,
-                  inputElement
-                );
+              if (requiredAmount > 0) {
+                totalInputConsumed += requiredAmount;
               }
             }
+            // Source doesn't need to be consumed (infinite)
           }
+        }
+        if (totalInputConsumed > 0) {
+          onArrival(trader.id);
         }
 
         // COMPLETE TRADER LOGIC: Exchange resources
@@ -3857,11 +2942,8 @@ const Canvas: React.FC<CanvasProps> = ({
             if (outputElement && outputElement.type === 'Pool') {
               const current = outputElement.currentPoints ?? 0;
               const max = outputElement.max ?? Infinity;
-              const accepted = Math.min(totalInput, max - current);
-              if (accepted > 0 && transfers) {
-                recordTransfer(transfers, outputConn, accepted, trader);
-              }
               outputElement.currentPoints = Math.min(current + totalInput, max);
+              if (totalInput > 0) onArrival(outputElement.id);
             }
           }
         } else {
@@ -3879,15 +2961,12 @@ const Canvas: React.FC<CanvasProps> = ({
                 if (outputElement && outputElement.type === 'Pool') {
                   const current = outputElement.currentPoints ?? 0;
                   const max = outputElement.max ?? Infinity;
-                  const accepted = Math.min(input.amount, max - current);
-                  if (accepted > 0 && transfers) {
-                    recordTransfer(transfers, outputConn, accepted, trader);
-                  }
                   // Send the amount from this input to this output
                   outputElement.currentPoints = Math.min(
                     current + input.amount,
                     max
                   );
+                  if (input.amount > 0) onArrival(outputElement.id);
                 }
               }
             }
@@ -3942,15 +3021,13 @@ const Canvas: React.FC<CanvasProps> = ({
             if (outputElement && outputElement.type === 'Pool') {
               const current = outputElement.currentPoints ?? 0;
               const max = outputElement.max ?? Infinity;
-              const totalOutput = totalInputPerTrade * tradesToExecute;
-              const accepted = Math.min(totalOutput, max - current);
-              if (accepted > 0 && transfers) {
-                recordTransfer(transfers, outputConn, accepted, trader);
-              }
               outputElement.currentPoints = Math.min(
-                current + totalOutput,
+                current + totalInputPerTrade * tradesToExecute,
                 max
               );
+              if (totalInputPerTrade * tradesToExecute > 0) {
+                onArrival(outputElement.id);
+              }
             }
           }
         } else {
@@ -3968,16 +3045,14 @@ const Canvas: React.FC<CanvasProps> = ({
                 if (outputElement && outputElement.type === 'Pool') {
                   const current = outputElement.currentPoints ?? 0;
                   const max = outputElement.max ?? Infinity;
-                  const totalOutput = input.amount * tradesToExecute;
-                  const accepted = Math.min(totalOutput, max - current);
-                  if (accepted > 0 && transfers) {
-                    recordTransfer(transfers, outputConn, accepted, trader);
-                  }
                   // Send the amount from this input to this output (multiplied by trades)
                   outputElement.currentPoints = Math.min(
-                    current + totalOutput,
+                    current + input.amount * tradesToExecute,
                     max
                   );
+                  if (input.amount * tradesToExecute > 0) {
+                    onArrival(outputElement.id);
+                  }
                 }
               }
             }
@@ -3988,135 +3063,45 @@ const Canvas: React.FC<CanvasProps> = ({
   };
 
   const handleInteractiveAction = (elementId: number) => {
-    console.log('🔥 Interactive tick for', elementId);
-    setElements(currentElements => {
-      const { nextElements, transfers } = runSimulationAndCollectTransfers(
-        currentElements,
-        'interactive', // ⬅️ use a dedicated interactive tick
-        elementId
-      );
-
-      if (transfers.length) {
-        spawnMovingTokens(transfers, nextElements);
-      }
-
-      return nextElements;
-    });
+    // This will only be called by onClick when isRunning is true.
+    setElements(currentElements =>
+      runSimulationTick(currentElements, 'interactive', elementId)
+    );
   };
-
-  // const handleInteractiveAction = (elementId: number) => {
-  //   setElements(currentElements => {
-  //     const { nextElements, transfers } = runSimulationAndCollectTransfers(
-  //       currentElements,
-  //       'interactive',
-  //       elementId
-  //     );
-  //     if (transfers.length) {
-  //       spawnMovingTokens(transfers, nextElements);
-  //     }
-  //     return nextElements;
-  //   });
-  // };
 
   useEffect(() => {
     let simulationInterval: NodeJS.Timeout | undefined;
 
-    if (typeof window !== 'undefined') {
-      (window as unknown as CustomWindow).__GAME_ENDED__ = false;
-    }
-
-    // =======================================================================
-    // A. START: When "Run" is clicked
-    // =======================================================================
+    // A. When "Run" is first clicked for a session:
     if (isRunning && !hasSimulationStarted) {
-      console.log('--- Starting Simulation ---');
-      setHasSimulationStarted(true);
-      setGameEnded(false);
-      gameEndedRef.current = false;
-
-      // Reset fractional dispatch state for new simulation
-      fractionalDispatchRef.current.clear();
-      currentTickRef.current = 0;
-
-      // 1. FORCE RESET ELEMENTS (Clean slate before starting)
-      // This handles the case where we "Froze" the board on the previous Game Over
-      setElementsRef.current(prev => {
-        const resetElements = prev.map(el => {
-          const baseReset = {
-            ...el,
-            hasStarted: false,
-            triggerCount: 0,
-            hasUnsatisfiedCondition: false,
-            conditionSatisfied: undefined,
-            dynamicLabelLastDelta: 0,
-          };
-
-          if (el.type === 'Pool') {
-            const startVal =
-              typeof el.number === 'string'
-                ? parseInt(el.number) || 0
-                : el.number || 0;
-            const c = normalizeColor(el.color);
-            const initialResources = startVal > 0 ? { [c]: startVal } : {};
-            return {
-              ...baseReset,
-              currentPoints: startVal,
-              resourcesByColor: initialResources,
-            };
-          }
-          if (el.type === 'Register')
-            return { ...baseReset, currentValue: el.startingValue || 0 };
-          if (el.type === 'End Condition')
-            return { ...baseReset, inhibited: true, isBlinking: false };
-          if (el.type === 'Convertor')
-            return { ...baseReset, inputResources: {}, outputResources: {} };
-          if (el.type === 'Trader')
-            return { ...baseReset, traderInputs: {}, traderOutputs: {} };
-          if (
-            el.type === 'Resource Connection' &&
-            el.dynamicLabelBase !== undefined
-          ) {
-            return { ...baseReset, text: String(el.dynamicLabelBase) };
-          }
-          return baseReset;
-        });
-
-        // 2. Run the "OnStart" tick immediately on the clean elements
-        const { nextElements, transfers } = runSimulationRef.current(
-          resetElements,
-          'onstart'
+      console.log('--- Running OnStart ---'); // LOG
+      try {
+        // Add try...catch
+        setElements(currentElements =>
+          runSimulationTick(currentElements, 'onstart')
         );
-        if (transfers.length)
-          spawnMovingTokensRef.current(transfers, nextElements);
-
-        return nextElements;
-      });
+      } catch (error) {
+        console.error('⛔️ Error during OnStart tick:', error); // Log the error
+        // Optionally stop simulation on error:
+        // setIsRunning(false); // You'd need setIsRunning from props or context
+      }
+      setHasSimulationStarted(true);
     }
 
     // B. While the simulation is running:
     if (isRunning) {
       // 2. Start the timer for all "Automatic" actions.
       simulationInterval = setInterval(() => {
-        // ✅ FREEZE LOGIC: If game ended, do NOT update elements, do NOT spawn tokens.
-        // Just return to keep the current state frozen on screen.
-        if (
-          gameEndedRef.current ||
-          (typeof window !== 'undefined' &&
-            (window as unknown as CustomWindow).__GAME_ENDED__)
-        ) {
-          return;
-        }
+        console.log('--- Running Automatic Tick ---'); // LOG
         try {
           // Add try...catch
-          setElementsRef.current(currentElements => {
-            const { nextElements, transfers } = runSimulationRef.current(
-              currentElements,
-              'automatic'
-            );
-            if (transfers.length) {
-              spawnMovingTokensRef.current(transfers, nextElements);
-            }
-            return nextElements;
+          setElements(currentElements => {
+            // Optional: Log state before if needed for complex bugs
+            // console.log('Elements BEFORE tick:', JSON.stringify(currentElements));
+            const nextState = runSimulationTick(currentElements, 'automatic');
+            // Optional: Log state after if needed
+            // console.log('Elements AFTER tick:', JSON.stringify(nextState));
+            return nextState;
           });
         } catch (error) {
           console.error('⛔️ Error during Automatic tick:', error); // Log the error
@@ -4127,70 +3112,12 @@ const Canvas: React.FC<CanvasProps> = ({
       }, 1000); // Ticks every 1 second.
     }
 
-    // =======================================================================
-    // C. STOP: When "Stop" is clicked OR Parent stops it
-    // =======================================================================
+    // C. When "Stop" is clicked:
     if (!isRunning && hasSimulationStarted) {
-      console.log('--- Stopped ---');
+      // 3. Reset the state for the next run.
       setHasSimulationStarted(false);
-
-      // ✅ VITAL FIX:
-      // If the game ended due to Victory, DO NOT RESET the board.
-      // We want to keep the "Victory" state visible (Frozen).
-      // The Reset will happen automatically at the start of the *next* run (Block A).
-      if (gameEndedRef.current) {
-        console.log('--- Game Over State Frozen (No Reset) ---');
-        return;
-      }
-
-      // If it was a manual stop (user clicked Stop), Reset immediately.
-      console.log('--- Manual Stop: Resetting Board ---');
-      setMovingTokens([]);
-      setGameEnded(false);
-
-      // Reset fractional dispatch state
-      fractionalDispatchRef.current.clear();
-      currentTickRef.current = 0;
-
-      setElementsRef.current(prev =>
-        prev.map(el => {
-          const baseReset = {
-            ...el,
-            hasStarted: false,
-            triggerCount: 0,
-            hasUnsatisfiedCondition: false,
-            conditionSatisfied: undefined,
-            dynamicLabelLastDelta: 0,
-          };
-          if (el.type === 'Pool') {
-            const startVal =
-              typeof el.number === 'string'
-                ? parseInt(el.number) || 0
-                : el.number || 0;
-            const c = normalizeColor(el.color);
-            const initialResources = startVal > 0 ? { [c]: startVal } : {};
-            return {
-              ...baseReset,
-              currentPoints: startVal,
-              resourcesByColor: initialResources,
-            };
-          }
-          if (el.type === 'Register')
-            return { ...baseReset, currentValue: el.startingValue || 0 };
-          if (el.type === 'End Condition')
-            return { ...baseReset, inhibited: true, isBlinking: false };
-          if (el.type === 'Convertor')
-            return { ...baseReset, inputResources: {}, outputResources: {} };
-          if (el.type === 'Trader')
-            return { ...baseReset, traderInputs: {}, traderOutputs: {} };
-          if (
-            el.type === 'Resource Connection' &&
-            el.dynamicLabelBase !== undefined
-          ) {
-            return { ...baseReset, text: String(el.dynamicLabelBase) };
-          }
-          return baseReset;
-        })
+      setElements(currentElements =>
+        currentElements.map(el => ({ ...el, hasStarted: false }))
       );
     }
 
@@ -4202,7 +3129,7 @@ const Canvas: React.FC<CanvasProps> = ({
     };
     // Ensure ALL dependencies used inside are listed.
     // If setIsRunning comes from props/context, add it too.
-  }, [isRunning, hasSimulationStarted]);
+  }, [isRunning, hasSimulationStarted, setElements, runSimulationTick]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -4221,8 +3148,6 @@ const Canvas: React.FC<CanvasProps> = ({
         }
         return;
       }
-
-      if (isRunning) return;
 
       // Handle escape key to switch to Select tool or cancel connection creation
       if (e.key === 'Escape') {
@@ -4283,7 +3208,7 @@ const Canvas: React.FC<CanvasProps> = ({
         );
 
         setElements(prev => [...prev, ...pastedElements]);
-        setSelectedId(pastedElements.map((el: GraphElement) => el.id));
+        setSelectedId(pastedElements.map((el: { id: GraphElement }) => el.id));
         setPasteCount(prev => prev + 1);
         console.log('Pasted elements with offset:', offset);
       }
@@ -4398,7 +3323,6 @@ const Canvas: React.FC<CanvasProps> = ({
   useEffect(() => {
     const handleGameEnd = () => {
       setGameEnded(true);
-      gameEndedRef.current = true;
     };
 
     document.addEventListener('game-end', handleGameEnd);
@@ -4551,144 +3475,74 @@ const Canvas: React.FC<CanvasProps> = ({
     return { x: connectionX, y: connectionY };
   };
 
-  // Helper function to snap a node's center to its edge in the direction of another point
-  const snapNodeToEdgeInDirection = (
-    node: GraphElement,
-    targetPoint: { x: number; y: number }
+  const normalizeVector = (
+    dx: number,
+    dy: number
   ): { x: number; y: number } => {
-    const nodeCenter = { x: node.x, y: node.y };
-
-    // Get node size
-    let nodeWidth: number;
-    let nodeHeight: number;
-    if (node.type === 'Group') {
-      nodeWidth = node.width || 200;
-      nodeHeight = node.height || 150;
-    } else {
-      const size = getElementSize(node.thickness);
-      nodeWidth = size;
-      nodeHeight = size;
-    }
-
-    const offsetX = nodeWidth / 2;
-    const offsetY = nodeHeight / 2;
-    const left = node.x - offsetX;
-    const right = node.x + offsetX;
-    const top = node.y - offsetY;
-    const bottom = node.y + offsetY;
-
-    // Calculate direction from node center to target point
-    const dx = targetPoint.x - nodeCenter.x;
-    const dy = targetPoint.y - nodeCenter.y;
-    const distance = Math.hypot(dx, dy);
-
-    if (distance === 0) {
-      // If target is at same position, return node center
-      return nodeCenter;
-    }
-
-    // Normalize direction
-    const dirX = dx / distance;
-    const dirY = dy / distance;
-
-    // Find intersection of ray from node center in direction of target with node edges
-    // Calculate t values where ray intersects each edge
-    const tLeft =
-      offsetX > 0 ? (left - nodeCenter.x) / (dirX || 1e-10) : Infinity;
-    const tRight =
-      offsetX > 0 ? (right - nodeCenter.x) / (dirX || 1e-10) : Infinity;
-    const tTop =
-      offsetY > 0 ? (top - nodeCenter.y) / (dirY || 1e-10) : Infinity;
-    const tBottom =
-      offsetY > 0 ? (bottom - nodeCenter.y) / (dirY || 1e-10) : Infinity;
-
-    // Find the closest positive t (intersection in direction of target)
-    const validTs = [
-      dirX > 0 ? tRight : tLeft,
-      dirY > 0 ? tBottom : tTop,
-    ].filter(t => t > 0);
-
-    const t = Math.min(...validTs);
-
-    if (!isFinite(t)) {
-      return nodeCenter;
-    }
-
-    // Calculate intersection point
-    const intersectionX = nodeCenter.x + dirX * t;
-    const intersectionY = nodeCenter.y + dirY * t;
-
-    return { x: intersectionX, y: intersectionY };
+    const len = Math.hypot(dx, dy);
+    if (len === 0) return { x: 0, y: 0 };
+    return { x: dx / len, y: dy / len };
   };
 
-  // const normalizeVector = (
-  //   dx: number,
-  //   dy: number
-  // ): { x: number; y: number } => {
-  //   const len = Math.hypot(dx, dy);
-  //   if (len === 0) return { x: 0, y: 0 };
-  //   return { x: dx / len, y: dy / len };
-  // };
+  const getPolylineMidpoint = (
+    points: { x: number; y: number }[]
+  ): {
+    point: { x: number; y: number };
+    normal: { x: number; y: number };
+  } => {
+    if (points.length === 0) {
+      return { point: { x: 0, y: 0 }, normal: { x: 0, y: -1 } };
+    }
+    if (points.length === 1) {
+      return { point: points[0], normal: { x: 0, y: -1 } };
+    }
 
-  // const getPolylineMidpoint = (
-  //   points: { x: number; y: number }[]
-  // ): {
-  //   point: { x: number; y: number };
-  //   normal: { x: number; y: number };
-  // } => {
-  //   if (points.length === 0) {
-  //     return { point: { x: 0, y: 0 }, normal: { x: 0, y: -1 } };
-  //   }
-  //   if (points.length === 1) {
-  //     return { point: points[0], normal: { x: 0, y: -1 } };
-  //   }
+    let totalLength = 0;
+    const segments: Array<{
+      start: { x: number; y: number };
+      end: { x: number; y: number };
+      length: number;
+    }> = [];
 
-  //   let totalLength = 0;
-  //   const segments: Array<{
-  //     start: { x: number; y: number };
-  //     end: { x: number; y: number };
-  //     length: number;
-  //   }> = [];
+    for (let i = 0; i < points.length - 1; i++) {
+      const start = points[i];
+      const end = points[i + 1];
+      const length = Math.hypot(end.x - start.x, end.y - start.y);
+      if (length === 0) continue;
+      segments.push({ start, end, length });
+      totalLength += length;
+    }
 
-  //   for (let i = 0; i < points.length - 1; i++) {
-  //     const start = points[i];
-  //     const end = points[i + 1];
-  //     const length = Math.hypot(end.x - start.x, end.y - start.y);
-  //     if (length === 0) continue;
-  //     segments.push({ start, end, length });
-  //     totalLength += length;
-  //   }
+    if (segments.length === 0) {
+      return { point: points[0], normal: { x: 0, y: -1 } };
+    }
 
-  //   if (segments.length === 0) {
-  //     return { point: points[0], normal: { x: 0, y: -1 } };
-  //   }
+    const target = totalLength / 2;
+    let traversed = 0;
+    for (const segment of segments) {
+      if (traversed + segment.length >= target) {
+        const remaining = target - traversed;
+        const t = remaining / segment.length;
+        const midX = segment.start.x + (segment.end.x - segment.start.x) * t;
+        const midY = segment.start.y + (segment.end.y - segment.start.y) * t;
+        const direction = normalizeVector(
+          segment.end.x - segment.start.x,
+          segment.end.y - segment.start.y
+        );
+        const normal = normalizeVector(-direction.y, direction.x);
+        return { point: { x: midX, y: midY }, normal };
+      }
+      traversed += segment.length;
+    }
 
-  //   const target = totalLength / 2;
-  //   let traversed = 0;
-  //   for (const segment of segments) {
-  //     if (traversed + segment.length >= target) {
-  //       const remaining = target - traversed;
-  //       const t = remaining / segment.length;
-  //       const midX = segment.start.x + (segment.end.x - segment.start.x) * t;
-  //       const midY = segment.start.y + (segment.end.y - segment.start.y) * t;
-  //       const direction = normalizeVector(
-  //         segment.end.x - segment.start.x,
-  //         segment.end.y - segment.start.y
-  //       );
-  //       const normal = normalizeVector(-direction.y, direction.x);
-  //       return { point: { x: midX, y: midY }, normal };
-  //     }
-  //     traversed += segment.length;
-  //   }
-
-  //   const lastSegment = segments[segments.length - 1];
-  //   const direction = normalizeVector(
-  //     lastSegment.end.x - lastSegment.start.x,
-  //     lastSegment.end.y - lastSegment.start.y
-  //   );
-  //   const normal = normalizeVector(-direction.y, direction.x);
-  //   return { point: lastSegment.end, normal };
-  // };
+    const lastSegment = segments[segments.length - 1];
+    const direction = normalizeVector(
+      lastSegment.end.x - lastSegment.start.x,
+      lastSegment.end.y - lastSegment.start.y
+    );
+    const normal = normalizeVector(-direction.y, direction.x);
+    return { point: lastSegment.end, normal };
+  };
 
   const placeElement = (
     type: GraphElementType,
@@ -4699,7 +3553,7 @@ const Canvas: React.FC<CanvasProps> = ({
     const rect = target.getBoundingClientRect();
     const x = clientX - rect.left;
     const y = clientY - rect.top;
-    const id = nextIdRef.current++;
+    const id = Date.now();
 
     if (type === 'Text Label') {
       setElements(prev => [
@@ -4932,28 +3786,9 @@ const Canvas: React.FC<CanvasProps> = ({
   };
 
   // Handle dropping a tool onto the canvas
-  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     if (isRunning) return;
     e.preventDefault();
-
-    // 1) If user dropped a file, prefer XML import
-    const files = Array.from(e.dataTransfer.files ?? []);
-    const xmlFile = files.find(isProbablyXmlFile);
-    if (xmlFile) {
-      try {
-        const text = await xmlFile.text();
-        importXmlText(text);
-      } catch (err) {
-        const msg =
-          err instanceof Error ? err.message : 'Failed to import XML.';
-        console.error(err);
-        setXmlImportError(msg);
-      }
-      return;
-    }
-
-    // 2) Otherwise, keep your existing tool drop behavior
-
     const tool = e.dataTransfer.getData('tool') as GraphElementType;
     if (tool) {
       placeElement(tool, e.clientX, e.clientY, e.currentTarget);
@@ -5028,7 +3863,7 @@ const Canvas: React.FC<CanvasProps> = ({
         ? toolProperties?.resourceConnection
         : toolProperties?.stateConnection;
 
-    const id = nextIdRef.current++;
+    const id = Date.now();
 
     const newConnection: GraphElement = {
       id,
@@ -5043,7 +3878,6 @@ const Canvas: React.FC<CanvasProps> = ({
       connectedToStart: startElement?.id,
       connectedToEnd: endElement?.id,
       points: intermediatePoints.length > 0 ? intermediatePoints : undefined,
-      labelPosition: 0.5,
     };
 
     setElements(prev => [...prev, newConnection]);
@@ -5108,24 +3942,16 @@ const Canvas: React.FC<CanvasProps> = ({
   };
 
   const handleCanvasMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    // If running, ignore canvas clicks (or handle panning if you have that)
-    if (isRunning) return;
+    if (selectedTool === 'Select' && e.target === canvasRef.current) {
+      setMouseDownOnCanvas(true);
+      setIsSelectingBox(false);
+      const rect = canvasRef.current!.getBoundingClientRect();
+      setBoxStart({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+      setBoxEnd(null);
 
-    // We ONLY care about deselecting or box-selecting if we are in 'Select' mode
-    if (selectedTool === 'Select') {
-      // 1. If clicking strictly on the canvas (background)
-      if (e.target === canvasRef.current) {
-        // 2. Clear selection immediately (unless holding Ctrl for box select addition)
-        if (!e.ctrlKey && !e.metaKey) {
-          setSelectedId([]);
-        }
-
-        // 3. Start Box Selection
-        setMouseDownOnCanvas(true);
-        setIsSelectingBox(false); // Reset flag
-        const rect = canvasRef.current.getBoundingClientRect();
-        setBoxStart({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-        setBoxEnd(null);
+      // If not holding Ctrl/Cmd, clear selection when starting box selection
+      if (!e.ctrlKey && !e.metaKey) {
+        setSelectedId([]);
       }
     }
   };
@@ -5148,6 +3974,12 @@ const Canvas: React.FC<CanvasProps> = ({
         element.type === 'Register' &&
         (element.interactive === true || element.interactive === 'true')
       ) {
+        // console.log('🖱️ Interactive Register clicked:', {
+        // id: element.id,
+        // currentValue: element.currentValue,
+        // step: element.step,
+        // });
+
         const step =
           typeof element.step === 'string'
             ? parseInt(element.step, 10) || 1
@@ -5163,6 +3995,14 @@ const Canvas: React.FC<CanvasProps> = ({
             ? parseInt(element.maxValue, 10) || 50
             : (element.maxValue ?? 9999);
         const clampedValue = Math.min(Math.max(newValue, min), max);
+
+        // console.log('🖱️ Register value update:', {
+        // from: currentVal,
+        // to: clampedValue,
+        // step: step,
+        // min: min,
+        // max: max,
+        // });
 
         setElements(prev =>
           prev.map(el =>
@@ -5209,29 +4049,6 @@ const Canvas: React.FC<CanvasProps> = ({
   // Mouse move to drag selected element(s) or update bounding box or resize or create connection
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (isRunning) return;
-
-    // Handle waypoint dragging
-    if (draggingWaypoint && canvasRef.current) {
-      const rect = canvasRef.current.getBoundingClientRect();
-      const newX = e.clientX - rect.left;
-      const newY = e.clientY - rect.top;
-
-      setElements(prev =>
-        prev.map(el => {
-          if (el.id === draggingWaypoint.connectionId && el.points) {
-            const updatedPoints = [...el.points];
-            updatedPoints[draggingWaypoint.waypointIndex] = {
-              x: newX,
-              y: newY,
-            };
-            return { ...el, points: updatedPoints };
-          }
-          return el;
-        })
-      );
-      return;
-    }
-
     if (selectedTool === 'Select' && mouseDownOnCanvas && boxStart) {
       setIsSelectingBox(true);
       const rect = canvasRef.current!.getBoundingClientRect();
@@ -5332,12 +4149,6 @@ const Canvas: React.FC<CanvasProps> = ({
 
   // Mouse up to end dragging or bounding box selection or resize or create connection
   const handleMouseUp = () => {
-    // End waypoint dragging
-    if (draggingWaypoint) {
-      setDraggingWaypoint(null);
-      return;
-    }
-
     const wasDragging = draggingId !== null && dragOffset !== null;
     if (wasDragging && draggedElements) {
       setElements(draggedElements);
@@ -5543,21 +4354,15 @@ const Canvas: React.FC<CanvasProps> = ({
 
   // Render each element
   const renderElement = (el: GraphElement) => {
-    const isSelected = !isRunning && selectedId.includes(el.id);
-    const selectableClass =
-      !isRunning && selectedTool === 'Select' ? 'selectable' : '';
+    const isSelected = selectedId.includes(el.id);
     const applyConditionStyle = (style: CSSProperties = {}): CSSProperties =>
       el.hasUnsatisfiedCondition ? { ...style, opacity: 0.4 } : style;
     switch (el.type) {
-      case 'Text Label': {
-        let labelClass = '';
-        if (!isRunning) {
-          labelClass = selectedTool === 'Select' ? 'selectable' : 'clickable';
-        }
+      case 'Text Label':
         return (
           <span
             key={el.id}
-            className={`text-label-span ${labelClass} ${isSelected ? 'selected' : ''}`}
+            className={`text-label-span ${selectedTool === 'Select' ? 'selectable' : 'clickable'} ${isSelected ? 'selected' : ''}`}
             style={applyConditionStyle({
               left: el.x,
               top: el.y,
@@ -5587,7 +4392,6 @@ const Canvas: React.FC<CanvasProps> = ({
             {el.text || 'Text Label'}
           </span>
         );
-      }
       case 'Pool': {
         const size = getElementSize(el.thickness);
         const center = size / 2;
@@ -5596,7 +4400,9 @@ const Canvas: React.FC<CanvasProps> = ({
         return (
           <svg
             key={el.id}
-            className={`svg-element pool-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
+            className={`svg-element pool-element ${
+              selectedTool === 'Select' ? 'selectable' : ''
+            } ${isSelected ? 'selected' : ''}`}
             style={applyConditionStyle({
               left: el.x - offset,
               top: el.y - offset,
@@ -5651,7 +4457,9 @@ const Canvas: React.FC<CanvasProps> = ({
         return (
           <svg
             key={el.id}
-            className={`svg-element source-element clickable-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
+            className={`svg-element source-element clickable-element ${
+              selectedTool === 'Select' ? 'selectable' : ''
+            } ${isSelected ? 'selected' : ''}`}
             style={applyConditionStyle({
               left: el.x - offset,
               top: el.y - offset,
@@ -5686,7 +4494,7 @@ const Canvas: React.FC<CanvasProps> = ({
               y={30 * scale}
               className="element-value-text"
               fill="black"
-              fontSize={14 * scale}
+              fontSize={20 * scale}
             >
               ∞
             </text>
@@ -5701,7 +4509,9 @@ const Canvas: React.FC<CanvasProps> = ({
         return (
           <svg
             key={el.id}
-            className={`svg-element drain-element clickable-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
+            className={`svg-element drain-element clickable-element ${
+              selectedTool === 'Select' ? 'selectable' : ''
+            } ${isSelected ? 'selected' : ''}`}
             style={applyConditionStyle({
               left: el.x - offset,
               top: el.y - offset,
@@ -5738,7 +4548,7 @@ const Canvas: React.FC<CanvasProps> = ({
         return (
           <div
             key={el.id}
-            className={`group-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
+            className={`group-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={applyConditionStyle({
               left: el.x,
               top: el.y,
@@ -5771,7 +4581,7 @@ const Canvas: React.FC<CanvasProps> = ({
                   left: '50%',
                   transform: 'translate(-50%, -50%)',
                   color: el.color || '#000000',
-                  fontSize: '11px',
+                  fontSize: '14px',
                   fontWeight: 'bold',
                   textAlign: 'center',
                   pointerEvents: 'none',
@@ -5815,7 +4625,7 @@ const Canvas: React.FC<CanvasProps> = ({
         return (
           <svg
             key={el.id}
-            className={`svg-element gate-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
+            className={`svg-element gate-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={applyConditionStyle({
               left: el.x - offset,
               top: el.y - offset,
@@ -5856,7 +4666,7 @@ const Canvas: React.FC<CanvasProps> = ({
         return (
           <svg
             key={el.id}
-            className={`svg-element convertor-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
+            className={`svg-element convertor-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={applyConditionStyle({
               left: el.x - offset,
               top: el.y - offset,
@@ -5901,7 +4711,7 @@ const Canvas: React.FC<CanvasProps> = ({
                 <text
                   x={center}
                   y={15 * scale}
-                  fontSize={5 * scale}
+                  fontSize={8 * scale}
                   fill="white"
                   textAnchor="middle"
                   className="convertor-storage"
@@ -5917,7 +4727,7 @@ const Canvas: React.FC<CanvasProps> = ({
               <text
                 x={center}
                 y={30 * scale}
-                fontSize={4.5 * scale}
+                fontSize={6 * scale}
                 fill="white"
                 textAnchor="middle"
                 className="convertor-label"
@@ -5936,7 +4746,7 @@ const Canvas: React.FC<CanvasProps> = ({
         return (
           <svg
             key={el.id}
-            className={`svg-element trader-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
+            className={`svg-element trader-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={applyConditionStyle({
               left: el.x - offset,
               top: el.y - offset,
@@ -5973,7 +4783,7 @@ const Canvas: React.FC<CanvasProps> = ({
               <text
                 x={center}
                 y={30 * scale}
-                fontSize={4.5 * scale}
+                fontSize={6 * scale}
                 fill={el.color || '#000000'}
                 textAnchor="middle"
                 className="trader-label"
@@ -5993,7 +4803,7 @@ const Canvas: React.FC<CanvasProps> = ({
           <g key={el.id}>
             {/* EndCondition SVG element*/}
             <svg
-              className={`svg-element end-condition-element ${selectableClass} ${isSelected ? 'selected' : ''} ${el.isBlinking ? 'blinking' : ''} ${!el.inhibited ? 'victory' : ''}`}
+              className={`svg-element end-condition-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''} ${el.isBlinking ? 'blinking' : ''} ${!el.inhibited ? 'victory' : ''}`}
               style={applyConditionStyle({
                 left: el.x - offset,
                 top: el.y - offset,
@@ -6057,7 +4867,7 @@ const Canvas: React.FC<CanvasProps> = ({
                   position: 'absolute',
                   left: el.x - offset,
                   top: el.y - offset + size + 5,
-                  fontSize: `${10 * scale}px`,
+                  fontSize: `${12 * scale}px`,
                   fontWeight: 'bold',
                   color: el.color || '#000000',
                   textAlign: 'center',
@@ -6080,7 +4890,7 @@ const Canvas: React.FC<CanvasProps> = ({
         return (
           <svg
             key={el.id}
-            className={`svg-element register-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
+            className={`svg-element register-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={applyConditionStyle({
               left: el.x - offset,
               top: el.y - offset,
@@ -6120,7 +4930,7 @@ const Canvas: React.FC<CanvasProps> = ({
               y={center + size / 8}
               className="register-text"
               fill="black"
-              fontSize={11 * scale}
+              fontSize={14 * scale}
               textAnchor="middle"
               fontWeight="bold"
             >
@@ -6139,7 +4949,7 @@ const Canvas: React.FC<CanvasProps> = ({
         return (
           <svg
             key={el.id}
-            className={`svg-element delay-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
+            className={`svg-element delay-element ${selectedTool === 'Select' ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
             style={applyConditionStyle({
               left: el.x - offset,
               top: el.y - offset,
@@ -6175,7 +4985,7 @@ const Canvas: React.FC<CanvasProps> = ({
               x={center}
               y={center + 2 * scale}
               className="delay-text"
-              fontSize={11 * scale}
+              fontSize={14 * scale}
             >
               8
             </text>
@@ -6183,44 +4993,14 @@ const Canvas: React.FC<CanvasProps> = ({
         );
       }
       case 'Resource Connection': {
-        // Get the connected nodes to calculate proper positioning
-        const startNode = elements.find(
-          node => node.id === el.connectedToStart
-        );
-        const endNode = elements.find(node => node.id === el.connectedToEnd);
-
-        let startPoint = {
+        const startPoint = {
           x: el.startX ?? el.x,
           y: el.startY ?? el.y,
         };
-        let endPoint = {
+        const endPoint = {
           x: el.endX ?? el.x,
           y: el.endY ?? el.y,
         };
-
-        // Snap nodes to their edges in the direction of the next point (first waypoint or end node)
-        if (startNode && endNode) {
-          // If there are waypoints, snap start to first waypoint; otherwise snap to end node
-          const startTargetPoint =
-            el.points && el.points.length > 0
-              ? el.points[0]
-              : { x: endNode.x, y: endNode.y };
-
-          // If there are waypoints, snap end to last waypoint; otherwise snap to start node
-          const endTargetPoint =
-            el.points && el.points.length > 0
-              ? el.points[el.points.length - 1]
-              : { x: startNode.x, y: startNode.y };
-
-          startPoint = snapNodeToEdgeInDirection(startNode, startTargetPoint);
-          endPoint = snapNodeToEdgeInDirection(endNode, endTargetPoint);
-        } else if (startNode) {
-          startPoint = { x: startNode.x, y: startNode.y };
-        } else if (endNode) {
-          endPoint = { x: endNode.x, y: endNode.y };
-        }
-
-        // Include intermediate waypoints if they exist, creating a polyline that follows breakpoints
         const pathPoints = [startPoint, ...(el.points ?? []), endPoint];
 
         if (pathPoints.length < 2) {
@@ -6228,28 +5008,12 @@ const Canvas: React.FC<CanvasProps> = ({
         }
 
         const padding = 15;
-        const polyline = pathPoints;
-        type LegacyPositionCarrier = { position?: unknown };
-
-        const legacyPosRaw = (el as LegacyPositionCarrier).position;
-        const legacyPosNum =
-          typeof legacyPosRaw === 'number'
-            ? legacyPosRaw
-            : typeof legacyPosRaw === 'string'
-              ? Number(legacyPosRaw)
-              : NaN;
-
-        const labelPos =
-          el.labelPosition ??
-          (Number.isFinite(legacyPosNum) ? legacyPosNum : undefined) ??
-          0.5;
-
-        const labelPoint = getLabelPointForConnection(polyline, labelPos);
-
-        // const labelPoint = getLabelPointForConnection(
-        //   polyline,
-        //   el.labelPosition ?? (el as any).position ?? 0.5
-        // );
+        const { point: midPoint, normal } = getPolylineMidpoint(pathPoints);
+        const labelOffset = 14;
+        const labelPoint = {
+          x: midPoint.x + normal.x * labelOffset,
+          y: midPoint.y + normal.y * labelOffset,
+        };
 
         const pointsForBounds = [...pathPoints, labelPoint];
         const xs = pointsForBounds.map(p => p.x);
@@ -6277,7 +5041,7 @@ const Canvas: React.FC<CanvasProps> = ({
         const markerStroke = stateStroke;
         const containerClasses = [
           'connection-container',
-          selectableClass,
+          selectedTool === 'Select' ? 'selectable' : '',
           isSelected ? 'selected' : '',
         ];
         if (isConditionUnsatisfied) {
@@ -6288,13 +5052,7 @@ const Canvas: React.FC<CanvasProps> = ({
           <div
             key={el.id}
             className={containerClasses.join(' ').trim()}
-            style={applyConditionStyle({
-              left,
-              top,
-              width,
-              height,
-              pointerEvents: 'none',
-            })}
+            style={applyConditionStyle({ left, top, width, height })}
             onMouseDown={e => {
               e.stopPropagation();
               if (selectedTool === 'Select') {
@@ -6315,20 +5073,16 @@ const Canvas: React.FC<CanvasProps> = ({
                 <marker
                   id={`arrowhead-${el.id}`}
                   className="arrow-marker"
-                  viewBox="0 0 10 10"
-                  refX="7"
-                  refY="5"
-                  markerWidth="6"
-                  markerHeight="6"
+                  viewBox="0 0 10 7"
+                  refX="10"
+                  refY="3.5"
+                  markerWidth="10"
+                  markerHeight="7"
                   orient="auto-start-reverse"
                 >
                   <polygon
-                    points="0 0, 6 5, 0 10"
+                    points="0 0, 10 3.5, 0 7"
                     fill={markerStroke}
-                    stroke={markerStroke}
-                    strokeWidth="1"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
                     className="arrow-polygon"
                   />
                 </marker>
@@ -6339,7 +5093,6 @@ const Canvas: React.FC<CanvasProps> = ({
                 fill="none"
                 stroke={stateStroke}
                 markerEnd={`url(#arrowhead-${el.id})`}
-                style={{ pointerEvents: 'visibleStroke', cursor: 'pointer' }}
               />
               {el.text && el.text !== '0' && (
                 <text
@@ -6349,34 +5102,10 @@ const Canvas: React.FC<CanvasProps> = ({
                   fill={
                     isConditionUnsatisfied ? '#8a8a8a' : baseConnectionColor
                   }
-                  style={{ pointerEvents: 'auto', cursor: 'pointer' }}
                 >
                   {el.text}
                 </text>
               )}
-              {/* Show waypoint circles when connection is selected */}
-              {isSelected &&
-                el.points &&
-                el.points.length > 0 &&
-                el.points.map((point, index) => (
-                  <circle
-                    key={`waypoint-${index}`}
-                    cx={point.x - left}
-                    cy={point.y - top}
-                    r="5"
-                    fill={baseConnectionColor}
-                    stroke="#fff"
-                    strokeWidth="2"
-                    style={{ cursor: 'grab', pointerEvents: 'auto' }}
-                    onMouseDown={e => {
-                      e.stopPropagation();
-                      setDraggingWaypoint({
-                        connectionId: el.id,
-                        waypointIndex: index,
-                      });
-                    }}
-                  />
-                ))}
             </svg>
             {isSelected && (
               <>
@@ -6385,7 +5114,6 @@ const Canvas: React.FC<CanvasProps> = ({
                   style={{
                     left: startPoint.x - left - 4,
                     top: startPoint.y - top - 4,
-                    pointerEvents: 'auto',
                   }}
                   onMouseDown={e => handleArrowResizeStart(e, el.id, 'start')}
                 />
@@ -6394,7 +5122,6 @@ const Canvas: React.FC<CanvasProps> = ({
                   style={{
                     left: endPoint.x - left - 4,
                     top: endPoint.y - top - 4,
-                    pointerEvents: 'auto',
                   }}
                   onMouseDown={e => handleArrowResizeStart(e, el.id, 'end')}
                 />
@@ -6404,44 +5131,14 @@ const Canvas: React.FC<CanvasProps> = ({
         );
       }
       case 'State Connection': {
-        // Get the connected nodes to calculate proper positioning
-        const startNode = elements.find(
-          node => node.id === el.connectedToStart
-        );
-        const endNode = elements.find(node => node.id === el.connectedToEnd);
-
-        let startPoint = {
+        const startPoint = {
           x: el.startX ?? el.x,
           y: el.startY ?? el.y,
         };
-        let endPoint = {
+        const endPoint = {
           x: el.endX ?? el.x,
           y: el.endY ?? el.y,
         };
-
-        // Snap nodes to their edges in the direction of the next point (first waypoint or end node)
-        if (startNode && endNode) {
-          // If there are waypoints, snap start to first waypoint; otherwise snap to end node
-          const startTargetPoint =
-            el.points && el.points.length > 0
-              ? el.points[0]
-              : { x: endNode.x, y: endNode.y };
-
-          // If there are waypoints, snap end to last waypoint; otherwise snap to start node
-          const endTargetPoint =
-            el.points && el.points.length > 0
-              ? el.points[el.points.length - 1]
-              : { x: startNode.x, y: startNode.y };
-
-          startPoint = snapNodeToEdgeInDirection(startNode, startTargetPoint);
-          endPoint = snapNodeToEdgeInDirection(endNode, endTargetPoint);
-        } else if (startNode) {
-          startPoint = { x: startNode.x, y: startNode.y };
-        } else if (endNode) {
-          endPoint = { x: endNode.x, y: endNode.y };
-        }
-
-        // Include intermediate waypoints if they exist, creating a polyline that follows breakpoints
         const pathPoints = [startPoint, ...(el.points ?? []), endPoint];
 
         if (pathPoints.length < 2) {
@@ -6449,23 +5146,12 @@ const Canvas: React.FC<CanvasProps> = ({
         }
 
         const padding = 15;
-        const polyline = pathPoints;
-        type LegacyPositionCarrier = { position?: unknown };
-
-        const legacyPosRaw = (el as LegacyPositionCarrier).position;
-        const legacyPosNum =
-          typeof legacyPosRaw === 'number'
-            ? legacyPosRaw
-            : typeof legacyPosRaw === 'string'
-              ? Number(legacyPosRaw)
-              : NaN;
-
-        const labelPos =
-          el.labelPosition ??
-          (Number.isFinite(legacyPosNum) ? legacyPosNum : undefined) ??
-          0.5;
-
-        const labelPoint = getLabelPointForConnection(polyline, labelPos);
+        const { point: midPoint, normal } = getPolylineMidpoint(pathPoints);
+        const labelOffset = 14;
+        const labelPoint = {
+          x: midPoint.x + normal.x * labelOffset,
+          y: midPoint.y + normal.y * labelOffset,
+        };
 
         const pointsForBounds = [...pathPoints, labelPoint];
         const xs = pointsForBounds.map(p => p.x);
@@ -6498,7 +5184,7 @@ const Canvas: React.FC<CanvasProps> = ({
         const labelFill = isConditionUnsatisfied ? '#888888' : '#000000';
         const containerClasses = [
           'connection-container',
-          selectableClass,
+          selectedTool === 'Select' ? 'selectable' : '',
           isSelected ? 'selected' : '',
         ];
         if (isConditionUnsatisfied) {
@@ -6509,13 +5195,7 @@ const Canvas: React.FC<CanvasProps> = ({
           <div
             key={el.id}
             className={containerClasses.join(' ').trim()}
-            style={applyConditionStyle({
-              left,
-              top,
-              width,
-              height,
-              pointerEvents: 'none',
-            })}
+            style={applyConditionStyle({ left, top, width, height })}
             onMouseDown={e => {
               e.stopPropagation();
               if (selectedTool === 'Select') {
@@ -6536,20 +5216,17 @@ const Canvas: React.FC<CanvasProps> = ({
                 <marker
                   id={`arrowhead-dashed-${el.id}`}
                   className="arrow-marker"
-                  viewBox="0 0 10 10"
-                  refX="7"
-                  refY="5"
-                  markerWidth="6"
-                  markerHeight="6"
+                  viewBox="0 0 10 7"
+                  refX="10"
+                  refY="3.5"
+                  markerWidth="10"
+                  markerHeight="7"
                   orient="auto-start-reverse"
                 >
                   <polygon
-                    points="0 0, 6 5, 0 10"
+                    points="0 0, 10 3.5, 0 7"
+                    // fill={markerStroke}
                     fill={el.color || '#000000'}
-                    stroke={el.color || '#000000'}
-                    strokeWidth="1"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
                     className="dashed-arrow-polygon"
                   />
                 </marker>
@@ -6563,7 +5240,6 @@ const Canvas: React.FC<CanvasProps> = ({
                 fill="none"
                 className={`state-connection-line ${isSelected ? 'selected' : ''}`}
                 markerEnd={`url(#arrowhead-dashed-${el.id})`}
-                style={{ pointerEvents: 'visibleStroke', cursor: 'pointer' }}
               />
               {el.text && el.text !== '0' && (
                 <text
@@ -6571,34 +5247,10 @@ const Canvas: React.FC<CanvasProps> = ({
                   y={labelY}
                   className="connection-label-text"
                   fill={labelFill}
-                  style={{ pointerEvents: 'auto', cursor: 'pointer' }}
                 >
                   {el.text}
                 </text>
               )}
-              {/* Show waypoint circles when connection is selected */}
-              {isSelected &&
-                el.points &&
-                el.points.length > 0 &&
-                el.points.map((point, index) => (
-                  <circle
-                    key={`waypoint-${index}`}
-                    cx={point.x - left}
-                    cy={point.y - top}
-                    r="5"
-                    fill={el.color || '#000000'}
-                    stroke="#fff"
-                    strokeWidth="2"
-                    style={{ cursor: 'grab', pointerEvents: 'auto' }}
-                    onMouseDown={e => {
-                      e.stopPropagation();
-                      setDraggingWaypoint({
-                        connectionId: el.id,
-                        waypointIndex: index,
-                      });
-                    }}
-                  />
-                ))}
             </svg>
             {isSelected && (
               <>
@@ -6607,7 +5259,6 @@ const Canvas: React.FC<CanvasProps> = ({
                   style={{
                     left: startPoint.x - left - 4,
                     top: startPoint.y - top - 4,
-                    pointerEvents: 'auto',
                   }}
                   onMouseDown={e => handleArrowResizeStart(e, el.id, 'start')}
                 />
@@ -6616,7 +5267,6 @@ const Canvas: React.FC<CanvasProps> = ({
                   style={{
                     left: endPoint.x - left - 4,
                     top: endPoint.y - top - 4,
-                    pointerEvents: 'auto',
                   }}
                   onMouseDown={e => handleArrowResizeStart(e, el.id, 'end')}
                 />
@@ -6713,24 +5363,7 @@ const Canvas: React.FC<CanvasProps> = ({
     return null;
   };
 
-  // const displayElements = draggedElements || elements;
-  const displayElements = React.useMemo(() => {
-    const list = draggedElements || elements;
-    return [...list].sort((a, b) => {
-      const isAConn =
-        a.type === 'Resource Connection' || a.type === 'State Connection';
-      const isBConn =
-        b.type === 'Resource Connection' || b.type === 'State Connection';
-
-      // If A is connection and B is node, A goes first (bottom layer)
-      if (isAConn && !isBConn) return -1;
-      // If A is node and B is connection, B goes first (bottom layer)
-      if (!isAConn && isBConn) return 1;
-
-      // Otherwise maintain creation order
-      return a.id - b.id;
-    });
-  }, [draggedElements, elements]);
+  const displayElements = draggedElements || elements;
 
   return (
     <div
@@ -6747,46 +5380,6 @@ const Canvas: React.FC<CanvasProps> = ({
       {displayElements.map(renderElement)}
       {renderConnectionPreview()}
       {renderSelectionBox()}
-      {movingTokens.map(token => (
-        <div
-          key={token.id}
-          className="moving-token"
-          style={{
-            position: 'absolute',
-            // small radius: center the 8×8 dot on the point
-            left: token.currentX - 4,
-            top: token.currentY - 4,
-            width: 10,
-            height: 10,
-            borderRadius: '50%',
-            backgroundColor: token.color || '#000000',
-            pointerEvents: 'none',
-          }}
-        />
-      ))}
-      <input
-        ref={xmlFileInputRef}
-        type="file"
-        accept=".xml,text/xml,application/xml"
-        style={{ display: 'none' }}
-        onChange={handleXmlFileChosen}
-      />
-
-      {xmlImportError && (
-        <div
-          style={{
-            position: 'absolute',
-            top: 8,
-            left: 8,
-            zIndex: 9999,
-            background: 'white',
-            padding: 8,
-            border: '1px solid #ccc',
-          }}
-        >
-          <b>XML Import Error:</b> {xmlImportError}
-        </div>
-      )}
     </div>
   );
 };
