@@ -2,6 +2,15 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { CSSProperties } from 'react';
 import { RegisterExpression } from '../utils/RegisterExpression';
 import './Canvas.css';
+import ChartElement from './ChartElement';
+import {
+  createInitialChartState,
+  createChartDataSeries,
+  autoExpandScaleY,
+  autoExpandNegScaleY,
+} from '../utils/ChartUtils';
+import type { ChartState } from '../utils/ChartUtils';
+import './Chart.css';
 
 interface CanvasProps {
   isRunning: boolean;
@@ -126,6 +135,13 @@ interface CanvasProps {
       actions: number;
       script: string;
     };
+    chart: {
+      color: string;
+      thickness: number;
+      text: string;
+      scaleX: number;
+      scaleY: number;
+    };
   };
 }
 
@@ -216,6 +232,32 @@ interface GraphElement {
 
   // Artificial Intelligence node script (from XML import + toolProperties)
   script?: string;
+
+  // Chart
+  chartWidth?: number;
+  chartHeight?: number;
+  chartScaleX?: number;
+  chartScaleY?: number;
+
+  chartState?: {
+    scaleX: number;
+    scaleY: number;
+    negScaleY: number;
+    defaultScaleX: number;
+    defaultScaleY: number;
+    dataSeries: Array<{
+      connectionId: number;
+      color: string;
+      color2: string;
+      thickness: number;
+      name: string;
+      data: number[];
+      run: number;
+    }>;
+    tick: number;
+    runs: number;
+    highLighted: number;
+  };
 }
 
 // ------------------------------
@@ -2426,6 +2468,46 @@ const Canvas: React.FC<CanvasProps> = ({
             if (!element.traderInputs) element.traderInputs = {};
             if (!element.traderOutputs) element.traderOutputs = {};
           }
+          if (element.type === 'Chart') {
+            const defaultScaleX = element.chartScaleX || 30;
+            const defaultScaleY = element.chartScaleY || 100;
+
+            if (!element.chartState) {
+              element.chartState = createInitialChartState(
+                defaultScaleX,
+                defaultScaleY
+              );
+            }
+
+            element.chartState.runs += 1;
+            element.chartState.highLighted = element.chartState.runs - 1;
+            element.chartState.tick = 0;
+
+            const inputConnections = nextElements.filter(
+              conn =>
+                conn.type === 'State Connection' &&
+                conn.connectedToEnd === element.id
+            );
+
+            for (const conn of inputConnections) {
+              const sourceElement = elementMap.get(conn.connectedToStart!);
+              const initialValue = sourceElement
+                ? getElementValue(sourceElement)
+                : 0;
+              const name = sourceElement?.text || '';
+
+              const series = createChartDataSeries(
+                conn.id,
+                conn.color || '#000000',
+                conn.thickness || 2,
+                name,
+                initialValue,
+                element.chartState.highLighted
+              );
+
+              element.chartState.dataSeries.push(series);
+            }
+          }
         }
       }
 
@@ -3322,6 +3404,80 @@ const Canvas: React.FC<CanvasProps> = ({
 
       // applyDynamicResourceLabelsMutable(nextElements);
       updateStateConnectionVisualState(nextElements);
+
+      // =======================================================================
+      // PASS 7: Chart data collection
+      // =======================================================================
+      for (const chart of nextElements) {
+        if (chart.type !== 'Chart' || !chart.chartState) continue;
+
+        if (activationType !== 'automatic') continue;
+
+        chart.chartState.tick += 1;
+
+        const inputConnections = nextElements.filter(
+          conn =>
+            conn.type === 'State Connection' && conn.connectedToEnd === chart.id
+        );
+
+        for (const conn of inputConnections) {
+          const sourceElement = elementMap.get(conn.connectedToStart!);
+          if (!sourceElement) continue;
+
+          let value = getElementValue(sourceElement);
+
+          const labelValue = parseFloat(conn.text || '1') || 1;
+          value = value * labelValue;
+
+          if (isNaN(value)) value = 0;
+
+          if (
+            chart.chartState.defaultScaleX > 0 &&
+            chart.chartState.tick > chart.chartState.defaultScaleX
+          ) {
+            continue;
+          }
+
+          if (
+            chart.chartState.defaultScaleY > 0 &&
+            value > chart.chartState.defaultScaleY
+          ) {
+            continue;
+          }
+
+          const series = chart.chartState.dataSeries.find(
+            s =>
+              s.connectionId === conn.id &&
+              s.run === chart.chartState!.highLighted
+          );
+
+          if (series) {
+            series.data.push(value);
+
+            if (chart.chartState.defaultScaleY === 0) {
+              chart.chartState.scaleY = autoExpandScaleY(
+                chart.chartState.scaleY,
+                value
+              );
+            }
+
+            if (chart.chartState.defaultScaleY >= 0 && value < 0) {
+              chart.chartState.negScaleY = autoExpandNegScaleY(
+                chart.chartState.negScaleY,
+                value
+              );
+            }
+          }
+        }
+
+        if (
+          chart.chartState.defaultScaleX <= 0 &&
+          chart.chartState.tick > chart.chartState.scaleX &&
+          chart.chartState.scaleX <= (chart.chartWidth || 200) - 10
+        ) {
+          chart.chartState.scaleX += 10;
+        }
+      }
 
       return nextElements;
     },
@@ -4700,6 +4856,32 @@ const Canvas: React.FC<CanvasProps> = ({
     const x = clientX - rect.left;
     const y = clientY - rect.top;
     const id = nextIdRef.current++;
+
+    if (type === 'Chart') {
+      const chartProps = toolProperties?.chart;
+      const defaultScaleX = chartProps?.scaleX ?? 30;
+      const defaultScaleY = chartProps?.scaleY ?? 100;
+
+      setElements(prev => [
+        ...prev,
+        {
+          id,
+          type,
+          x,
+          y,
+          color: chartProps?.color || '#000000',
+          thickness: chartProps?.thickness || 2,
+          text: chartProps?.text || '',
+          chartWidth: 200,
+          chartHeight: 150,
+          chartScaleX: defaultScaleX,
+          chartScaleY: defaultScaleY,
+          chartState: createInitialChartState(defaultScaleX, defaultScaleY),
+        },
+      ]);
+      setSelectedId([id]);
+      return;
+    }
 
     if (type === 'Text Label') {
       setElements(prev => [
@@ -6623,6 +6805,117 @@ const Canvas: React.FC<CanvasProps> = ({
               </>
             )}
           </div>
+        );
+      }
+      case 'Chart': {
+        const chartState =
+          el.chartState ||
+          createInitialChartState(el.chartScaleX || 30, el.chartScaleY || 100);
+
+        return (
+          <ChartElement
+            key={el.id}
+            id={el.id}
+            x={el.x}
+            y={el.y}
+            width={el.chartWidth || 200}
+            height={el.chartHeight || 150}
+            color={el.color || '#000000'}
+            thickness={el.thickness || 2}
+            text={el.text}
+            chartState={chartState}
+            isSelected={isSelected}
+            isRunning={isRunning}
+            visibleRuns={25}
+            selectableClass={selectableClass}
+            applyConditionStyle={applyConditionStyle}
+            onMouseDown={e => {
+              e.stopPropagation();
+              handleElementMouseDown(e, el.id);
+            }}
+            onClick={e => {
+              if (selectedTool === 'Select') {
+                e.stopPropagation();
+                if (e.ctrlKey || e.metaKey) {
+                  setSelectedId(prev =>
+                    prev.includes(el.id)
+                      ? prev.filter(selId => selId !== el.id)
+                      : [...prev, el.id]
+                  );
+                } else {
+                  setSelectedId([el.id]);
+                }
+              }
+            }}
+            onResize={(newWidth, newHeight) => {
+              setElements(prev =>
+                prev.map(element =>
+                  element.id === el.id
+                    ? {
+                        ...element,
+                        chartWidth: newWidth,
+                        chartHeight: newHeight,
+                      }
+                    : element
+                )
+              );
+            }}
+            onClear={() => {
+              setElements(prev =>
+                prev.map(element =>
+                  element.id === el.id
+                    ? {
+                        ...element,
+                        chartState: createInitialChartState(
+                          el.chartScaleX || 30,
+                          el.chartScaleY || 100
+                        ),
+                      }
+                    : element
+                )
+              );
+            }}
+            onPrevious={() => {
+              setElements(prev =>
+                prev.map(element => {
+                  if (element.id === el.id && element.chartState) {
+                    const newHighLighted = Math.max(
+                      0,
+                      element.chartState.highLighted - 1
+                    );
+                    return {
+                      ...element,
+                      chartState: {
+                        ...element.chartState,
+                        highLighted: newHighLighted,
+                      },
+                    };
+                  }
+                  return element;
+                })
+              );
+            }}
+            onNext={() => {
+              setElements(prev =>
+                prev.map(element => {
+                  if (element.id === el.id && element.chartState) {
+                    const newHighLighted = Math.min(
+                      element.chartState.runs - 1,
+                      element.chartState.highLighted + 1
+                    );
+                    return {
+                      ...element,
+                      chartState: {
+                        ...element.chartState,
+                        highLighted: newHighLighted,
+                      },
+                    };
+                  }
+                  return element;
+                })
+              );
+            }}
+          />
         );
       }
       default:
