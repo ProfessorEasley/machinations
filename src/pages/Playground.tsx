@@ -197,6 +197,13 @@ const Playground: React.FC = () => {
       actions: number;
       script: string;
     };
+    chart: {
+      color: string;
+      thickness: number;
+      text: string;
+      scaleX: number;
+      scaleY: number;
+    };
   }>({
     textLabel: { text: '', color: '#000000' },
     group: { text: '', color: '#000000' },
@@ -301,6 +308,13 @@ const Playground: React.FC = () => {
       activation: 'passive',
       actions: 1,
       script: '',
+    },
+    chart: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      scaleX: 30,
+      scaleY: 100,
     },
   });
 
