@@ -48,11 +48,20 @@
   padding: 2px;
 }
 
+.text-label-span:hover {
+  outline: 2px solid #f4d000;
+  outline-offset: 2px;
+}
+
 /* SVG Element Base Styles */
 .svg-element {
   position: absolute;
   cursor: pointer;
   z-index: 1;
+}
+
+.svg-element svg {
+  overflow: visible;
 }
 
 .svg-element.selectable {
@@ -63,6 +72,19 @@
   border: 2px solid #0078d4;
   background: #e3f2fd;
   z-index: 2;
+}
+
+.svg-element:hover .pool-circle,
+.svg-element:hover .source-triangle,
+.svg-element:hover .drain-triangle,
+.svg-element:hover .gate-diamond,
+.svg-element:hover .convertor-shape,
+.svg-element:hover .end-condition-rect,
+.svg-element:hover .ai-rect,
+.svg-element:hover .register-rect,
+.svg-element:hover .delay-circle,
+.svg-element:hover .trader-polygon {
+  filter: drop-shadow(0 0 0 #f4d000) drop-shadow(0 0 4px #f4d000);
 }
 
 /* Pool Element */
@@ -175,6 +197,10 @@
   z-index: 2;
 }
 
+.group-element:hover {
+  box-shadow: 0 0 0 2px #f4d000;
+}
+
 /* Group Resize Handles */
 .resize-handle {
   position: absolute;
@@ -222,6 +248,21 @@
 
 .connection-container.selected {
   z-index: 2;
+}
+
+.connection-container:hover .connection-label-text {
+  text-shadow:
+    -1px 0 #f4d000,
+    0 1px #f4d000,
+    1px 0 #f4d000,
+    0 -1px #f4d000;
+}
+
+.connection-container:hover .connection-line,
+.connection-container:hover .state-connection-line,
+.connection-container:hover .arrow-polygon,
+.connection-container:hover .dashed-arrow-polygon {
+  filter: drop-shadow(0 0 0 #f4d000) drop-shadow(0 0 2px #f4d000);
 }
 
 .greyed {
