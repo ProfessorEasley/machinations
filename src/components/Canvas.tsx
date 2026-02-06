@@ -3040,12 +3040,21 @@ const Canvas: React.FC<CanvasProps> = ({
             .filter(i => i.units > 0);
 
           const outputs = outputConns
-            .map(conn => ({
-              conn,
-              units: parseConnectionLabel(conn.text),
-              color: normalizeColor(conn.color),
-              endEl: elementMap.get(conn.connectedToEnd!),
-            }))
+            .map(conn => {
+              const raw = (conn.text ?? '').trim();
+              const percentMatch = raw.match(/^([+-]?\d+(?:\.\d+)?)\s*%$/);
+              const probability = percentMatch
+                ? Math.min(1, Math.max(0, parseFloat(percentMatch[1]) / 100))
+                : undefined;
+
+              return {
+                conn,
+                units: percentMatch ? 1 : parseConnectionLabel(conn.text),
+                probability,
+                color: normalizeColor(conn.color),
+                endEl: elementMap.get(conn.connectedToEnd!),
+              };
+            })
             .filter(o => o.units > 0);
 
           let canConvert = true;
@@ -3095,7 +3104,15 @@ const Canvas: React.FC<CanvasProps> = ({
               }
             });
 
-            outputs.forEach(o => deliverUnits(o.conn, o.units, convertor));
+            outputs.forEach(o => {
+              if (
+                typeof o.probability === 'number' &&
+                Math.random() > o.probability
+              ) {
+                return;
+              }
+              deliverUnits(o.conn, o.units, convertor);
+            });
           } else {
             if (convertor.pullMode === 'pull any') {
               for (const inputConn of inputConns) {
