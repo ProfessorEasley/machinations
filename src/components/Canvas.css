@@ -69,9 +69,23 @@
 }
 
 .svg-element.selected {
-  border: 2px solid #0078d4;
-  background: #e3f2fd;
+  border: none;
+  background: none;
   z-index: 2;
+}
+
+.svg-element.selected .pool-circle,
+.svg-element.selected .source-triangle,
+.svg-element.selected .drain-triangle,
+.svg-element.selected .gate-diamond,
+.svg-element.selected .convertor-shape,
+.svg-element.selected .end-condition-rect,
+.svg-element.selected .ai-rect,
+.svg-element.selected .register-rect,
+.svg-element.selected .delay-circle,
+.svg-element.selected .trader-polygon {
+  stroke: #0078d4 !important;
+  stroke-width: 3;
 }
 
 .svg-element:hover .pool-circle,
@@ -249,6 +263,18 @@
 
 .connection-container.selected {
   z-index: 2;
+}
+
+.connection-container.selected .connection-line,
+.connection-container.selected .state-connection-line {
+  stroke: #0078d4 !important;
+  stroke-width: 3;
+}
+
+.connection-container.selected .arrow-polygon,
+.connection-container.selected .dashed-arrow-polygon {
+  fill: #0078d4 !important;
+  stroke: #0078d4 !important;
 }
 
 .connection-container:hover .connection-label-text {
