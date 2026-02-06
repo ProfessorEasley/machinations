@@ -84,7 +84,8 @@
 .svg-element:hover .register-rect,
 .svg-element:hover .delay-circle,
 .svg-element:hover .trader-polygon {
-  filter: drop-shadow(0 0 0 #f4d000) drop-shadow(0 0 4px #f4d000);
+  stroke: #f4d000 !important;
+  stroke-width: 3;
 }
 
 /* Pool Element */
@@ -259,10 +260,15 @@
 }
 
 .connection-container:hover .connection-line,
-.connection-container:hover .state-connection-line,
+.connection-container:hover .state-connection-line {
+  stroke: #f4d000 !important;
+  stroke-width: 3;
+}
+
 .connection-container:hover .arrow-polygon,
 .connection-container:hover .dashed-arrow-polygon {
-  filter: drop-shadow(0 0 0 #f4d000) drop-shadow(0 0 2px #f4d000);
+  fill: #f4d000 !important;
+  stroke: #f4d000 !important;
 }
 
 .greyed {
