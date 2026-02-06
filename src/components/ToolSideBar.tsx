@@ -42,6 +42,11 @@ interface GraphElement {
   maxValue?: number;
   gateType?: 'deterministic' | 'dice' | 'skill' | 'multiplayer' | 'strategy';
 
+  chartWidth?: number;
+  chartHeight?: number;
+  chartScaleX?: number;
+  chartScaleY?: number;
+
   // Convertor-specific properties
   inputResources?: Record<string, number>; // Resource type -> amount stored
   outputResources?: Record<string, number>; // Resource type -> amount to produce
@@ -186,6 +191,13 @@ interface ToolSideBarProps {
       activation: 'passive' | 'interactive' | 'automatic' | 'onstart';
       actions: number;
       script: string;
+    };
+    chart: {
+      color: string;
+      thickness: number;
+      text: string;
+      scaleX: number;
+      scaleY: number;
     };
   };
   isRunning: boolean;
@@ -660,6 +672,161 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
             {renderColorDropdown(selectedElement.color || '#000000', color =>
               handleElementPropertyChange('color', color)
             )}
+          </label>
+        </div>
+      );
+    }
+    // Show Chart-specific properties when Chart is selected (element)
+    if (selectedElement && selectedElement.type === 'Chart') {
+      return (
+        <div className="element-properties-panel">
+          <div className="machinations-label">Chart</div>
+          <label>
+            Color
+            {renderColorDropdown(selectedElement.color || '#000000', color =>
+              handleElementPropertyChange('color', color)
+            )}
+          </label>
+          <label>
+            Label
+            <input
+              type="text"
+              value={selectedElement.text || ''}
+              onChange={e =>
+                handleElementPropertyChange('text', e.target.value)
+              }
+              placeholder="Enter label"
+            />
+          </label>
+          <label>
+            Scale X (min: 10)
+            <input
+              type="number"
+              value={selectedElement.chartScaleX ?? 30}
+              onChange={e => {
+                if (onElementUpdate) {
+                  let value = parseInt(e.target.value) || 0;
+                  if (value !== 0 && value < 10) {
+                    value = 10;
+                  }
+                  onElementUpdate(selectedElement.id, { chartScaleX: value });
+                }
+              }}
+              min="0"
+            />
+          </label>
+          <label>
+            Scale Y (min: 12)
+            <input
+              type="number"
+              value={selectedElement.chartScaleY ?? 100}
+              onChange={e => {
+                if (onElementUpdate) {
+                  let value = parseInt(e.target.value) || 0;
+                  if (value !== 0 && value < 12) {
+                    value = 12;
+                  }
+                  onElementUpdate(selectedElement.id, { chartScaleY: value });
+                }
+              }}
+              min="0"
+            />
+          </label>
+        </div>
+      );
+    }
+
+    // Show Chart tool properties when Chart tool is selected
+    if (selectedTool === 'Chart') {
+      return (
+        <div className="element-properties-panel">
+          <div className="machinations-label">Chart</div>
+          <label>
+            Color
+            {renderColorDropdown(
+              toolProperties?.chart?.color || '#000000',
+              color => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('chart', {
+                    ...toolProperties?.chart,
+                    color: color,
+                  });
+                }
+              }
+            )}
+          </label>
+          <label>
+            Thickness
+            <input
+              type="number"
+              value={toolProperties?.chart?.thickness || 2}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('chart', {
+                    ...toolProperties?.chart,
+                    thickness: parseInt(e.target.value) || 2,
+                  });
+                }
+              }}
+              min="1"
+              max="10"
+            />
+          </label>
+          <label>
+            Label
+            <input
+              type="text"
+              value={toolProperties?.chart?.text || ''}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  onToolPropertiesChange('chart', {
+                    ...toolProperties?.chart,
+                    text: e.target.value,
+                  });
+                }
+              }}
+              placeholder="Enter label"
+            />
+          </label>
+          <label>
+            Scale X (min: 10)
+            <input
+              type="number"
+              value={toolProperties?.chart?.scaleX ?? 30}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  let value = parseInt(e.target.value) || 0;
+                  if (value !== 0 && value < 10) {
+                    value = 10;
+                  }
+                  onToolPropertiesChange('chart', {
+                    ...toolProperties?.chart,
+                    scaleX: value,
+                  });
+                }
+              }}
+              min="0"
+            />
+          </label>
+          <label>
+            Scale Y (min: 12)
+            <input
+              type="number"
+              value={toolProperties?.chart?.scaleY ?? 100}
+              onChange={e => {
+                if (onToolPropertiesChange) {
+                  let value = parseInt(e.target.value) || 0;
+                  if (value !== 0 && value < 12) {
+                    value = 12;
+                  }
+                  onToolPropertiesChange('chart', {
+                    ...toolProperties?.chart,
+                    scaleY: value,
+                  });
+                }
+              }}
+              min="0"
+            />
           </label>
         </div>
       );
