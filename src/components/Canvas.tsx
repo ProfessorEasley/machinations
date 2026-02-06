@@ -6603,10 +6603,10 @@ const Canvas: React.FC<CanvasProps> = ({
       }
       case 'State Connection': {
         // Get the connected nodes to calculate proper positioning
-        const startNode = elements.find(
+        const startTarget = elements.find(
           node => node.id === el.connectedToStart
         );
-        const endNode = elements.find(node => node.id === el.connectedToEnd);
+        const endTarget = elements.find(node => node.id === el.connectedToEnd);
 
         let startPoint = {
           x: el.startX ?? el.x,
@@ -6618,25 +6618,35 @@ const Canvas: React.FC<CanvasProps> = ({
         };
 
         // Snap nodes to their edges in the direction of the next point (first waypoint or end node)
-        if (startNode && endNode) {
+        const startIsConn = isConnectionElement(startTarget);
+        const endIsConn = isConnectionElement(endTarget);
+
+        if (startTarget && endTarget && !startIsConn && !endIsConn) {
           // If there are waypoints, snap start to first waypoint; otherwise snap to end node
           const startTargetPoint =
             el.points && el.points.length > 0
               ? el.points[0]
-              : { x: endNode.x, y: endNode.y };
+              : { x: endTarget.x, y: endTarget.y };
 
           // If there are waypoints, snap end to last waypoint; otherwise snap to start node
           const endTargetPoint =
             el.points && el.points.length > 0
               ? el.points[el.points.length - 1]
-              : { x: startNode.x, y: startNode.y };
+              : { x: startTarget.x, y: startTarget.y };
 
-          startPoint = snapNodeToEdgeInDirection(startNode, startTargetPoint);
-          endPoint = snapNodeToEdgeInDirection(endNode, endTargetPoint);
-        } else if (startNode) {
-          startPoint = { x: startNode.x, y: startNode.y };
-        } else if (endNode) {
-          endPoint = { x: endNode.x, y: endNode.y };
+          startPoint = snapNodeToEdgeInDirection(startTarget, startTargetPoint);
+          endPoint = snapNodeToEdgeInDirection(endTarget, endTargetPoint);
+        } else if (startTarget && !startIsConn) {
+          startPoint = { x: startTarget.x, y: startTarget.y };
+        } else if (endTarget && !endIsConn) {
+          endPoint = { x: endTarget.x, y: endTarget.y };
+        }
+
+        if (endTarget && endTarget.type === 'Resource Connection') {
+          const labelAnchor = getResourceConnectionLabelAnchor(endTarget);
+          if (labelAnchor) {
+            endPoint = labelAnchor;
+          }
         }
 
         // Include intermediate waypoints if they exist, creating a polyline that follows breakpoints
@@ -7020,6 +7030,69 @@ const Canvas: React.FC<CanvasProps> = ({
       );
     }
     return null;
+  };
+
+  const isConnectionElement = (element: GraphElement | undefined) =>
+    element != null &&
+    (element.type === 'Resource Connection' ||
+      element.type === 'State Connection');
+
+  const getResourceConnectionLabelAnchor = (
+    conn: GraphElement
+  ): { x: number; y: number } | null => {
+    if (conn.type !== 'Resource Connection') return null;
+
+    const startNode = elements.find(node => node.id === conn.connectedToStart);
+    const endNode = elements.find(node => node.id === conn.connectedToEnd);
+
+    let startPoint = {
+      x: conn.startX ?? conn.x,
+      y: conn.startY ?? conn.y,
+    };
+    let endPoint = {
+      x: conn.endX ?? conn.x,
+      y: conn.endY ?? conn.y,
+    };
+
+    const startIsConn = isConnectionElement(startNode);
+    const endIsConn = isConnectionElement(endNode);
+
+    if (startNode && endNode && !startIsConn && !endIsConn) {
+      const startTargetPoint =
+        conn.points && conn.points.length > 0
+          ? conn.points[0]
+          : { x: endNode.x, y: endNode.y };
+      const endTargetPoint =
+        conn.points && conn.points.length > 0
+          ? conn.points[conn.points.length - 1]
+          : { x: startNode.x, y: startNode.y };
+
+      startPoint = snapNodeToEdgeInDirection(startNode, startTargetPoint);
+      endPoint = snapNodeToEdgeInDirection(endNode, endTargetPoint);
+    } else if (startNode && !startIsConn) {
+      startPoint = { x: startNode.x, y: startNode.y };
+    } else if (endNode && !endIsConn) {
+      endPoint = { x: endNode.x, y: endNode.y };
+    }
+
+    const pathPoints = [startPoint, ...(conn.points ?? []), endPoint];
+    if (pathPoints.length < 2) return null;
+
+    type LegacyPositionCarrier = { position?: unknown };
+    const legacyPosRaw = (conn as LegacyPositionCarrier).position;
+    const legacyPosNum =
+      typeof legacyPosRaw === 'number'
+        ? legacyPosRaw
+        : typeof legacyPosRaw === 'string'
+          ? Number(legacyPosRaw)
+          : NaN;
+
+    const labelPos =
+      conn.labelPosition ??
+      (Number.isFinite(legacyPosNum) ? legacyPosNum : undefined) ??
+      0.5;
+
+    return getLabelPointForConnection(pathPoints, labelPos);
   };
 
   // const displayElements = draggedElements || elements;
