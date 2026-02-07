@@ -1253,6 +1253,27 @@ const getLabelPointForConnection = (
 
 const RESOURCE_LABEL_EPSILON = 1e-6;
 
+const parseTriggerChance = (raw?: string): number | null => {
+  const trimmed = (raw ?? '').trim().toLowerCase();
+  if (!trimmed) return null;
+  if (trimmed === '*' || trimmed === 'trigger' || trimmed === 'fire') {
+    return 1;
+  }
+  const match = trimmed.match(/^(\d+(?:\.\d+)?)\s*%$/);
+  if (!match) return null;
+  const pct = parseFloat(match[1]);
+  if (!Number.isFinite(pct)) return null;
+  const clamped = Math.min(Math.max(pct, 0), 100);
+  return clamped / 100;
+};
+
+const shouldActivateTrigger = (raw?: string): boolean => {
+  const chance = parseTriggerChance(raw);
+  if (chance === null) return false;
+  if (chance >= 1) return true;
+  return Math.random() < chance;
+};
+
 function getElementValue(element: GraphElement | undefined): number {
   if (!element) return 0;
 
@@ -2569,12 +2590,9 @@ const Canvas: React.FC<CanvasProps> = ({
         }
 
         // Handle Triggers
-        const labelLower = rawLabel.toLowerCase();
-        if (
-          labelLower === 'trigger' ||
-          labelLower === 'fire' ||
-          startEl.type === 'Gate'
-        ) {
+        const isLabelTrigger =
+          shouldActivateTrigger(rawLabel) || isTriggerOutput(rawLabel);
+        if (startEl.type === 'Gate' || isLabelTrigger) {
           endEl.triggerCount = (endEl.triggerCount ?? 0) + 1;
         }
       }
@@ -2965,7 +2983,7 @@ const Canvas: React.FC<CanvasProps> = ({
                   c =>
                     c.type === 'State Connection' &&
                     c.connectedToStart === drain.id &&
-                    isTriggerOutput(c.text)
+                    (isTriggerOutput(c.text) || shouldActivateTrigger(c.text))
                 );
                 stateOuts.forEach(out => {
                   const target = elementMap.get(out.connectedToEnd!);
