@@ -1068,18 +1068,6 @@ interface FractionalDispatchState {
 const isResourceLikeConnection = (element: GraphElement) =>
   element.type === 'Resource Connection';
 
-const getResourcePolylinePoints = (resource: GraphElement) => {
-  const startPoint = {
-    x: resource.startX ?? resource.x,
-    y: resource.startY ?? resource.y,
-  };
-  const endPoint = {
-    x: resource.endX ?? resource.x,
-    y: resource.endY ?? resource.y,
-  };
-  return [startPoint, ...(resource.points ?? []), endPoint];
-};
-
 const getClosestPointOnPolyline = (
   point: { x: number; y: number },
   polyline: { x: number; y: number }[]
@@ -2035,6 +2023,47 @@ const Canvas: React.FC<CanvasProps> = ({
   );
   const currentTickRef = useRef(0);
 
+  const getResourcePolylinePointsForConnection = (
+    resource: GraphElement,
+    elementsSnapshot: GraphElement[]
+  ) => {
+    const startNode = elementsSnapshot.find(
+      node => node.id === resource.connectedToStart
+    );
+    const endNode = elementsSnapshot.find(
+      node => node.id === resource.connectedToEnd
+    );
+
+    let startPoint = {
+      x: resource.startX ?? resource.x,
+      y: resource.startY ?? resource.y,
+    };
+    let endPoint = {
+      x: resource.endX ?? resource.x,
+      y: resource.endY ?? resource.y,
+    };
+
+    if (startNode && endNode) {
+      const startTargetPoint =
+        resource.points && resource.points.length > 0
+          ? resource.points[0]
+          : { x: endNode.x, y: endNode.y };
+      const endTargetPoint =
+        resource.points && resource.points.length > 0
+          ? resource.points[resource.points.length - 1]
+          : { x: startNode.x, y: startNode.y };
+
+      startPoint = snapNodeToEdgeInDirection(startNode, startTargetPoint);
+      endPoint = snapNodeToEdgeInDirection(endNode, endTargetPoint);
+    } else if (startNode) {
+      startPoint = { x: startNode.x, y: startNode.y };
+    } else if (endNode) {
+      endPoint = { x: endNode.x, y: endNode.y };
+    }
+
+    return [startPoint, ...(resource.points ?? []), endPoint];
+  };
+
   const spawnMovingTokens = useCallback(
     (transfers: ResourceTransfer[], elementsSnapshot: GraphElement[]) => {
       const tokensToAdd: MovingToken[] = [];
@@ -2046,7 +2075,10 @@ const Canvas: React.FC<CanvasProps> = ({
         if (!conn) continue;
 
         // Full polyline for this connection (start + points + end)
-        const basePolyline = getResourcePolylinePoints(conn);
+        const basePolyline = getResourcePolylinePointsForConnection(
+          conn,
+          elementsSnapshot
+        );
         if (basePolyline.length < 2) continue;
 
         const unitsToShow = Math.min(tr.units, 5); // Cap for performance
@@ -4762,7 +4794,10 @@ const Canvas: React.FC<CanvasProps> = ({
 
       if (element.type === 'Resource Connection') {
         if (!includeConnections) return;
-        const polyline = getResourcePolylinePoints(element);
+        const polyline = getResourcePolylinePointsForConnection(
+          element,
+          elements
+        );
         if (polyline.length < 2) return;
         const { distance } = getClosestPointOnPolyline({ x, y }, polyline);
         if (distance < closestDistance) {
@@ -5353,7 +5388,10 @@ const Canvas: React.FC<CanvasProps> = ({
       }
       if (index === pointsSequence.length - 1 && endElement) {
         if (endElement.type === 'Resource Connection') {
-          const polyline = getResourcePolylinePoints(endElement);
+          const polyline = getResourcePolylinePointsForConnection(
+            endElement,
+            elements
+          );
           const { point: anchorPoint } = getClosestPointOnPolyline(
             { x: endPoint.x, y: endPoint.y },
             polyline
