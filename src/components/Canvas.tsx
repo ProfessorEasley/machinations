@@ -1552,6 +1552,133 @@ function handleDecimalResourceDispatch(
 const randInt = (min: number, max: number) =>
   Math.floor(Math.random() * (max - min + 1)) + min;
 
+function evaluateArithmeticExpression(raw: string): number | null {
+  const expr = raw.replace(/\s+/g, '');
+  if (!expr) return null;
+
+  type Token =
+    | { type: 'num'; value: number }
+    | { type: 'op'; value: '+' | '-' | '*' | '/' }
+    | { type: 'lparen' }
+    | { type: 'rparen' };
+
+  const tokens: Token[] = [];
+  let i = 0;
+
+  const numberRe = /^(?:\d+\.?\d*|\.\d+)/;
+
+  while (i < expr.length) {
+    const ch = expr[i];
+    if (ch === '(') {
+      tokens.push({ type: 'lparen' });
+      i += 1;
+      continue;
+    }
+    if (ch === ')') {
+      tokens.push({ type: 'rparen' });
+      i += 1;
+      continue;
+    }
+    if (ch === '+' || ch === '-' || ch === '*' || ch === '/') {
+      tokens.push({ type: 'op', value: ch });
+      i += 1;
+      continue;
+    }
+
+    const match = expr.slice(i).match(numberRe);
+    if (!match) return null;
+    const value = parseFloat(match[0]);
+    if (!Number.isFinite(value)) return null;
+    tokens.push({ type: 'num', value });
+    i += match[0].length;
+  }
+
+  let idx = 0;
+
+  const parseFactor = (): number | null => {
+    const token = tokens[idx];
+    if (!token) return null;
+
+    if (token.type === 'op' && (token.value === '+' || token.value === '-')) {
+      idx += 1;
+      const inner = parseFactor();
+      if (inner == null) return null;
+      return token.value === '-' ? -inner : inner;
+    }
+
+    if (token.type === 'lparen') {
+      idx += 1;
+      const inner = parseExpr();
+      if (inner == null) return null;
+      if (tokens[idx]?.type !== 'rparen') return null;
+      idx += 1;
+      return inner;
+    }
+
+    if (token.type === 'num') {
+      idx += 1;
+      return token.value;
+    }
+
+    return null;
+  };
+
+  const parseTerm = (): number | null => {
+    let left = parseFactor();
+    if (left == null) return null;
+
+    while (true) {
+      const token = tokens[idx];
+      if (
+        !token ||
+        token.type !== 'op' ||
+        (token.value !== '*' && token.value !== '/')
+      ) {
+        break;
+      }
+      idx += 1;
+      const right = parseFactor();
+      if (right == null) return null;
+      if (token.value === '/') {
+        if (right === 0) return null;
+        left = left / right;
+      } else {
+        left = left * right;
+      }
+    }
+
+    return left;
+  };
+
+  const parseExpr = (): number | null => {
+    let left = parseTerm();
+    if (left == null) return null;
+
+    while (true) {
+      const token = tokens[idx];
+      if (
+        !token ||
+        token.type !== 'op' ||
+        (token.value !== '+' && token.value !== '-')
+      ) {
+        break;
+      }
+      idx += 1;
+      const right = parseTerm();
+      if (right == null) return null;
+      left = token.value === '+' ? left + right : left - right;
+    }
+
+    return left;
+  };
+
+  const result = parseExpr();
+  if (result == null) return null;
+  if (idx !== tokens.length) return null;
+  if (!Number.isFinite(result)) return null;
+  return result;
+}
+
 // Supports: "5", "2-5", "1/2", "0.5", default 1
 function parseConnectionLabel(label?: string): number {
   const s = (label ?? '').trim();
@@ -1577,6 +1704,9 @@ function parseConnectionLabel(label?: string): number {
       return Math.random() < num / den ? num : 0;
     }
   }
+
+  const arithmetic = evaluateArithmeticExpression(s);
+  if (arithmetic != null) return arithmetic;
 
   const num = parseFloat(s);
   if (!isNaN(num)) return num; // Changed: Keep decimal values instead of flooring
