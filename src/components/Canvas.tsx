@@ -1068,18 +1068,6 @@ interface FractionalDispatchState {
 const isResourceLikeConnection = (element: GraphElement) =>
   element.type === 'Resource Connection';
 
-const getResourcePolylinePoints = (resource: GraphElement) => {
-  const startPoint = {
-    x: resource.startX ?? resource.x,
-    y: resource.startY ?? resource.y,
-  };
-  const endPoint = {
-    x: resource.endX ?? resource.x,
-    y: resource.endY ?? resource.y,
-  };
-  return [startPoint, ...(resource.points ?? []), endPoint];
-};
-
 const getClosestPointOnPolyline = (
   point: { x: number; y: number },
   polyline: { x: number; y: number }[]
@@ -1552,6 +1540,133 @@ function handleDecimalResourceDispatch(
 const randInt = (min: number, max: number) =>
   Math.floor(Math.random() * (max - min + 1)) + min;
 
+function evaluateArithmeticExpression(raw: string): number | null {
+  const expr = raw.replace(/\s+/g, '');
+  if (!expr) return null;
+
+  type Token =
+    | { type: 'num'; value: number }
+    | { type: 'op'; value: '+' | '-' | '*' | '/' }
+    | { type: 'lparen' }
+    | { type: 'rparen' };
+
+  const tokens: Token[] = [];
+  let i = 0;
+
+  const numberRe = /^(?:\d+\.?\d*|\.\d+)/;
+
+  while (i < expr.length) {
+    const ch = expr[i];
+    if (ch === '(') {
+      tokens.push({ type: 'lparen' });
+      i += 1;
+      continue;
+    }
+    if (ch === ')') {
+      tokens.push({ type: 'rparen' });
+      i += 1;
+      continue;
+    }
+    if (ch === '+' || ch === '-' || ch === '*' || ch === '/') {
+      tokens.push({ type: 'op', value: ch });
+      i += 1;
+      continue;
+    }
+
+    const match = expr.slice(i).match(numberRe);
+    if (!match) return null;
+    const value = parseFloat(match[0]);
+    if (!Number.isFinite(value)) return null;
+    tokens.push({ type: 'num', value });
+    i += match[0].length;
+  }
+
+  let idx = 0;
+
+  const parseFactor = (): number | null => {
+    const token = tokens[idx];
+    if (!token) return null;
+
+    if (token.type === 'op' && (token.value === '+' || token.value === '-')) {
+      idx += 1;
+      const inner = parseFactor();
+      if (inner == null) return null;
+      return token.value === '-' ? -inner : inner;
+    }
+
+    if (token.type === 'lparen') {
+      idx += 1;
+      const inner = parseExpr();
+      if (inner == null) return null;
+      if (tokens[idx]?.type !== 'rparen') return null;
+      idx += 1;
+      return inner;
+    }
+
+    if (token.type === 'num') {
+      idx += 1;
+      return token.value;
+    }
+
+    return null;
+  };
+
+  const parseTerm = (): number | null => {
+    let left = parseFactor();
+    if (left == null) return null;
+
+    while (true) {
+      const token = tokens[idx];
+      if (
+        !token ||
+        token.type !== 'op' ||
+        (token.value !== '*' && token.value !== '/')
+      ) {
+        break;
+      }
+      idx += 1;
+      const right = parseFactor();
+      if (right == null) return null;
+      if (token.value === '/') {
+        if (right === 0) return null;
+        left = left / right;
+      } else {
+        left = left * right;
+      }
+    }
+
+    return left;
+  };
+
+  const parseExpr = (): number | null => {
+    let left = parseTerm();
+    if (left == null) return null;
+
+    while (true) {
+      const token = tokens[idx];
+      if (
+        !token ||
+        token.type !== 'op' ||
+        (token.value !== '+' && token.value !== '-')
+      ) {
+        break;
+      }
+      idx += 1;
+      const right = parseTerm();
+      if (right == null) return null;
+      left = token.value === '+' ? left + right : left - right;
+    }
+
+    return left;
+  };
+
+  const result = parseExpr();
+  if (result == null) return null;
+  if (idx !== tokens.length) return null;
+  if (!Number.isFinite(result)) return null;
+  return result;
+}
+
 // Supports: "5", "2-5", "1/2", "0.5", default 1
 function parseConnectionLabel(label?: string): number {
   const s = (label ?? '').trim();
@@ -1577,6 +1692,9 @@ function parseConnectionLabel(label?: string): number {
       return Math.random() < num / den ? num : 0;
     }
   }
+
+  const arithmetic = evaluateArithmeticExpression(s);
+  if (arithmetic != null) return arithmetic;
 
   const num = parseFloat(s);
   if (!isNaN(num)) return num; // Changed: Keep decimal values instead of flooring
@@ -1905,6 +2023,47 @@ const Canvas: React.FC<CanvasProps> = ({
   );
   const currentTickRef = useRef(0);
 
+  const getResourcePolylinePointsForConnection = (
+    resource: GraphElement,
+    elementsSnapshot: GraphElement[]
+  ) => {
+    const startNode = elementsSnapshot.find(
+      node => node.id === resource.connectedToStart
+    );
+    const endNode = elementsSnapshot.find(
+      node => node.id === resource.connectedToEnd
+    );
+
+    let startPoint = {
+      x: resource.startX ?? resource.x,
+      y: resource.startY ?? resource.y,
+    };
+    let endPoint = {
+      x: resource.endX ?? resource.x,
+      y: resource.endY ?? resource.y,
+    };
+
+    if (startNode && endNode) {
+      const startTargetPoint =
+        resource.points && resource.points.length > 0
+          ? resource.points[0]
+          : { x: endNode.x, y: endNode.y };
+      const endTargetPoint =
+        resource.points && resource.points.length > 0
+          ? resource.points[resource.points.length - 1]
+          : { x: startNode.x, y: startNode.y };
+
+      startPoint = snapNodeToEdgeInDirection(startNode, startTargetPoint);
+      endPoint = snapNodeToEdgeInDirection(endNode, endTargetPoint);
+    } else if (startNode) {
+      startPoint = { x: startNode.x, y: startNode.y };
+    } else if (endNode) {
+      endPoint = { x: endNode.x, y: endNode.y };
+    }
+
+    return [startPoint, ...(resource.points ?? []), endPoint];
+  };
+
   const spawnMovingTokens = useCallback(
     (transfers: ResourceTransfer[], elementsSnapshot: GraphElement[]) => {
       const tokensToAdd: MovingToken[] = [];
@@ -1916,7 +2075,10 @@ const Canvas: React.FC<CanvasProps> = ({
         if (!conn) continue;
 
         // Full polyline for this connection (start + points + end)
-        const basePolyline = getResourcePolylinePoints(conn);
+        const basePolyline = getResourcePolylinePointsForConnection(
+          conn,
+          elementsSnapshot
+        );
         if (basePolyline.length < 2) continue;
 
         const unitsToShow = Math.min(tr.units, 5); // Cap for performance
@@ -3058,12 +3220,21 @@ const Canvas: React.FC<CanvasProps> = ({
             .filter(i => i.units > 0);
 
           const outputs = outputConns
-            .map(conn => ({
-              conn,
-              units: parseConnectionLabel(conn.text),
-              color: normalizeColor(conn.color),
-              endEl: elementMap.get(conn.connectedToEnd!),
-            }))
+            .map(conn => {
+              const raw = (conn.text ?? '').trim();
+              const percentMatch = raw.match(/^([+-]?\d+(?:\.\d+)?)\s*%$/);
+              const probability = percentMatch
+                ? Math.min(1, Math.max(0, parseFloat(percentMatch[1]) / 100))
+                : undefined;
+
+              return {
+                conn,
+                units: percentMatch ? 1 : parseConnectionLabel(conn.text),
+                probability,
+                color: normalizeColor(conn.color),
+                endEl: elementMap.get(conn.connectedToEnd!),
+              };
+            })
             .filter(o => o.units > 0);
 
           let canConvert = true;
@@ -3113,7 +3284,15 @@ const Canvas: React.FC<CanvasProps> = ({
               }
             });
 
-            outputs.forEach(o => deliverUnits(o.conn, o.units, convertor));
+            outputs.forEach(o => {
+              if (
+                typeof o.probability === 'number' &&
+                Math.random() > o.probability
+              ) {
+                return;
+              }
+              deliverUnits(o.conn, o.units, convertor);
+            });
           } else {
             if (convertor.pullMode === 'pull any') {
               for (const inputConn of inputConns) {
@@ -4615,7 +4794,10 @@ const Canvas: React.FC<CanvasProps> = ({
 
       if (element.type === 'Resource Connection') {
         if (!includeConnections) return;
-        const polyline = getResourcePolylinePoints(element);
+        const polyline = getResourcePolylinePointsForConnection(
+          element,
+          elements
+        );
         if (polyline.length < 2) return;
         const { distance } = getClosestPointOnPolyline({ x, y }, polyline);
         if (distance < closestDistance) {
@@ -5206,7 +5388,10 @@ const Canvas: React.FC<CanvasProps> = ({
       }
       if (index === pointsSequence.length - 1 && endElement) {
         if (endElement.type === 'Resource Connection') {
-          const polyline = getResourcePolylinePoints(endElement);
+          const polyline = getResourcePolylinePointsForConnection(
+            endElement,
+            elements
+          );
           const { point: anchorPoint } = getClosestPointOnPolyline(
             { x: endPoint.x, y: endPoint.y },
             polyline
@@ -6604,10 +6789,10 @@ const Canvas: React.FC<CanvasProps> = ({
       }
       case 'State Connection': {
         // Get the connected nodes to calculate proper positioning
-        const startNode = elements.find(
+        const startTarget = elements.find(
           node => node.id === el.connectedToStart
         );
-        const endNode = elements.find(node => node.id === el.connectedToEnd);
+        const endTarget = elements.find(node => node.id === el.connectedToEnd);
 
         let startPoint = {
           x: el.startX ?? el.x,
@@ -6619,25 +6804,35 @@ const Canvas: React.FC<CanvasProps> = ({
         };
 
         // Snap nodes to their edges in the direction of the next point (first waypoint or end node)
-        if (startNode && endNode) {
+        const startIsConn = isConnectionElement(startTarget);
+        const endIsConn = isConnectionElement(endTarget);
+
+        if (startTarget && endTarget && !startIsConn && !endIsConn) {
           // If there are waypoints, snap start to first waypoint; otherwise snap to end node
           const startTargetPoint =
             el.points && el.points.length > 0
               ? el.points[0]
-              : { x: endNode.x, y: endNode.y };
+              : { x: endTarget.x, y: endTarget.y };
 
           // If there are waypoints, snap end to last waypoint; otherwise snap to start node
           const endTargetPoint =
             el.points && el.points.length > 0
               ? el.points[el.points.length - 1]
-              : { x: startNode.x, y: startNode.y };
+              : { x: startTarget.x, y: startTarget.y };
 
-          startPoint = snapNodeToEdgeInDirection(startNode, startTargetPoint);
-          endPoint = snapNodeToEdgeInDirection(endNode, endTargetPoint);
-        } else if (startNode) {
-          startPoint = { x: startNode.x, y: startNode.y };
-        } else if (endNode) {
-          endPoint = { x: endNode.x, y: endNode.y };
+          startPoint = snapNodeToEdgeInDirection(startTarget, startTargetPoint);
+          endPoint = snapNodeToEdgeInDirection(endTarget, endTargetPoint);
+        } else if (startTarget && !startIsConn) {
+          startPoint = { x: startTarget.x, y: startTarget.y };
+        } else if (endTarget && !endIsConn) {
+          endPoint = { x: endTarget.x, y: endTarget.y };
+        }
+
+        if (endTarget && endTarget.type === 'Resource Connection') {
+          const labelAnchor = getResourceConnectionLabelAnchor(endTarget);
+          if (labelAnchor) {
+            endPoint = labelAnchor;
+          }
         }
 
         // Include intermediate waypoints if they exist, creating a polyline that follows breakpoints
@@ -7021,6 +7216,69 @@ const Canvas: React.FC<CanvasProps> = ({
       );
     }
     return null;
+  };
+
+  const isConnectionElement = (element: GraphElement | undefined) =>
+    element != null &&
+    (element.type === 'Resource Connection' ||
+      element.type === 'State Connection');
+
+  const getResourceConnectionLabelAnchor = (
+    conn: GraphElement
+  ): { x: number; y: number } | null => {
+    if (conn.type !== 'Resource Connection') return null;
+
+    const startNode = elements.find(node => node.id === conn.connectedToStart);
+    const endNode = elements.find(node => node.id === conn.connectedToEnd);
+
+    let startPoint = {
+      x: conn.startX ?? conn.x,
+      y: conn.startY ?? conn.y,
+    };
+    let endPoint = {
+      x: conn.endX ?? conn.x,
+      y: conn.endY ?? conn.y,
+    };
+
+    const startIsConn = isConnectionElement(startNode);
+    const endIsConn = isConnectionElement(endNode);
+
+    if (startNode && endNode && !startIsConn && !endIsConn) {
+      const startTargetPoint =
+        conn.points && conn.points.length > 0
+          ? conn.points[0]
+          : { x: endNode.x, y: endNode.y };
+      const endTargetPoint =
+        conn.points && conn.points.length > 0
+          ? conn.points[conn.points.length - 1]
+          : { x: startNode.x, y: startNode.y };
+
+      startPoint = snapNodeToEdgeInDirection(startNode, startTargetPoint);
+      endPoint = snapNodeToEdgeInDirection(endNode, endTargetPoint);
+    } else if (startNode && !startIsConn) {
+      startPoint = { x: startNode.x, y: startNode.y };
+    } else if (endNode && !endIsConn) {
+      endPoint = { x: endNode.x, y: endNode.y };
+    }
+
+    const pathPoints = [startPoint, ...(conn.points ?? []), endPoint];
+    if (pathPoints.length < 2) return null;
+
+    type LegacyPositionCarrier = { position?: unknown };
+    const legacyPosRaw = (conn as LegacyPositionCarrier).position;
+    const legacyPosNum =
+      typeof legacyPosRaw === 'number'
+        ? legacyPosRaw
+        : typeof legacyPosRaw === 'string'
+          ? Number(legacyPosRaw)
+          : NaN;
+
+    const labelPos =
+      conn.labelPosition ??
+      (Number.isFinite(legacyPosNum) ? legacyPosNum : undefined) ??
+      0.5;
+
+    return getLabelPointForConnection(pathPoints, labelPos);
   };
 
   // const displayElements = draggedElements || elements;

@@ -13,7 +13,11 @@
 }
 
 .chart-element.selectable:hover svg {
-  box-shadow: 0 0 0 1px rgba(0, 120, 212, 0.5);
+  box-shadow: 0 0 0 2px #f4d000;
+}
+
+.chart-element:hover svg {
+  box-shadow: 0 0 0 2px #f4d000;
 }
 
 .chart-element .resize-handle {
