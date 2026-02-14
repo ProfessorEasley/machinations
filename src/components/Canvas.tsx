@@ -227,6 +227,7 @@ interface GraphElement {
   currentPoints?: number;
   hasStarted?: boolean;
   inhibited?: boolean;
+  multiplicandValue?: number;
   labelPosition?: number;
 
   // Artificial Intelligence node script (from XML import + toolProperties)
@@ -1283,6 +1284,33 @@ const shouldActivateTrigger = (raw?: string): boolean => {
   return Math.random() < chance;
 };
 
+const MULTIPLICAND_LABEL_REGEX = /^([+-])\s*(x|\d+(?:\.\d+)?)\s*m$/i;
+const MULTIPLY_EXPRESSION_REGEX =
+  /^\s*([+-]?\d+(?:\.\d+)?|x|y)\s*\*\s*([+-]?\d+(?:\.\d+)?|x|y)\s*$/i;
+
+const parseMultiplicandDelta = (
+  rawLabel: string,
+  startElement?: GraphElement
+): number | null => {
+  const match = rawLabel.trim().match(MULTIPLICAND_LABEL_REGEX);
+  if (!match) return null;
+  const sign = match[1] === '-' ? -1 : 1;
+  const token = match[2].toLowerCase();
+  if (token === 'x') {
+    if (!startElement) return null;
+    return sign * getElementValue(startElement);
+  }
+  const value = parseFloat(token);
+  if (!Number.isFinite(value)) return null;
+  return sign * value;
+};
+
+const parseMultiplyExpression = (rawLabel: string) => {
+  const match = rawLabel.trim().match(MULTIPLY_EXPRESSION_REGEX);
+  if (!match) return null;
+  return { left: match[1], right: match[2] };
+};
+
 function getElementValue(element: GraphElement | undefined): number {
   if (!element) return 0;
 
@@ -1417,6 +1445,30 @@ function applyDynamicResourceLabelsMutable(elementsList: GraphElement[]): void {
       conn => conn.connectedToEnd === resource.id
     );
     if (related.length === 0) continue;
+
+    let multiplicandDelta = 0;
+    for (const conn of related) {
+      const startElement = conn.connectedToStart
+        ? elementMap.get(conn.connectedToStart)
+        : undefined;
+      const delta = parseMultiplicandDelta(conn.text ?? '', startElement);
+      if (delta != null) {
+        multiplicandDelta += delta;
+      }
+    }
+
+    if (multiplicandDelta !== 0) {
+      const expr = parseMultiplyExpression(resource.text ?? '');
+      if (expr) {
+        const parsedLeft = parseFloat(expr.left);
+        const base = Number.isFinite(parsedLeft)
+          ? parsedLeft
+          : (resource.multiplicandValue ?? 1);
+        const nextValue = base + multiplicandDelta;
+        resource.multiplicandValue = nextValue;
+        resource.text = `${nextValue}*${expr.right}`;
+      }
+    }
 
     const currentText = (resource.text ?? '').trim();
     const numeric = parseFloat(currentText);
