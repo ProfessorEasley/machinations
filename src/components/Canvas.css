@@ -48,6 +48,11 @@
   padding: 2px;
 }
 
+.text-label-span:hover {
+  outline: 2px solid #f4d000;
+  outline-offset: 2px;
+}
+
 /* SVG Element Base Styles */
 .svg-element {
   position: absolute;
@@ -55,14 +60,46 @@
   z-index: 1;
 }
 
+.svg-element svg {
+  overflow: visible;
+}
+
 .svg-element.selectable {
   cursor: move;
 }
 
 .svg-element.selected {
-  border: 2px solid #0078d4;
-  background: #e3f2fd;
+  border: none;
+  background: none;
   z-index: 2;
+}
+
+.svg-element.selected .pool-circle,
+.svg-element.selected .source-triangle,
+.svg-element.selected .drain-triangle,
+.svg-element.selected .gate-diamond,
+.svg-element.selected .convertor-shape,
+.svg-element.selected .end-condition-rect,
+.svg-element.selected .ai-rect,
+.svg-element.selected .register-rect,
+.svg-element.selected .delay-circle,
+.svg-element.selected .trader-polygon {
+  stroke: #0078d4 !important;
+  stroke-width: 3;
+}
+
+.svg-element:hover .pool-circle,
+.svg-element:hover .source-triangle,
+.svg-element:hover .drain-triangle,
+.svg-element:hover .gate-diamond,
+.svg-element:hover .convertor-shape,
+.svg-element:hover .end-condition-rect,
+.svg-element:hover .ai-rect,
+.svg-element:hover .register-rect,
+.svg-element:hover .delay-circle,
+.svg-element:hover .trader-polygon {
+  stroke: #f4d000 !important;
+  stroke-width: 3;
 }
 
 /* Pool Element */
@@ -175,6 +212,10 @@
   z-index: 2;
 }
 
+.group-element:hover {
+  box-shadow: 0 0 0 2px #f4d000;
+}
+
 /* Group Resize Handles */
 .resize-handle {
   position: absolute;
@@ -222,6 +263,38 @@
 
 .connection-container.selected {
   z-index: 2;
+}
+
+.connection-container.selected .connection-line,
+.connection-container.selected .state-connection-line {
+  stroke: #0078d4 !important;
+  stroke-width: 3;
+}
+
+.connection-container.selected .arrow-polygon,
+.connection-container.selected .dashed-arrow-polygon {
+  fill: #0078d4 !important;
+  stroke: #0078d4 !important;
+}
+
+.connection-container:hover .connection-label-text {
+  text-shadow:
+    -1px 0 #f4d000,
+    0 1px #f4d000,
+    1px 0 #f4d000,
+    0 -1px #f4d000;
+}
+
+.connection-container:hover .connection-line,
+.connection-container:hover .state-connection-line {
+  stroke: #f4d000 !important;
+  stroke-width: 3;
+}
+
+.connection-container:hover .arrow-polygon,
+.connection-container:hover .dashed-arrow-polygon {
+  fill: #f4d000 !important;
+  stroke: #f4d000 !important;
 }
 
 .greyed {
