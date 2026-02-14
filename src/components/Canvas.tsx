@@ -227,6 +227,8 @@ interface GraphElement {
   currentPoints?: number;
   hasStarted?: boolean;
   inhibited?: boolean;
+  multiplicandValue?: number;
+  multiplicandLastSourceValue?: number;
   labelPosition?: number;
 
   // Artificial Intelligence node script (from XML import + toolProperties)
@@ -1283,6 +1285,40 @@ const shouldActivateTrigger = (raw?: string): boolean => {
   return Math.random() < chance;
 };
 
+const MULTIPLICAND_LABEL_REGEX = /^([+-])\s*(x|\d+(?:\.\d+)?)\s*m$/i;
+const MULTIPLY_EXPRESSION_REGEX =
+  /^\s*([+-]?\d+(?:\.\d+)?|x|y)\s*\*\s*([+-]?\d+(?:\.\d+)?|x|y)\s*$/i;
+
+const parseMultiplicandDelta = (
+  rawLabel: string,
+  startElement: GraphElement | undefined,
+  connection: GraphElement
+): number | null => {
+  const match = rawLabel.trim().match(MULTIPLICAND_LABEL_REGEX);
+  if (!match || !startElement) return null;
+  const sign = match[1] === '-' ? -1 : 1;
+  const token = match[2].toLowerCase();
+  const currentValue = getElementValue(startElement);
+  const lastValue = connection.multiplicandLastSourceValue;
+  connection.multiplicandLastSourceValue = currentValue;
+  if (typeof lastValue !== 'number') return 0;
+  const delta = currentValue - lastValue;
+  if (delta <= 0) return 0;
+  const perIncrement =
+    token === 'x'
+      ? currentValue
+      : Number.isFinite(parseFloat(token))
+        ? parseFloat(token)
+        : 0;
+  return sign * delta * perIncrement;
+};
+
+const parseMultiplyExpression = (rawLabel: string) => {
+  const match = rawLabel.trim().match(MULTIPLY_EXPRESSION_REGEX);
+  if (!match) return null;
+  return { left: match[1], right: match[2] };
+};
+
 function getElementValue(element: GraphElement | undefined): number {
   if (!element) return 0;
 
@@ -1418,7 +1454,36 @@ function applyDynamicResourceLabelsMutable(elementsList: GraphElement[]): void {
     );
     if (related.length === 0) continue;
 
+    let multiplicandDelta = 0;
+    for (const conn of related) {
+      const startElement = conn.connectedToStart
+        ? elementMap.get(conn.connectedToStart)
+        : undefined;
+      const delta = parseMultiplicandDelta(conn.text ?? '', startElement, conn);
+      if (delta != null) {
+        multiplicandDelta += delta;
+      }
+    }
+
+    if (multiplicandDelta !== 0) {
+      const expr = parseMultiplyExpression(resource.text ?? '');
+      if (expr) {
+        const parsedLeft = parseFloat(expr.left);
+        const base = Number.isFinite(parsedLeft)
+          ? parsedLeft
+          : (resource.multiplicandValue ?? 1);
+        const nextValue = base + multiplicandDelta;
+        resource.multiplicandValue = nextValue;
+        resource.text = `${nextValue}*${expr.right}`;
+      }
+    }
+
     const currentText = (resource.text ?? '').trim();
+    const multiplyExpr = parseMultiplyExpression(currentText);
+    if (multiplyExpr) {
+      continue;
+    }
+
     const numeric = parseFloat(currentText);
     const hasNumeric = !Number.isNaN(numeric);
     const lastDelta = resource.dynamicLabelLastDelta ?? 0;
@@ -4425,6 +4490,7 @@ const Canvas: React.FC<CanvasProps> = ({
             hasUnsatisfiedCondition: false,
             conditionSatisfied: undefined,
             dynamicLabelLastDelta: 0,
+            multiplicandLastSourceValue: undefined,
           };
 
           if (el.type === 'Pool') {
@@ -4537,6 +4603,7 @@ const Canvas: React.FC<CanvasProps> = ({
             hasUnsatisfiedCondition: false,
             conditionSatisfied: undefined,
             dynamicLabelLastDelta: 0,
+            multiplicandLastSourceValue: undefined,
           };
           if (el.type === 'Pool') {
             const startVal =
