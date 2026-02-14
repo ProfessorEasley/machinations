@@ -601,6 +601,9 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
         'borderWidth',
       ]);
       const label = textAny(el, ['text', 'label', 'title', 'name']);
+      const rawLabelPos = numAttrAny(el, ['labelPosition', 'labelPos']);
+      const labelPosition =
+        rawLabelPos != null ? Math.max(0, Math.min(1, rawLabelPos)) : 0; // 0 = bottom
 
       const activation = normalizeActivation(
         attrAny(el, [
@@ -676,6 +679,7 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
         step: type === 'Register' ? (step ?? 1) : undefined,
 
         ...(type === 'Artifical Intelligence' ? { script: script ?? '' } : {}),
+        labelPosition,
       };
 
       // Pool init
@@ -1236,6 +1240,23 @@ const getLabelPointForConnection = (
   return {
     x: point.x + normal.x * offsetPx * side,
     y: point.y + normal.y * offsetPx * side,
+  };
+};
+
+/** Get canvas position for a node's label. labelPosition 0 = bottom, 0.25 = right, 0.5 = top, 0.75 = left. */
+const getLabelPointOnNodeBoundary = (
+  cx: number,
+  cy: number,
+  size: number,
+  labelPosition: number,
+  offsetPx = 10
+): { x: number; y: number } => {
+  const pos = Math.max(0, Math.min(1, labelPosition));
+  const angle = pos * 2 * Math.PI - Math.PI / 2;
+  const r = size / 2 + offsetPx;
+  return {
+    x: cx + r * Math.cos(angle),
+    y: cy + r * Math.sin(angle),
   };
 };
 
@@ -1948,6 +1969,9 @@ const Canvas: React.FC<CanvasProps> = ({
     null
   );
   const [draggingId, setDraggingId] = useState<number | null>(null);
+  const [draggingLabelElementId, setDraggingLabelElementId] = useState<
+    number | null
+  >(null);
   const [draggedElements, setDraggedElements] = useState<GraphElement[] | null>(
     null
   );
@@ -5071,6 +5095,7 @@ const Canvas: React.FC<CanvasProps> = ({
           color: chartProps?.color || '#000000',
           thickness: chartProps?.thickness || 2,
           text: chartProps?.text || '',
+          labelPosition: 0,
           chartWidth: 200,
           chartHeight: 150,
           chartScaleX: defaultScaleX,
@@ -5128,6 +5153,7 @@ const Canvas: React.FC<CanvasProps> = ({
           color: poolProps?.color,
           thickness: poolProps?.thickness,
           text: poolProps?.text,
+          labelPosition: 0,
           activation: poolProps?.activation,
           pullMode: poolProps?.pullMode,
           resources: poolProps?.resources,
@@ -5171,6 +5197,7 @@ const Canvas: React.FC<CanvasProps> = ({
           color: toolProperties?.gate?.color,
           thickness: toolProperties?.gate?.thickness,
           text: toolProperties?.gate?.text,
+          labelPosition: 0,
           activation: toolProperties?.gate?.activation,
           actions: toolProperties?.gate?.actions,
           pullMode: toolProperties?.gate?.pullMode,
@@ -5189,6 +5216,7 @@ const Canvas: React.FC<CanvasProps> = ({
           color: toolProperties?.drain?.color,
           thickness: toolProperties?.drain?.thickness,
           text: toolProperties?.drain?.text,
+          labelPosition: 0,
           activation: toolProperties?.drain?.activation,
           actions: toolProperties?.drain?.actions,
           pullMode: toolProperties?.drain?.pullMode,
@@ -5206,6 +5234,7 @@ const Canvas: React.FC<CanvasProps> = ({
           color: toolProperties?.convertor?.color,
           thickness: toolProperties?.convertor?.thickness,
           text: toolProperties?.convertor?.text,
+          labelPosition: 0,
           activation: toolProperties?.convertor?.activation,
           actions: toolProperties?.convertor?.actions,
           pullMode: toolProperties?.convertor?.pullMode,
@@ -5224,6 +5253,7 @@ const Canvas: React.FC<CanvasProps> = ({
           color: toolProperties?.trader?.color,
           thickness: toolProperties?.trader?.thickness,
           text: toolProperties?.trader?.text,
+          labelPosition: 0,
           activation: toolProperties?.trader?.activation,
           actions: toolProperties?.trader?.actions,
           pullMode: toolProperties?.trader?.pullMode,
@@ -5242,6 +5272,7 @@ const Canvas: React.FC<CanvasProps> = ({
           color: toolProperties?.delay?.color,
           thickness: toolProperties?.delay?.thickness,
           text: toolProperties?.delay?.text,
+          labelPosition: 0,
           activation: toolProperties?.delay?.activation,
           actions: toolProperties?.delay?.actions,
           queue: toolProperties?.delay?.queue,
@@ -5268,6 +5299,7 @@ const Canvas: React.FC<CanvasProps> = ({
           startingValue: startingValue,
           step: toolProperties?.register?.step ?? 1,
           currentValue: interactive ? startingValue : 0,
+          labelPosition: 0,
         },
       ]);
       setSelectedId([id]);
@@ -5282,6 +5314,7 @@ const Canvas: React.FC<CanvasProps> = ({
           color: toolProperties?.endCondition?.color,
           thickness: toolProperties?.endCondition?.thickness,
           text: toolProperties?.endCondition?.text,
+          labelPosition: 0,
           actions: toolProperties?.endCondition?.actions,
           pullMode: toolProperties?.endCondition?.pullMode,
           inhibited: true,
@@ -5300,6 +5333,7 @@ const Canvas: React.FC<CanvasProps> = ({
           color: toolProperties?.artificialIntelligence?.color,
           thickness: toolProperties?.artificialIntelligence?.thickness,
           text: toolProperties?.artificialIntelligence?.text,
+          labelPosition: 0,
           activation: toolProperties?.artificialIntelligence?.activation,
           actions: toolProperties?.artificialIntelligence?.actions,
           script: toolProperties?.artificialIntelligence?.script,
@@ -5594,6 +5628,26 @@ const Canvas: React.FC<CanvasProps> = ({
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (isRunning) return;
 
+    // Handle node label dragging (move label around element boundary)
+    if (draggingLabelElementId !== null && canvasRef.current) {
+      const el = elements.find(el => el.id === draggingLabelElementId);
+      if (el) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        const canvasX = e.clientX - rect.left;
+        const canvasY = e.clientY - rect.top;
+        const angle = Math.atan2(canvasY - el.y, canvasX - el.x);
+        let labelPosition = (angle + Math.PI / 2) / (2 * Math.PI);
+        if (labelPosition < 0) labelPosition += 1;
+        if (labelPosition > 1) labelPosition -= 1;
+        setElements(prev =>
+          prev.map(n =>
+            n.id === draggingLabelElementId ? { ...n, labelPosition } : n
+          )
+        );
+      }
+      return;
+    }
+
     // Handle waypoint dragging
     if (draggingWaypoint && canvasRef.current) {
       const rect = canvasRef.current.getBoundingClientRect();
@@ -5731,6 +5785,7 @@ const Canvas: React.FC<CanvasProps> = ({
     setMouseDownOnCanvas(false);
     setDragOffset(null);
     setDraggingId(null);
+    setDraggingLabelElementId(null);
 
     // Handle resize end
     if (isResizing) {
@@ -5925,6 +5980,49 @@ const Canvas: React.FC<CanvasProps> = ({
     return Math.min(calculatedSize, maxSize);
   };
 
+  // Render text label under/beside a node; position controlled by el.labelPosition (0=bottom, draggable when selected)
+  const renderNodeLabel = (el: GraphElement, size: number) => {
+    const labelText = (el.text ?? '').trim();
+    if (!labelText) return null;
+    const pos = getLabelPointOnNodeBoundary(
+      el.x,
+      el.y,
+      size,
+      el.labelPosition ?? 0
+    );
+    const canDrag =
+      !isRunning && selectedTool === 'Select' && selectedId.includes(el.id);
+    const isDraggingLabel = draggingLabelElementId === el.id;
+    return (
+      <div
+        key={`label-${el.id}`}
+        className="node-label"
+        style={{
+          position: 'absolute',
+          left: pos.x,
+          top: pos.y,
+          transform: 'translate(-50%, -50%)',
+          fontSize: 11,
+          fontWeight: 'bold',
+          color: el.color || '#000000',
+          textAlign: 'center',
+          whiteSpace: 'nowrap',
+          pointerEvents: canDrag ? 'auto' : 'none',
+          cursor: canDrag ? (isDraggingLabel ? 'grabbing' : 'grab') : 'default',
+          userSelect: 'none',
+        }}
+        onMouseDown={e => {
+          if (canDrag) {
+            e.stopPropagation();
+            setDraggingLabelElementId(el.id);
+          }
+        }}
+      >
+        {labelText}
+      </div>
+    );
+  };
+
   // Render each element
   const renderElement = (el: GraphElement) => {
     const isSelected = !isRunning && selectedId.includes(el.id);
@@ -5978,53 +6076,56 @@ const Canvas: React.FC<CanvasProps> = ({
         const radius = (size / 40) * 18; // Scale radius proportionally
         const offset = size / 2; // Offset to center element at el.x, el.y
         return (
-          <svg
-            key={el.id}
-            className={`svg-element pool-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
-            style={applyConditionStyle({
-              left: el.x - offset,
-              top: el.y - offset,
-            })}
-            width={size}
-            height={size}
-            onMouseDown={e => handleElementMouseDown(e, el.id)}
-            onClick={e => {
-              if (selectedTool === 'Select') {
-                e.stopPropagation();
-                if (e.ctrlKey || e.metaKey) {
-                  setSelectedId(prev =>
-                    prev.includes(el.id)
-                      ? prev.filter(selId => selId !== el.id)
-                      : [...prev, el.id]
-                  );
-                } else {
-                  setSelectedId([el.id]);
+          <>
+            <svg
+              key={el.id}
+              className={`svg-element pool-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
+              style={applyConditionStyle({
+                left: el.x - offset,
+                top: el.y - offset,
+              })}
+              width={size}
+              height={size}
+              onMouseDown={e => handleElementMouseDown(e, el.id)}
+              onClick={e => {
+                if (selectedTool === 'Select') {
+                  e.stopPropagation();
+                  if (e.ctrlKey || e.metaKey) {
+                    setSelectedId(prev =>
+                      prev.includes(el.id)
+                        ? prev.filter(selId => selId !== el.id)
+                        : [...prev, el.id]
+                    );
+                  } else {
+                    setSelectedId([el.id]);
+                  }
                 }
-              }
-            }}
-          >
-            <circle
-              cx={center}
-              cy={center}
-              r={radius}
-              className={`pool-circle ${isSelected ? 'selected' : ''}`}
-              fill="white"
-              stroke={isSelected ? '#0078d4' : el.color || '#000000'}
-              strokeWidth={el.thickness || 2}
-            />
-            <text
-              x={center - size / 4}
-              y={center + size / 8}
-              className="element-value-text"
-              fill="black" // <-- The fix is here! Black text for the white pool.
+              }}
             >
-              {el.currentPoints !== undefined && el.currentPoints !== null
-                ? el.currentPoints
-                : el.number !== undefined && el.number !== null
-                  ? el.number
-                  : 0}
-            </text>
-          </svg>
+              <circle
+                cx={center}
+                cy={center}
+                r={radius}
+                className={`pool-circle ${isSelected ? 'selected' : ''}`}
+                fill="white"
+                stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+                strokeWidth={el.thickness || 2}
+              />
+              <text
+                x={center - size / 4}
+                y={center + size / 8}
+                className="element-value-text"
+                fill="black" // <-- The fix is here! Black text for the white pool.
+              >
+                {el.currentPoints !== undefined && el.currentPoints !== null
+                  ? el.currentPoints
+                  : el.number !== undefined && el.number !== null
+                    ? el.number
+                    : 0}
+              </text>
+            </svg>
+            {renderNodeLabel(el, size)}
+          </>
         );
       }
       case 'Source': {
@@ -6033,48 +6134,51 @@ const Canvas: React.FC<CanvasProps> = ({
         const scale = size / 40;
         const offset = size / 2; // Offset to center element at el.x, el.y
         return (
-          <svg
-            key={el.id}
-            className={`svg-element source-element clickable-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
-            style={applyConditionStyle({
-              left: el.x - offset,
-              top: el.y - offset,
-            })}
-            width={size}
-            height={size}
-            onMouseDown={e => handleElementMouseDown(e, el.id)}
-            onClick={e => {
-              if (selectedTool === 'Select') {
-                e.stopPropagation();
-                if (e.ctrlKey || e.metaKey) {
-                  setSelectedId(prev =>
-                    prev.includes(el.id)
-                      ? prev.filter(selId => selId !== el.id)
-                      : [...prev, el.id]
-                  );
-                } else {
-                  setSelectedId([el.id]);
+          <>
+            <svg
+              key={el.id}
+              className={`svg-element source-element clickable-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
+              style={applyConditionStyle({
+                left: el.x - offset,
+                top: el.y - offset,
+              })}
+              width={size}
+              height={size}
+              onMouseDown={e => handleElementMouseDown(e, el.id)}
+              onClick={e => {
+                if (selectedTool === 'Select') {
+                  e.stopPropagation();
+                  if (e.ctrlKey || e.metaKey) {
+                    setSelectedId(prev =>
+                      prev.includes(el.id)
+                        ? prev.filter(selId => selId !== el.id)
+                        : [...prev, el.id]
+                    );
+                  } else {
+                    setSelectedId([el.id]);
+                  }
                 }
-              }
-            }}
-          >
-            <polygon
-              points={`${center},${5 * scale} ${35 * scale},${35 * scale} ${5 * scale},${35 * scale}`}
-              fill={el.color || '#000000'}
-              stroke={isSelected ? '#0078d4' : el.color || '#000000'}
-              strokeWidth={el.thickness || 2}
-              className={`source-triangle ${isSelected ? 'selected' : ''}`}
-            />
-            <text
-              x={14 * scale}
-              y={30 * scale}
-              className="element-value-text"
-              fill="black"
-              fontSize={14 * scale}
+              }}
             >
-              ∞
-            </text>
-          </svg>
+              <polygon
+                points={`${center},${5 * scale} ${35 * scale},${35 * scale} ${5 * scale},${35 * scale}`}
+                fill={el.color || '#000000'}
+                stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+                strokeWidth={el.thickness || 2}
+                className={`source-triangle ${isSelected ? 'selected' : ''}`}
+              />
+              <text
+                x={14 * scale}
+                y={30 * scale}
+                className="element-value-text"
+                fill="black"
+                fontSize={14 * scale}
+              >
+                ∞
+              </text>
+            </svg>
+            {renderNodeLabel(el, size)}
+          </>
         );
       }
       case 'Drain': {
@@ -6083,39 +6187,42 @@ const Canvas: React.FC<CanvasProps> = ({
         const scale = size / 40;
         const offset = size / 2; // Offset to center element at el.x, el.y
         return (
-          <svg
-            key={el.id}
-            className={`svg-element drain-element clickable-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
-            style={applyConditionStyle({
-              left: el.x - offset,
-              top: el.y - offset,
-            })}
-            width={size}
-            height={size}
-            onMouseDown={e => handleElementMouseDown(e, el.id)}
-            onClick={e => {
-              if (selectedTool === 'Select') {
-                e.stopPropagation();
-                if (e.ctrlKey || e.metaKey) {
-                  setSelectedId(prev =>
-                    prev.includes(el.id)
-                      ? prev.filter(selId => selId !== el.id)
-                      : [...prev, el.id]
-                  );
-                } else {
-                  setSelectedId([el.id]);
+          <>
+            <svg
+              key={el.id}
+              className={`svg-element drain-element clickable-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
+              style={applyConditionStyle({
+                left: el.x - offset,
+                top: el.y - offset,
+              })}
+              width={size}
+              height={size}
+              onMouseDown={e => handleElementMouseDown(e, el.id)}
+              onClick={e => {
+                if (selectedTool === 'Select') {
+                  e.stopPropagation();
+                  if (e.ctrlKey || e.metaKey) {
+                    setSelectedId(prev =>
+                      prev.includes(el.id)
+                        ? prev.filter(selId => selId !== el.id)
+                        : [...prev, el.id]
+                    );
+                  } else {
+                    setSelectedId([el.id]);
+                  }
                 }
-              }
-            }}
-          >
-            <polygon
-              points={`${5 * scale},${5 * scale} ${35 * scale},${5 * scale} ${center},${35 * scale}`}
-              fill={el.color || '#000000'}
-              stroke={isSelected ? '#0078d4' : el.color || '#000000'}
-              strokeWidth={el.thickness || 2}
-              className={`drain-triangle ${isSelected ? 'selected' : ''}`}
-            />
-          </svg>
+              }}
+            >
+              <polygon
+                points={`${5 * scale},${5 * scale} ${35 * scale},${5 * scale} ${center},${35 * scale}`}
+                fill={el.color || '#000000'}
+                stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+                strokeWidth={el.thickness || 2}
+                className={`drain-triangle ${isSelected ? 'selected' : ''}`}
+              />
+            </svg>
+            {renderNodeLabel(el, size)}
+          </>
         );
       }
       case 'Group':
@@ -6197,39 +6304,42 @@ const Canvas: React.FC<CanvasProps> = ({
         const scale = size / 40;
         const offset = size / 2; // Offset to center element at el.x, el.y
         return (
-          <svg
-            key={el.id}
-            className={`svg-element gate-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
-            style={applyConditionStyle({
-              left: el.x - offset,
-              top: el.y - offset,
-            })}
-            width={size}
-            height={size}
-            onMouseDown={e => handleElementMouseDown(e, el.id)}
-            onClick={e => {
-              if (selectedTool === 'Select') {
-                e.stopPropagation();
-                if (e.ctrlKey || e.metaKey) {
-                  setSelectedId(prev =>
-                    prev.includes(el.id)
-                      ? prev.filter(selId => selId !== el.id)
-                      : [...prev, el.id]
-                  );
-                } else {
-                  setSelectedId([el.id]);
+          <>
+            <svg
+              key={el.id}
+              className={`svg-element gate-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
+              style={applyConditionStyle({
+                left: el.x - offset,
+                top: el.y - offset,
+              })}
+              width={size}
+              height={size}
+              onMouseDown={e => handleElementMouseDown(e, el.id)}
+              onClick={e => {
+                if (selectedTool === 'Select') {
+                  e.stopPropagation();
+                  if (e.ctrlKey || e.metaKey) {
+                    setSelectedId(prev =>
+                      prev.includes(el.id)
+                        ? prev.filter(selId => selId !== el.id)
+                        : [...prev, el.id]
+                    );
+                  } else {
+                    setSelectedId([el.id]);
+                  }
                 }
-              }
-            }}
-          >
-            <polygon
-              points={`${center},${5 * scale} ${35 * scale},${center} ${center},${35 * scale} ${5 * scale},${center}`}
-              fill={el.color || '#000000'}
-              stroke={isSelected ? '#0078d4' : el.color || '#000000'}
-              strokeWidth={el.thickness || 2}
-              className={`gate-diamond ${isSelected ? 'selected' : ''}`}
-            />
-          </svg>
+              }}
+            >
+              <polygon
+                points={`${center},${5 * scale} ${35 * scale},${center} ${center},${35 * scale} ${5 * scale},${center}`}
+                fill={el.color || '#000000'}
+                stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+                strokeWidth={el.thickness || 2}
+                className={`gate-diamond ${isSelected ? 'selected' : ''}`}
+              />
+            </svg>
+            {renderNodeLabel(el, size)}
+          </>
         );
       }
       case 'Convertor': {
@@ -6238,78 +6348,81 @@ const Canvas: React.FC<CanvasProps> = ({
         const scale = size / 40;
         const offset = size / 2; // Offset to center element at el.x, el.y
         return (
-          <svg
-            key={el.id}
-            className={`svg-element convertor-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
-            style={applyConditionStyle({
-              left: el.x - offset,
-              top: el.y - offset,
-            })}
-            width={size}
-            height={size}
-            onMouseDown={e => handleElementMouseDown(e, el.id)}
-            onClick={e => {
-              if (selectedTool === 'Select') {
-                e.stopPropagation();
-                if (e.ctrlKey || e.metaKey) {
-                  setSelectedId(prev =>
-                    prev.includes(el.id)
-                      ? prev.filter(selId => selId !== el.id)
-                      : [...prev, el.id]
-                  );
-                } else {
-                  setSelectedId([el.id]);
+          <>
+            <svg
+              key={el.id}
+              className={`svg-element convertor-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
+              style={applyConditionStyle({
+                left: el.x - offset,
+                top: el.y - offset,
+              })}
+              width={size}
+              height={size}
+              onMouseDown={e => handleElementMouseDown(e, el.id)}
+              onClick={e => {
+                if (selectedTool === 'Select') {
+                  e.stopPropagation();
+                  if (e.ctrlKey || e.metaKey) {
+                    setSelectedId(prev =>
+                      prev.includes(el.id)
+                        ? prev.filter(selId => selId !== el.id)
+                        : [...prev, el.id]
+                    );
+                  } else {
+                    setSelectedId([el.id]);
+                  }
                 }
-              }
-            }}
-          >
-            <polygon
-              points={`${5 * scale},${5 * scale} ${35 * scale},${center} ${5 * scale},${35 * scale}`}
-              fill={el.color || '#000000'}
-              stroke={isSelected ? '#0078d4' : el.color || '#000000'}
-              strokeWidth={el.thickness || 2}
-              className={`convertor-shape ${isSelected ? 'selected' : ''}`}
-            />
-            <line
-              x1={5 * scale}
-              y1={5 * scale}
-              x2={5 * scale}
-              y2={35 * scale}
-              className="convertor-line"
-            />
+              }}
+            >
+              <polygon
+                points={`${5 * scale},${5 * scale} ${35 * scale},${center} ${5 * scale},${35 * scale}`}
+                fill={el.color || '#000000'}
+                stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+                strokeWidth={el.thickness || 2}
+                className={`convertor-shape ${isSelected ? 'selected' : ''}`}
+              />
+              <line
+                x1={5 * scale}
+                y1={5 * scale}
+                x2={5 * scale}
+                y2={35 * scale}
+                className="convertor-line"
+              />
 
-            {/* Show stored resources for pull any mode */}
-            {el.pullMode === 'pull any' &&
-              el.inputResources &&
-              Object.keys(el.inputResources).length > 0 && (
+              {/* Show stored resources for pull any mode */}
+              {el.pullMode === 'pull any' &&
+                el.inputResources &&
+                Object.keys(el.inputResources).length > 0 && (
+                  <text
+                    x={center}
+                    y={15 * scale}
+                    fontSize={5 * scale}
+                    fill="white"
+                    textAnchor="middle"
+                    className="convertor-storage"
+                  >
+                    {Object.entries(el.inputResources)
+                      .map(([type, amount]) => `${type}:${amount}`)
+                      .join(',')}
+                  </text>
+                )}
+
+              {/* Show conversion status */}
+              {el.text && (
                 <text
                   x={center}
-                  y={15 * scale}
-                  fontSize={5 * scale}
+                  y={30 * scale}
+                  fontSize={4.5 * scale}
                   fill="white"
                   textAnchor="middle"
-                  className="convertor-storage"
+                  className="convertor-label"
                 >
-                  {Object.entries(el.inputResources)
-                    .map(([type, amount]) => `${type}:${amount}`)
-                    .join(',')}
+                  {el.text}
                 </text>
               )}
-
-            {/* Show conversion status */}
-            {el.text && (
-              <text
-                x={center}
-                y={30 * scale}
-                fontSize={4.5 * scale}
-                fill="white"
-                textAnchor="middle"
-                className="convertor-label"
-              >
-                {el.text}
-              </text>
-            )}
-          </svg>
+            </svg>
+            {renderNodeLabel(el, size)}
+          </>
         );
       }
       case 'Trader': {
@@ -6318,54 +6431,57 @@ const Canvas: React.FC<CanvasProps> = ({
         const scale = size / 40;
         const offset = size / 2; // Offset to center element at el.x, el.y
         return (
-          <svg
-            key={el.id}
-            className={`svg-element trader-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
-            style={applyConditionStyle({
-              left: el.x - offset,
-              top: el.y - offset,
-            })}
-            width={size}
-            height={size}
-            onMouseDown={e => handleElementMouseDown(e, el.id)}
-            onClick={e => {
-              if (selectedTool === 'Select') {
-                e.stopPropagation();
-                if (e.ctrlKey || e.metaKey) {
-                  setSelectedId(prev =>
-                    prev.includes(el.id)
-                      ? prev.filter(selId => selId !== el.id)
-                      : [...prev, el.id]
-                  );
-                } else {
-                  setSelectedId([el.id]);
+          <>
+            <svg
+              key={el.id}
+              className={`svg-element trader-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
+              style={applyConditionStyle({
+                left: el.x - offset,
+                top: el.y - offset,
+              })}
+              width={size}
+              height={size}
+              onMouseDown={e => handleElementMouseDown(e, el.id)}
+              onClick={e => {
+                if (selectedTool === 'Select') {
+                  e.stopPropagation();
+                  if (e.ctrlKey || e.metaKey) {
+                    setSelectedId(prev =>
+                      prev.includes(el.id)
+                        ? prev.filter(selId => selId !== el.id)
+                        : [...prev, el.id]
+                    );
+                  } else {
+                    setSelectedId([el.id]);
+                  }
                 }
-              }
-            }}
-          >
-            {/* Trader shape - parallelogram outline with no fill */}
-            <polygon
-              points={`${8 * scale},${5 * scale} ${35 * scale},${5 * scale} ${32 * scale},${35 * scale} ${5 * scale},${35 * scale}`}
-              fill="none"
-              stroke={isSelected ? '#0078d4' : el.color || '#000000'}
-              strokeWidth={el.thickness || 2}
-              className={`trader-shape ${isSelected ? 'selected' : ''}`}
-            />
+              }}
+            >
+              {/* Trader shape - parallelogram outline with no fill */}
+              <polygon
+                points={`${8 * scale},${5 * scale} ${35 * scale},${5 * scale} ${32 * scale},${35 * scale} ${5 * scale},${35 * scale}`}
+                fill="none"
+                stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+                strokeWidth={el.thickness || 2}
+                className={`trader-shape ${isSelected ? 'selected' : ''}`}
+              />
 
-            {/* Show trader status */}
-            {el.text && (
-              <text
-                x={center}
-                y={30 * scale}
-                fontSize={4.5 * scale}
-                fill={el.color || '#000000'}
-                textAnchor="middle"
-                className="trader-label"
-              >
-                {el.text}
-              </text>
-            )}
-          </svg>
+              {/* Show trader status */}
+              {el.text && (
+                <text
+                  x={center}
+                  y={30 * scale}
+                  fontSize={4.5 * scale}
+                  fill={el.color || '#000000'}
+                  textAnchor="middle"
+                  className="trader-label"
+                >
+                  {el.text}
+                </text>
+              )}
+            </svg>
+            {renderNodeLabel(el, size)}
+          </>
         );
       }
       case 'End Condition': {
@@ -6432,27 +6548,7 @@ const Canvas: React.FC<CanvasProps> = ({
                 />
               )}
             </svg>
-
-            {/* Label */}
-            {el.text && (
-              <div
-                className={`end-condition-label ${el.isBlinking ? 'blinking' : ''}`}
-                style={applyConditionStyle({
-                  position: 'absolute',
-                  left: el.x - offset,
-                  top: el.y - offset + size + 5,
-                  fontSize: `${10 * scale}px`,
-                  fontWeight: 'bold',
-                  color: el.color || '#000000',
-                  textAlign: 'center',
-                  width: `${size}px`,
-                  pointerEvents: 'none',
-                  userSelect: 'none',
-                })}
-              >
-                {el.text}
-              </div>
-            )}
+            {renderNodeLabel(el, size)}
           </g>
         );
       }
@@ -6462,57 +6558,60 @@ const Canvas: React.FC<CanvasProps> = ({
         const scale = size / 40;
         const offset = size / 2; // Offset to center element at el.x, el.y
         return (
-          <svg
-            key={el.id}
-            className={`svg-element register-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
-            style={applyConditionStyle({
-              left: el.x - offset,
-              top: el.y - offset,
-            })}
-            width={size}
-            height={size}
-            onMouseDown={e => handleElementMouseDown(e, el.id)}
-            onClick={e => {
-              if (selectedTool === 'Select') {
-                e.stopPropagation();
-                if (e.ctrlKey || e.metaKey) {
-                  setSelectedId(prev =>
-                    prev.includes(el.id)
-                      ? prev.filter(selId => selId !== el.id)
-                      : [...prev, el.id]
-                  );
-                } else {
-                  setSelectedId([el.id]);
+          <>
+            <svg
+              key={el.id}
+              className={`svg-element register-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
+              style={applyConditionStyle({
+                left: el.x - offset,
+                top: el.y - offset,
+              })}
+              width={size}
+              height={size}
+              onMouseDown={e => handleElementMouseDown(e, el.id)}
+              onClick={e => {
+                if (selectedTool === 'Select') {
+                  e.stopPropagation();
+                  if (e.ctrlKey || e.metaKey) {
+                    setSelectedId(prev =>
+                      prev.includes(el.id)
+                        ? prev.filter(selId => selId !== el.id)
+                        : [...prev, el.id]
+                    );
+                  } else {
+                    setSelectedId([el.id]);
+                  }
                 }
-              }
-            }}
-          >
-            {/* white background */}
-            <rect
-              x={5 * scale}
-              y={5 * scale}
-              width={30 * scale}
-              height={30 * scale}
-              fill="white"
-              stroke={isSelected ? '#0078d4' : el.color || '#000000'}
-              strokeWidth={el.thickness || 2}
-              className={`register-rect ${isSelected ? 'selected' : ''}`}
-            />
-            {/* show current value */}
-            <text
-              x={center}
-              y={center + size / 8}
-              className="register-text"
-              fill="black"
-              fontSize={11 * scale}
-              textAnchor="middle"
-              fontWeight="bold"
+              }}
             >
-              {el.currentValue !== undefined && el.currentValue !== null
-                ? el.currentValue
-                : 0}
-            </text>
-          </svg>
+              {/* white background */}
+              <rect
+                x={5 * scale}
+                y={5 * scale}
+                width={30 * scale}
+                height={30 * scale}
+                fill="white"
+                stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+                strokeWidth={el.thickness || 2}
+                className={`register-rect ${isSelected ? 'selected' : ''}`}
+              />
+              {/* show current value */}
+              <text
+                x={center}
+                y={center + size / 8}
+                className="register-text"
+                fill="black"
+                fontSize={11 * scale}
+                textAnchor="middle"
+                fontWeight="bold"
+              >
+                {el.currentValue !== undefined && el.currentValue !== null
+                  ? el.currentValue
+                  : 0}
+              </text>
+            </svg>
+            {renderNodeLabel(el, size)}
+          </>
         );
       }
       case 'Delay': {
@@ -6521,49 +6620,52 @@ const Canvas: React.FC<CanvasProps> = ({
         const scale = size / 40;
         const offset = size / 2; // Offset to center element at el.x, el.y
         return (
-          <svg
-            key={el.id}
-            className={`svg-element delay-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
-            style={applyConditionStyle({
-              left: el.x - offset,
-              top: el.y - offset,
-            })}
-            width={size}
-            height={size}
-            onMouseDown={e => handleElementMouseDown(e, el.id)}
-            onClick={e => {
-              if (selectedTool === 'Select') {
-                e.stopPropagation();
-                if (e.ctrlKey || e.metaKey) {
-                  setSelectedId(prev =>
-                    prev.includes(el.id)
-                      ? prev.filter(selId => selId !== el.id)
-                      : [...prev, el.id]
-                  );
-                } else {
-                  setSelectedId([el.id]);
+          <>
+            <svg
+              key={el.id}
+              className={`svg-element delay-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
+              style={applyConditionStyle({
+                left: el.x - offset,
+                top: el.y - offset,
+              })}
+              width={size}
+              height={size}
+              onMouseDown={e => handleElementMouseDown(e, el.id)}
+              onClick={e => {
+                if (selectedTool === 'Select') {
+                  e.stopPropagation();
+                  if (e.ctrlKey || e.metaKey) {
+                    setSelectedId(prev =>
+                      prev.includes(el.id)
+                        ? prev.filter(selId => selId !== el.id)
+                        : [...prev, el.id]
+                    );
+                  } else {
+                    setSelectedId([el.id]);
+                  }
                 }
-              }
-            }}
-          >
-            <circle
-              cx={center}
-              cy={center}
-              r={15 * scale}
-              fill={el.color || '#000000'}
-              stroke={isSelected ? '#0078d4' : el.color || '#000000'}
-              strokeWidth={el.thickness || 2}
-              className={`delay-circle ${isSelected ? 'selected' : ''}`}
-            />
-            <text
-              x={center}
-              y={center + 2 * scale}
-              className="delay-text"
-              fontSize={11 * scale}
+              }}
             >
-              8
-            </text>
-          </svg>
+              <circle
+                cx={center}
+                cy={center}
+                r={15 * scale}
+                fill={el.color || '#000000'}
+                stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+                strokeWidth={el.thickness || 2}
+                className={`delay-circle ${isSelected ? 'selected' : ''}`}
+              />
+              <text
+                x={center}
+                y={center + 2 * scale}
+                className="delay-text"
+                fontSize={11 * scale}
+              >
+                8
+              </text>
+            </svg>
+            {renderNodeLabel(el, size)}
+          </>
         );
       }
       case 'Resource Connection': {
@@ -7023,111 +7125,115 @@ const Canvas: React.FC<CanvasProps> = ({
         const chartState =
           el.chartState ||
           createInitialChartState(el.chartScaleX || 30, el.chartScaleY || 100);
+        const chartSize = Math.max(el.chartWidth || 200, el.chartHeight || 150);
 
         return (
-          <ChartElement
-            key={el.id}
-            id={el.id}
-            x={el.x}
-            y={el.y}
-            width={el.chartWidth || 200}
-            height={el.chartHeight || 150}
-            color={el.color || '#000000'}
-            thickness={el.thickness || 2}
-            text={el.text}
-            chartState={chartState}
-            isSelected={isSelected}
-            isRunning={isRunning}
-            visibleRuns={25}
-            selectableClass={selectableClass}
-            applyConditionStyle={applyConditionStyle}
-            onMouseDown={e => {
-              e.stopPropagation();
-              handleElementMouseDown(e, el.id);
-            }}
-            onClick={e => {
-              if (selectedTool === 'Select') {
+          <>
+            <ChartElement
+              key={el.id}
+              id={el.id}
+              x={el.x}
+              y={el.y}
+              width={el.chartWidth || 200}
+              height={el.chartHeight || 150}
+              color={el.color || '#000000'}
+              thickness={el.thickness || 2}
+              text={el.text}
+              chartState={chartState}
+              isSelected={isSelected}
+              isRunning={isRunning}
+              visibleRuns={25}
+              selectableClass={selectableClass}
+              applyConditionStyle={applyConditionStyle}
+              onMouseDown={e => {
                 e.stopPropagation();
-                if (e.ctrlKey || e.metaKey) {
-                  setSelectedId(prev =>
-                    prev.includes(el.id)
-                      ? prev.filter(selId => selId !== el.id)
-                      : [...prev, el.id]
-                  );
-                } else {
-                  setSelectedId([el.id]);
+                handleElementMouseDown(e, el.id);
+              }}
+              onClick={e => {
+                if (selectedTool === 'Select') {
+                  e.stopPropagation();
+                  if (e.ctrlKey || e.metaKey) {
+                    setSelectedId(prev =>
+                      prev.includes(el.id)
+                        ? prev.filter(selId => selId !== el.id)
+                        : [...prev, el.id]
+                    );
+                  } else {
+                    setSelectedId([el.id]);
+                  }
                 }
-              }
-            }}
-            onResize={(newWidth, newHeight) => {
-              setElements(prev =>
-                prev.map(element =>
-                  element.id === el.id
-                    ? {
+              }}
+              onResize={(newWidth, newHeight) => {
+                setElements(prev =>
+                  prev.map(element =>
+                    element.id === el.id
+                      ? {
+                          ...element,
+                          chartWidth: newWidth,
+                          chartHeight: newHeight,
+                        }
+                      : element
+                  )
+                );
+              }}
+              onClear={() => {
+                setElements(prev =>
+                  prev.map(element =>
+                    element.id === el.id
+                      ? {
+                          ...element,
+                          chartState: createInitialChartState(
+                            el.chartScaleX || 30,
+                            el.chartScaleY || 100
+                          ),
+                        }
+                      : element
+                  )
+                );
+              }}
+              onPrevious={() => {
+                setElements(prev =>
+                  prev.map(element => {
+                    if (element.id === el.id && element.chartState) {
+                      const newHighLighted = Math.max(
+                        0,
+                        element.chartState.highLighted - 1
+                      );
+                      return {
                         ...element,
-                        chartWidth: newWidth,
-                        chartHeight: newHeight,
-                      }
-                    : element
-                )
-              );
-            }}
-            onClear={() => {
-              setElements(prev =>
-                prev.map(element =>
-                  element.id === el.id
-                    ? {
+                        chartState: {
+                          ...element.chartState,
+                          highLighted: newHighLighted,
+                        },
+                      };
+                    }
+                    return element;
+                  })
+                );
+              }}
+              onNext={() => {
+                setElements(prev =>
+                  prev.map(element => {
+                    if (element.id === el.id && element.chartState) {
+                      const newHighLighted = Math.min(
+                        element.chartState.runs - 1,
+                        element.chartState.highLighted + 1
+                      );
+                      return {
                         ...element,
-                        chartState: createInitialChartState(
-                          el.chartScaleX || 30,
-                          el.chartScaleY || 100
-                        ),
-                      }
-                    : element
-                )
-              );
-            }}
-            onPrevious={() => {
-              setElements(prev =>
-                prev.map(element => {
-                  if (element.id === el.id && element.chartState) {
-                    const newHighLighted = Math.max(
-                      0,
-                      element.chartState.highLighted - 1
-                    );
-                    return {
-                      ...element,
-                      chartState: {
-                        ...element.chartState,
-                        highLighted: newHighLighted,
-                      },
-                    };
-                  }
-                  return element;
-                })
-              );
-            }}
-            onNext={() => {
-              setElements(prev =>
-                prev.map(element => {
-                  if (element.id === el.id && element.chartState) {
-                    const newHighLighted = Math.min(
-                      element.chartState.runs - 1,
-                      element.chartState.highLighted + 1
-                    );
-                    return {
-                      ...element,
-                      chartState: {
-                        ...element.chartState,
-                        highLighted: newHighLighted,
-                      },
-                    };
-                  }
-                  return element;
-                })
-              );
-            }}
-          />
+                        chartState: {
+                          ...element.chartState,
+                          highLighted: newHighLighted,
+                        },
+                      };
+                    }
+                    return element;
+                  })
+                );
+              }}
+            />
+            {renderNodeLabel(el, chartSize)}
+          </>
         );
       }
       default:
