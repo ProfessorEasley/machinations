@@ -3351,23 +3351,33 @@ const Canvas: React.FC<CanvasProps> = ({
             .filter(o => o.units > 0);
 
           // Output count from conversion ratio: e.g. 10 in → 1 out, so 20 in → 2 out. Base = right part of multiplicand label (e.g. "2*10" → base 10).
+          // 0*10 = 0 input → no output
+          const anyMultiplicandInputZero = inputConns.some(
+            conn =>
+              (conn.text ?? '').includes('*') &&
+              parseConnectionLabel(conn.text) === 0
+          );
           const ratios = inputs
             .filter(i => (i.conn.text ?? '').includes('*'))
             .map(i => {
               const base = getBaseInputAmountFromMultiplyLabel(i.conn.text);
               return base != null && base > 0 ? Math.floor(i.units / base) : 1;
             });
-          const speedFactor = ratios.length > 0 ? Math.min(...ratios) : 1;
+          const speedFactor = anyMultiplicandInputZero
+            ? 0
+            : ratios.length > 0
+              ? Math.min(...ratios)
+              : 1;
 
-          let canConvert = true;
+          let canConvert = !anyMultiplicandInputZero;
 
-          if (convertor.pullMode === 'pull all') {
+          if (canConvert && convertor.pullMode === 'pull all') {
             canConvert = inputs.every(i => {
               const stored = convertor.inputResources![i.key] || 0;
               if (stored >= i.units) return true;
               return i.startEl && canTakeUnits(i.startEl, i.units, i.color);
             });
-          } else {
+          } else if (canConvert) {
             canConvert = inputs.some(i => {
               const stored = convertor.inputResources![i.key] || 0;
               if (stored >= i.units) return true;
