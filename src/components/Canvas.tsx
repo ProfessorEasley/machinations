@@ -1319,6 +1319,17 @@ const parseMultiplyExpression = (rawLabel: string) => {
   return { left: match[1], right: match[2] };
 };
 
+/** For multiplicand labels like "1*10" or "2*10", returns the base input amount per output (e.g. 10). Used to compute output count = currentInput / base. */
+function getBaseInputAmountFromMultiplyLabel(label?: string): number | null {
+  const s = (label ?? '').trim();
+  if (!s.includes('*')) return null;
+  const expr = parseMultiplyExpression(s);
+  if (!expr) return null;
+  const rightNum = parseFloat(expr.right);
+  if (Number.isFinite(rightNum) && rightNum > 0) return rightNum;
+  return 1;
+}
+
 function getElementValue(element: GraphElement | undefined): number {
   if (!element) return 0;
 
@@ -1777,6 +1788,19 @@ function parseConnectionLabel(label?: string): number {
     if (!isNaN(num) && !isNaN(den) && den > 0) {
       return Math.random() < num / den ? num : 0;
     }
+  }
+
+  // Multiplicand/dynamic labels (e.g. "5*x" from State Connection modifier) — use numeric part
+  const multiplyExpr = parseMultiplyExpression(s);
+  if (multiplyExpr) {
+    const leftNum = parseFloat(multiplyExpr.left);
+    const rightNum = parseFloat(multiplyExpr.right);
+    const leftNumeric = Number.isFinite(leftNum);
+    const rightNumeric = Number.isFinite(rightNum);
+    if (leftNumeric && rightNumeric) return leftNum * rightNum;
+    if (leftNumeric) return leftNum;
+    if (rightNumeric) return rightNum;
+    return 1;
   }
 
   const arithmetic = evaluateArithmeticExpression(s);
@@ -3326,15 +3350,34 @@ const Canvas: React.FC<CanvasProps> = ({
             })
             .filter(o => o.units > 0);
 
-          let canConvert = true;
+          // Output count from conversion ratio: e.g. 10 in → 1 out, so 20 in → 2 out. Base = right part of multiplicand label (e.g. "2*10" → base 10).
+          // 0*10 = 0 input → no output
+          const anyMultiplicandInputZero = inputConns.some(
+            conn =>
+              (conn.text ?? '').includes('*') &&
+              parseConnectionLabel(conn.text) === 0
+          );
+          const ratios = inputs
+            .filter(i => (i.conn.text ?? '').includes('*'))
+            .map(i => {
+              const base = getBaseInputAmountFromMultiplyLabel(i.conn.text);
+              return base != null && base > 0 ? Math.floor(i.units / base) : 1;
+            });
+          const speedFactor = anyMultiplicandInputZero
+            ? 0
+            : ratios.length > 0
+              ? Math.min(...ratios)
+              : 1;
 
-          if (convertor.pullMode === 'pull all') {
+          let canConvert = !anyMultiplicandInputZero;
+
+          if (canConvert && convertor.pullMode === 'pull all') {
             canConvert = inputs.every(i => {
               const stored = convertor.inputResources![i.key] || 0;
               if (stored >= i.units) return true;
               return i.startEl && canTakeUnits(i.startEl, i.units, i.color);
             });
-          } else {
+          } else if (canConvert) {
             canConvert = inputs.some(i => {
               const stored = convertor.inputResources![i.key] || 0;
               if (stored >= i.units) return true;
@@ -3380,7 +3423,7 @@ const Canvas: React.FC<CanvasProps> = ({
               ) {
                 return;
               }
-              deliverUnits(o.conn, o.units, convertor);
+              deliverUnits(o.conn, o.units * speedFactor, convertor);
             });
           } else {
             if (convertor.pullMode === 'pull any') {
