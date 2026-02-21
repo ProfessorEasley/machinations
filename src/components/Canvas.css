@@ -418,7 +418,7 @@
 }
 
 .ai-rect {
-  fill: none;
+  fill: white;
   stroke-width: 2;
 }
 
@@ -430,9 +430,14 @@
 }
 
 .ai-rect.selected {
-  fill: none;
+  fill: white;
   stroke: #0078d4;
   stroke-width: 2;
+}
+
+.ai-star {
+  text-anchor: middle;
+  dominant-baseline: middle;
 }
 
 .register-rect {

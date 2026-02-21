@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { CSSProperties } from 'react';
 import { RegisterExpression } from '../utils/RegisterExpression';
+import { parseAiScript, selectAiCommand } from '../utils/aiScript';
 import './Canvas.css';
 import ChartElement from './ChartElement';
 import {
@@ -2547,6 +2548,47 @@ const Canvas: React.FC<CanvasProps> = ({
       const elementMap = new Map<number, GraphElement>(
         nextElements.map(el => [el.id, el])
       );
+      const forcedActivationIds = new Set<number>();
+      const aiScriptCache = new Map<number, ReturnType<typeof parseAiScript>>();
+
+      const getElementLabel = (element: GraphElement): string | undefined => {
+        const withName = element as GraphElement & {
+          name?: string;
+          label?: string;
+        };
+        return element.text ?? withName.name ?? withName.label;
+      };
+
+      const labelToElement = new Map<string, GraphElement>();
+      for (const element of nextElements) {
+        const label = getElementLabel(element);
+        if (label && !labelToElement.has(label)) {
+          labelToElement.set(label, element);
+        }
+      }
+
+      const resolveElementByIdentifier = (
+        identifier: string
+      ): GraphElement | undefined => {
+        const trimmed = identifier.trim();
+        if (!trimmed) return undefined;
+        const byLabel = labelToElement.get(trimmed);
+        if (byLabel) return byLabel;
+        const id = Number(trimmed);
+        if (!Number.isNaN(id)) return elementMap.get(id);
+        return undefined;
+      };
+
+      const getValueForIdentifier = (identifier: string): number =>
+        getElementValue(resolveElementByIdentifier(identifier));
+
+      const queueForcedActivation = (identifier: string) => {
+        const target = resolveElementByIdentifier(identifier);
+        if (target) forcedActivationIds.add(target.id);
+      };
+
+      const isForcedActivation = (element: GraphElement): boolean =>
+        forcedActivationIds.has(element.id);
 
       // Accumulate register modifiers here so PASS 5 can apply them (and not get overwritten by formulas)
       const registerDeltaById = new Map<number, number>();
@@ -2909,25 +2951,80 @@ const Canvas: React.FC<CanvasProps> = ({
       };
 
       // =======================================================================
+      // PASS 0.8: Artificial Intelligence
+      // =======================================================================
+      for (const ai of nextElements) {
+        if (ai.type !== 'Artifical Intelligence') continue;
+
+        const isForced = isForcedActivation(ai);
+        let isTriggerActive = isForced;
+        if (!isTriggerActive) {
+          if (activationType === 'automatic') {
+            if (ai.activation === 'automatic') isTriggerActive = true;
+            else if (ai.activation === 'passive' && consumePassiveTrigger(ai))
+              isTriggerActive = true;
+          } else if (activationType === 'interactive') {
+            if (
+              ai.activation === 'interactive' &&
+              interactiveElementId === ai.id
+            )
+              isTriggerActive = true;
+          } else if (activationType === 'onstart') {
+            if (ai.activation === 'onstart' && !ai.hasStarted)
+              isTriggerActive = true;
+          }
+        }
+
+        if (!isTriggerActive) continue;
+
+        const actions = Math.max(1, ai.actions ?? 1);
+        const cachedLines = aiScriptCache.get(ai.id);
+        const lines = cachedLines ?? parseAiScript(ai.script ?? '');
+        if (!cachedLines) aiScriptCache.set(ai.id, lines);
+
+        for (let a = 0; a < actions; a++) {
+          const command = selectAiCommand(lines, getValueForIdentifier);
+          if (!command) break;
+          if (command.type === 'fire') {
+            command.targets.forEach(queueForcedActivation);
+          } else {
+            const choices = command.targets;
+            if (choices.length > 0) {
+              const idx = Math.floor(Math.random() * choices.length);
+              queueForcedActivation(choices[idx]);
+            }
+          }
+        }
+
+        if (activationType === 'onstart') ai.hasStarted = true;
+      }
+
+      // =======================================================================
       // PASS 1: Pools
       // =======================================================================
       for (const pool of nextElements) {
         if (pool.type !== 'Pool') continue;
 
-        let isTriggerActive = false;
-        if (activationType === 'automatic') {
-          if (pool.activation === 'automatic') isTriggerActive = true;
-          else if (pool.activation === 'passive' && consumePassiveTrigger(pool))
-            isTriggerActive = true;
-        } else if (activationType === 'interactive') {
-          if (
-            pool.activation === 'interactive' &&
-            interactiveElementId === pool.id
-          )
-            isTriggerActive = true;
-        } else if (activationType === 'onstart') {
-          if (pool.activation === 'onstart' && !pool.hasStarted)
-            isTriggerActive = true;
+        const isForced = isForcedActivation(pool);
+        let isTriggerActive = isForced;
+        if (!isTriggerActive) {
+          if (activationType === 'automatic') {
+            if (pool.activation === 'automatic') isTriggerActive = true;
+            else if (
+              pool.activation === 'passive' &&
+              consumePassiveTrigger(pool)
+            )
+              isTriggerActive = true;
+          } else if (activationType === 'interactive') {
+            if (
+              pool.activation === 'interactive' &&
+              interactiveElementId === pool.id
+            )
+              isTriggerActive = true;
+          } else if (activationType === 'onstart') {
+            if (pool.activation === 'onstart' && !pool.hasStarted)
+              isTriggerActive = true;
+          }
         }
 
         if (!isTriggerActive) continue;
@@ -3067,24 +3164,30 @@ const Canvas: React.FC<CanvasProps> = ({
       // =======================================================================
       for (const gate of nextElements) {
         if (gate.type !== 'Gate') continue;
-        let isTriggerActive = false;
-        if (activationType === 'automatic') {
-          if (gate.activation === 'automatic') isTriggerActive = true;
-          else if (gate.activation === 'passive' && consumePassiveTrigger(gate))
-            isTriggerActive = true;
-        } else if (activationType === 'interactive') {
-          if (
-            gate.activation === 'interactive' &&
-            interactiveElementId === gate.id
-          )
-            isTriggerActive = true;
-        } else if (activationType === 'onstart') {
-          if (gate.activation === 'onstart' && !gate.hasStarted)
-            isTriggerActive = true;
+        const isForced = isForcedActivation(gate);
+        let isTriggerActive = isForced;
+        if (!isTriggerActive) {
+          if (activationType === 'automatic') {
+            if (gate.activation === 'automatic') isTriggerActive = true;
+            else if (
+              gate.activation === 'passive' &&
+              consumePassiveTrigger(gate)
+            )
+              isTriggerActive = true;
+          } else if (activationType === 'interactive') {
+            if (
+              gate.activation === 'interactive' &&
+              interactiveElementId === gate.id
+            )
+              isTriggerActive = true;
+          } else if (activationType === 'onstart') {
+            if (gate.activation === 'onstart' && !gate.hasStarted)
+              isTriggerActive = true;
+          }
         }
         if (
           !isTriggerActive ||
-          (activationType !== 'onstart' && gate.hasStarted)
+          (!isForced && activationType !== 'onstart' && gate.hasStarted)
         )
           continue;
 
@@ -3152,29 +3255,31 @@ const Canvas: React.FC<CanvasProps> = ({
       // =======================================================================
       for (const source of nextElements) {
         if (source.type !== 'Source') continue;
-        let isTriggerActive = false;
-        if (activationType === 'automatic') {
-          if (source.activation === 'automatic') isTriggerActive = true;
-          else if (
-            source.activation === 'passive' &&
-            consumePassiveTrigger(source)
-          )
-            isTriggerActive = true;
-        } else if (activationType === 'interactive') {
-          if (
-            source.activation === 'interactive' &&
-            interactiveElementId === source.id
-          )
-            isTriggerActive = true;
-        } else if (activationType === 'onstart') {
-          if (source.activation === 'onstart' && !source.hasStarted)
-            isTriggerActive = true;
+        const isForced = isForcedActivation(source);
+        let isTriggerActive = isForced;
+        if (!isTriggerActive) {
+          if (activationType === 'automatic') {
+            if (source.activation === 'automatic') isTriggerActive = true;
+            else if (
+              source.activation === 'passive' &&
+              consumePassiveTrigger(source)
+            )
+              isTriggerActive = true;
+          } else if (activationType === 'interactive') {
+            if (
+              source.activation === 'interactive' &&
+              interactiveElementId === source.id
+            )
+              isTriggerActive = true;
+          } else if (activationType === 'onstart') {
+            if (source.activation === 'onstart' && !source.hasStarted)
+              isTriggerActive = true;
+          }
         }
 
-        if (
-          isTriggerActive &&
-          (activationType === 'onstart' ? !source.hasStarted : true)
-        ) {
+        const canRun =
+          isForced || activationType !== 'onstart' || !source.hasStarted;
+        if (isTriggerActive && canRun) {
           const outputConns = nextElements.filter(
             c =>
               isResourceLikeConnection(c) &&
@@ -3205,29 +3310,31 @@ const Canvas: React.FC<CanvasProps> = ({
       // =======================================================================
       for (const drain of nextElements) {
         if (drain.type !== 'Drain') continue;
-        let isTriggerActive = false;
-        if (activationType === 'automatic') {
-          if (drain.activation === 'automatic') isTriggerActive = true;
-          else if (
-            drain.activation === 'passive' &&
-            consumePassiveTrigger(drain)
-          )
-            isTriggerActive = true;
-        } else if (activationType === 'interactive') {
-          if (
-            drain.activation === 'interactive' &&
-            interactiveElementId === drain.id
-          )
-            isTriggerActive = true;
-        } else if (activationType === 'onstart') {
-          if (drain.activation === 'onstart' && !drain.hasStarted)
-            isTriggerActive = true;
+        const isForced = isForcedActivation(drain);
+        let isTriggerActive = isForced;
+        if (!isTriggerActive) {
+          if (activationType === 'automatic') {
+            if (drain.activation === 'automatic') isTriggerActive = true;
+            else if (
+              drain.activation === 'passive' &&
+              consumePassiveTrigger(drain)
+            )
+              isTriggerActive = true;
+          } else if (activationType === 'interactive') {
+            if (
+              drain.activation === 'interactive' &&
+              interactiveElementId === drain.id
+            )
+              isTriggerActive = true;
+          } else if (activationType === 'onstart') {
+            if (drain.activation === 'onstart' && !drain.hasStarted)
+              isTriggerActive = true;
+          }
         }
 
-        if (
-          isTriggerActive &&
-          (activationType === 'onstart' ? !drain.hasStarted : true)
-        ) {
+        const canRun =
+          isForced || activationType !== 'onstart' || !drain.hasStarted;
+        if (isTriggerActive && canRun) {
           const inputConns = nextElements.filter(
             c =>
               isResourceLikeConnection(c) &&
@@ -3278,23 +3385,26 @@ const Canvas: React.FC<CanvasProps> = ({
       for (const convertor of nextElements) {
         if (convertor.type !== 'Convertor') continue;
 
-        let isTriggerActive = false;
-        if (activationType === 'automatic') {
-          if (convertor.activation === 'automatic') isTriggerActive = true;
-          else if (
-            convertor.activation === 'passive' &&
-            consumePassiveTrigger(convertor)
-          )
-            isTriggerActive = true;
-        } else if (activationType === 'interactive') {
-          if (
-            convertor.activation === 'interactive' &&
-            interactiveElementId === convertor.id
-          )
-            isTriggerActive = true;
-        } else if (activationType === 'onstart') {
-          if (convertor.activation === 'onstart' && !convertor.hasStarted)
-            isTriggerActive = true;
+        const isForced = isForcedActivation(convertor);
+        let isTriggerActive = isForced;
+        if (!isTriggerActive) {
+          if (activationType === 'automatic') {
+            if (convertor.activation === 'automatic') isTriggerActive = true;
+            else if (
+              convertor.activation === 'passive' &&
+              consumePassiveTrigger(convertor)
+            )
+              isTriggerActive = true;
+          } else if (activationType === 'interactive') {
+            if (
+              convertor.activation === 'interactive' &&
+              interactiveElementId === convertor.id
+            )
+              isTriggerActive = true;
+          } else if (activationType === 'onstart') {
+            if (convertor.activation === 'onstart' && !convertor.hasStarted)
+              isTriggerActive = true;
+          }
         }
 
         if (!isTriggerActive) continue;
@@ -3522,26 +3632,30 @@ const Canvas: React.FC<CanvasProps> = ({
           }
         }
 
-        let isTriggerActive = false;
-        if (activationType === 'automatic') {
-          if (trader.activation === 'automatic') isTriggerActive = true;
-          else if (
-            trader.activation === 'passive' &&
-            consumePassiveTrigger(trader)
-          )
-            isTriggerActive = true;
-        } else if (activationType === 'interactive') {
-          if (
-            trader.activation === 'interactive' &&
-            interactiveElementId === trader.id
-          )
-            isTriggerActive = true;
-        } else if (activationType === 'onstart') {
-          if (trader.activation === 'onstart' && !trader.hasStarted)
-            isTriggerActive = true;
+        const isForced = isForcedActivation(trader);
+        let isTriggerActive = isForced;
+        if (!isTriggerActive) {
+          if (activationType === 'automatic') {
+            if (trader.activation === 'automatic') isTriggerActive = true;
+            else if (
+              trader.activation === 'passive' &&
+              consumePassiveTrigger(trader)
+            )
+              isTriggerActive = true;
+          } else if (activationType === 'interactive') {
+            if (
+              trader.activation === 'interactive' &&
+              interactiveElementId === trader.id
+            )
+              isTriggerActive = true;
+          } else if (activationType === 'onstart') {
+            if (trader.activation === 'onstart' && !trader.hasStarted)
+              isTriggerActive = true;
+          }
         }
 
-        const canFire = activationType !== 'onstart' || !trader.hasStarted;
+        const canFire =
+          isForced || activationType !== 'onstart' || !trader.hasStarted;
 
         if (trader.pullMode === 'pull any' && isTriggerActive && canFire) {
           for (const inputConn of inputConns) {
@@ -6660,6 +6774,75 @@ const Canvas: React.FC<CanvasProps> = ({
             </svg>
             {renderNodeLabel(el, size)}
           </g>
+        );
+      }
+      case 'Artifical Intelligence': {
+        const size = getElementSize(el.thickness);
+        const center = size / 2;
+        const scale = size / 40;
+        const offset = size / 2; // Offset to center element at el.x, el.y
+        return (
+          <>
+            <svg
+              key={el.id}
+              className={`svg-element ai-element ${selectableClass} ${isSelected ? 'selected' : ''}`}
+              style={applyConditionStyle({
+                left: el.x - offset,
+                top: el.y - offset,
+              })}
+              width={size}
+              height={size}
+              onMouseDown={e => handleElementMouseDown(e, el.id)}
+              onClick={e => {
+                if (selectedTool === 'Select') {
+                  e.stopPropagation();
+                  if (e.ctrlKey || e.metaKey) {
+                    setSelectedId(prev =>
+                      prev.includes(el.id)
+                        ? prev.filter(selId => selId !== el.id)
+                        : [...prev, el.id]
+                    );
+                  } else {
+                    setSelectedId([el.id]);
+                  }
+                }
+              }}
+            >
+              <rect
+                x={5 * scale}
+                y={5 * scale}
+                width={30 * scale}
+                height={30 * scale}
+                fill="white"
+                stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+                strokeWidth={el.thickness || 2}
+                className={`ai-rect ${isSelected ? 'selected' : ''}`}
+              />
+              <text
+                x={center}
+                y={center + 2 * scale}
+                className="ai-text"
+                fill={el.color || '#000000'}
+                fontSize={12 * scale}
+                fontWeight="bold"
+                textAnchor="middle"
+              >
+                AP
+              </text>
+              <text
+                x={33 * scale}
+                y={9 * scale}
+                className="ai-star"
+                fill={el.color || '#000000'}
+                fontSize={10 * scale}
+                fontWeight="bold"
+                textAnchor="middle"
+              >
+                *
+              </text>
+            </svg>
+            {renderNodeLabel(el, size)}
+          </>
         );
       }
       case 'Register': {
