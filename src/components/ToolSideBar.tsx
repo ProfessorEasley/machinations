@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './ToolSideBar.css';
+import type { ChartState } from '../utils/ChartUtils';
 
 type GraphElementType =
   | 'Text Label'
@@ -46,7 +47,7 @@ interface GraphElement {
   chartHeight?: number;
   chartScaleX?: number;
   chartScaleY?: number;
-  chartState?: any;
+  chartState?: ChartState;
 
   // Convertor-specific properties
   inputResources?: Record<string, number>; // Resource type -> amount stored
