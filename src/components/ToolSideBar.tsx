@@ -706,8 +706,8 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
               value={selectedElement.chartScaleX ?? 0}
               onChange={e => {
                 if (onElementUpdate) {
-                  let value = parseInt(e.target.value) || 0;
-                  onElementUpdate(selectedElement.id, { 
+                  const value = parseInt(e.target.value) || 0;
+                  onElementUpdate(selectedElement.id, {
                     chartScaleX: value,
                     chartState: undefined,
                   });
@@ -723,8 +723,8 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
               value={selectedElement.chartScaleY ?? 0}
               onChange={e => {
                 if (onElementUpdate) {
-                  let value = parseInt(e.target.value) || 0;
-                  onElementUpdate(selectedElement.id, { 
+                  const value = parseInt(e.target.value) || 0;
+                  onElementUpdate(selectedElement.id, {
                     chartScaleY: value,
                     chartState: undefined,
                   });
@@ -796,7 +796,7 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
               value={toolProperties?.chart?.scaleX ?? 0}
               onChange={e => {
                 if (onToolPropertiesChange) {
-                  let value = parseInt(e.target.value) || 0;
+                  const value = parseInt(e.target.value) || 0;
                   onToolPropertiesChange('chart', {
                     ...toolProperties?.chart,
                     scaleX: value,
@@ -813,7 +813,7 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
               value={toolProperties?.chart?.scaleY ?? 0}
               onChange={e => {
                 if (onToolPropertiesChange) {
-                  let value = parseInt(e.target.value) || 0;
+                  const value = parseInt(e.target.value) || 0;
                   onToolPropertiesChange('chart', {
                     ...toolProperties?.chart,
                     scaleY: value,

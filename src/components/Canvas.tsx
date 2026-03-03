@@ -3857,9 +3857,14 @@ const Canvas: React.FC<CanvasProps> = ({
 
         chart.chartState.tick += 1;
 
-        console.log('[Chart Debug] Tick:', chart.chartState.tick, 
-              'scaleX:', chart.chartState.scaleX, 
-              'scaleY:', chart.chartState.scaleY);
+        console.log(
+          '[Chart Debug] Tick:',
+          chart.chartState.tick,
+          'scaleX:',
+          chart.chartState.scaleX,
+          'scaleY:',
+          chart.chartState.scaleY
+        );
 
         const inputConnections = nextElements.filter(
           conn =>
@@ -3877,7 +3882,12 @@ const Canvas: React.FC<CanvasProps> = ({
 
           if (isNaN(value)) value = 0;
 
-          console.log('[Chart Debug] Value:', value, 'Current scaleY:', chart.chartState.scaleY);
+          console.log(
+            '[Chart Debug] Value:',
+            value,
+            'Current scaleY:',
+            chart.chartState.scaleY
+          );
 
           if (
             chart.chartState.defaultScaleX > 0 &&
@@ -3909,8 +3919,13 @@ const Canvas: React.FC<CanvasProps> = ({
                 value
               );
               if (oldScaleY !== chart.chartState.scaleY) {
-          console.log('[Chart Debug] Y axis expanded from', oldScaleY, 'to', chart.chartState.scaleY);
-        }
+                console.log(
+                  '[Chart Debug] Y axis expanded from',
+                  oldScaleY,
+                  'to',
+                  chart.chartState.scaleY
+                );
+              }
             }
 
             if (chart.chartState.defaultScaleY >= 0 && value < 0) {
@@ -3929,7 +3944,12 @@ const Canvas: React.FC<CanvasProps> = ({
         ) {
           const oldScaleX = chart.chartState.scaleX;
           chart.chartState.scaleX += 10;
-          console.log('[Chart Debug] X axis expanded from', oldScaleX, 'to', chart.chartState.scaleX);
+          console.log(
+            '[Chart Debug] X axis expanded from',
+            oldScaleX,
+            'to',
+            chart.chartState.scaleX
+          );
         }
       }
 
