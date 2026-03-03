@@ -2806,8 +2806,8 @@ const Canvas: React.FC<CanvasProps> = ({
             if (!element.traderOutputs) element.traderOutputs = {};
           }
           if (element.type === 'Chart') {
-            const defaultScaleX = element.chartScaleX || 30;
-            const defaultScaleY = element.chartScaleY || 100;
+            const defaultScaleX = element.chartScaleX ?? 0;
+            const defaultScaleY = element.chartScaleY ?? 0;
 
             if (!element.chartState) {
               element.chartState = createInitialChartState(
@@ -3857,6 +3857,10 @@ const Canvas: React.FC<CanvasProps> = ({
 
         chart.chartState.tick += 1;
 
+        console.log('[Chart Debug] Tick:', chart.chartState.tick, 
+              'scaleX:', chart.chartState.scaleX, 
+              'scaleY:', chart.chartState.scaleY);
+
         const inputConnections = nextElements.filter(
           conn =>
             conn.type === 'State Connection' && conn.connectedToEnd === chart.id
@@ -3872,6 +3876,8 @@ const Canvas: React.FC<CanvasProps> = ({
           value = value * labelValue;
 
           if (isNaN(value)) value = 0;
+
+          console.log('[Chart Debug] Value:', value, 'Current scaleY:', chart.chartState.scaleY);
 
           if (
             chart.chartState.defaultScaleX > 0 &&
@@ -3897,10 +3903,14 @@ const Canvas: React.FC<CanvasProps> = ({
             series.data.push(value);
 
             if (chart.chartState.defaultScaleY === 0) {
+              const oldScaleY = chart.chartState.scaleY;
               chart.chartState.scaleY = autoExpandScaleY(
                 chart.chartState.scaleY,
                 value
               );
+              if (oldScaleY !== chart.chartState.scaleY) {
+          console.log('[Chart Debug] Y axis expanded from', oldScaleY, 'to', chart.chartState.scaleY);
+        }
             }
 
             if (chart.chartState.defaultScaleY >= 0 && value < 0) {
@@ -3917,7 +3927,9 @@ const Canvas: React.FC<CanvasProps> = ({
           chart.chartState.tick > chart.chartState.scaleX &&
           chart.chartState.scaleX <= (chart.chartWidth || 200) - 10
         ) {
+          const oldScaleX = chart.chartState.scaleX;
           chart.chartState.scaleX += 10;
+          console.log('[Chart Debug] X axis expanded from', oldScaleX, 'to', chart.chartState.scaleX);
         }
       }
 
@@ -5306,8 +5318,8 @@ const Canvas: React.FC<CanvasProps> = ({
 
     if (type === 'Chart') {
       const chartProps = toolProperties?.chart;
-      const defaultScaleX = chartProps?.scaleX ?? 30;
-      const defaultScaleY = chartProps?.scaleY ?? 100;
+      const defaultScaleX = chartProps?.scaleX ?? 0;
+      const defaultScaleY = chartProps?.scaleY ?? 0;
 
       setElements(prev => [
         ...prev,
@@ -7417,7 +7429,8 @@ const Canvas: React.FC<CanvasProps> = ({
       case 'Chart': {
         const chartState =
           el.chartState ||
-          createInitialChartState(el.chartScaleX || 30, el.chartScaleY || 100);
+          // change
+          createInitialChartState(el.chartScaleX ?? 0, el.chartScaleY ?? 0);
         const chartSize = Math.max(el.chartWidth || 200, el.chartHeight || 150);
 
         return (
@@ -7475,9 +7488,10 @@ const Canvas: React.FC<CanvasProps> = ({
                     element.id === el.id
                       ? {
                           ...element,
+                          // change
                           chartState: createInitialChartState(
-                            el.chartScaleX || 30,
-                            el.chartScaleY || 100
+                            el.chartScaleX ?? 0,
+                            el.chartScaleY ?? 0
                           ),
                         }
                       : element
