@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './ToolSideBar.css';
+import type { ChartState } from '../utils/ChartUtils';
 
 type GraphElementType =
   | 'Text Label'
@@ -46,6 +47,7 @@ interface GraphElement {
   chartHeight?: number;
   chartScaleX?: number;
   chartScaleY?: number;
+  chartState?: ChartState;
 
   // Convertor-specific properties
   inputResources?: Record<string, number>; // Resource type -> amount stored
@@ -699,34 +701,34 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
             />
           </label>
           <label>
-            Scale X (min: 10)
+            Scale X (0 is auto-scale, set value to fix range)
             <input
               type="number"
-              value={selectedElement.chartScaleX ?? 30}
+              value={selectedElement.chartScaleX ?? 0}
               onChange={e => {
                 if (onElementUpdate) {
-                  let value = parseInt(e.target.value) || 0;
-                  if (value !== 0 && value < 10) {
-                    value = 10;
-                  }
-                  onElementUpdate(selectedElement.id, { chartScaleX: value });
+                  const value = parseInt(e.target.value) || 0;
+                  onElementUpdate(selectedElement.id, {
+                    chartScaleX: value,
+                    chartState: undefined,
+                  });
                 }
               }}
               min="0"
             />
           </label>
           <label>
-            Scale Y (min: 12)
+            Scale Y (0 is auto-scale, set value to fix range)
             <input
               type="number"
-              value={selectedElement.chartScaleY ?? 100}
+              value={selectedElement.chartScaleY ?? 0}
               onChange={e => {
                 if (onElementUpdate) {
-                  let value = parseInt(e.target.value) || 0;
-                  if (value !== 0 && value < 12) {
-                    value = 12;
-                  }
-                  onElementUpdate(selectedElement.id, { chartScaleY: value });
+                  const value = parseInt(e.target.value) || 0;
+                  onElementUpdate(selectedElement.id, {
+                    chartScaleY: value,
+                    chartState: undefined,
+                  });
                 }
               }}
               min="0"
@@ -789,16 +791,13 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
             />
           </label>
           <label>
-            Scale X (min: 10)
+            Scale X (0 is auto-scale, set value to fix range)
             <input
               type="number"
-              value={toolProperties?.chart?.scaleX ?? 30}
+              value={toolProperties?.chart?.scaleX ?? 0}
               onChange={e => {
                 if (onToolPropertiesChange) {
-                  let value = parseInt(e.target.value) || 0;
-                  if (value !== 0 && value < 10) {
-                    value = 10;
-                  }
+                  const value = parseInt(e.target.value) || 0;
                   onToolPropertiesChange('chart', {
                     ...toolProperties?.chart,
                     scaleX: value,
@@ -809,16 +808,13 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
             />
           </label>
           <label>
-            Scale Y (min: 12)
+            Scale Y (0 is auto-scale, set value to fix range)
             <input
               type="number"
-              value={toolProperties?.chart?.scaleY ?? 100}
+              value={toolProperties?.chart?.scaleY ?? 0}
               onChange={e => {
                 if (onToolPropertiesChange) {
-                  let value = parseInt(e.target.value) || 0;
-                  if (value !== 0 && value < 12) {
-                    value = 12;
-                  }
+                  const value = parseInt(e.target.value) || 0;
                   onToolPropertiesChange('chart', {
                     ...toolProperties?.chart,
                     scaleY: value,
