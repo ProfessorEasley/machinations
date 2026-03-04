@@ -313,8 +313,8 @@ const Playground: React.FC = () => {
       color: '#000000',
       thickness: 2,
       text: '',
-      scaleX: 30,
-      scaleY: 100,
+      scaleX: 0,
+      scaleY: 0,
     },
   });
 
