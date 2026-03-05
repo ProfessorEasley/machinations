@@ -223,6 +223,9 @@ interface GraphElement {
   points?: { x: number; y: number }[];
   dynamicLabelBase?: number;
   dynamicLabelLastDelta?: number;
+  dynamicLabelFractionNum?: number;
+  dynamicLabelFractionDen?: number;
+  lastStartValue?: number;
   conditionSatisfied?: boolean;
   hasUnsatisfiedCondition?: boolean;
   currentPoints?: number;
@@ -378,7 +381,10 @@ const normalizeGraphElementType = (
   if (
     s === 'artificial intelligence' ||
     s === 'ai' ||
-    s === 'artifical intelligence'
+    s === 'artifical intelligence' ||
+    s === 'artificialplayer' ||
+    s === 'artificial player' ||
+    s === 'artificial_player'
   )
     return 'Artifical Intelligence'; // (your union spelling)
 
@@ -513,9 +519,10 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
   };
 
   const registerElementKeys = (el: Element, assignedId: number) => {
-    void el; // (avoid unused var TS error)
     // ✅ ordinal reference support (1-based)
     addXmlKey(String(assignedId), assignedId);
+    // ✅ explicit ids/keys/names when present
+    addXmlKey(attrAny(el, ['id', 'uid', 'key', 'name']), assignedId);
   };
 
   // ------------------------------------------------------------------
@@ -564,6 +571,9 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
   // assign IDs sequentially to nodes + connections.
   // ------------------------------------------------------------------
   for (const el of orderedCandidates) {
+    const assignedId = nextSequentialId++;
+    registerElementKeys(el, assignedId);
+
     const rawType =
       attrAny(el, ['symbol', 'type', 'kind', 'class']) ??
       tagNameToType(el.tagName);
@@ -579,9 +589,6 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
       tagLower === 'edge' ||
       tagLower === 'link' ||
       tagLower.includes('connection');
-
-    const assignedId = nextSequentialId++;
-    registerElementKeys(el, assignedId);
 
     // ---------------- NODE ----------------
     if (!isConnection) {
@@ -603,10 +610,28 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
         'strokeWidth',
         'borderWidth',
       ]);
-      const label = textAny(el, ['text', 'label', 'title', 'name']);
+
+      const label =
+        type === 'Artifical Intelligence'
+          ? attrAny(el, ['caption', 'label', 'title', 'name', 'text'])
+          : textAny(el, ['text', 'label', 'title', 'name', 'caption']);
       const rawLabelPos = numAttrAny(el, ['labelPosition', 'labelPos']);
+      const rawCaptionPos = numAttrAny(el, [
+        'captionPos',
+        'captionPosition',
+        'caption_pos',
+      ]);
       const labelPosition =
-        rawLabelPos != null ? Math.max(0, Math.min(1, rawLabelPos)) : 0; // 0 = bottom
+        rawLabelPos != null
+          ? Math.max(0, Math.min(1, rawLabelPos))
+          : rawCaptionPos != null
+            ? (() => {
+                const pos = ((rawCaptionPos % 1) + 1) % 1;
+                // XML captionPos: 0.25 = above, 0.75 = below.
+                const shifted = pos + 0.25;
+                return shifted >= 1 ? shifted - 1 : shifted;
+              })()
+            : 0; // 0 = bottom
 
       const activation = normalizeActivation(
         attrAny(el, [
@@ -1496,7 +1521,20 @@ function applyDynamicResourceLabelsMutable(elementsList: GraphElement[]): void {
       continue;
     }
 
-    const numeric = parseFloat(currentText);
+    const fractionMatch = currentText.match(/^\s*(-?\d+)\s*\/\s*(\d+)\s*$/);
+    const fractionNum = fractionMatch ? parseInt(fractionMatch[1], 10) : null;
+    const fractionDen = fractionMatch ? parseInt(fractionMatch[2], 10) : null;
+    const hasFraction =
+      fractionMatch != null &&
+      fractionNum != null &&
+      fractionDen != null &&
+      !Number.isNaN(fractionNum) &&
+      !Number.isNaN(fractionDen) &&
+      fractionDen > 0;
+
+    const numeric = hasFraction
+      ? fractionNum! / fractionDen!
+      : parseFloat(currentText);
     const hasNumeric = !Number.isNaN(numeric);
     const lastDelta = resource.dynamicLabelLastDelta ?? 0;
 
@@ -1506,17 +1544,35 @@ function applyDynamicResourceLabelsMutable(elementsList: GraphElement[]): void {
         if (Math.abs(numeric - expected) > RESOURCE_LABEL_EPSILON) {
           resource.dynamicLabelBase = numeric;
           resource.dynamicLabelLastDelta = 0;
+          if (hasFraction) {
+            resource.dynamicLabelFractionNum = fractionNum ?? undefined;
+            resource.dynamicLabelFractionDen = fractionDen ?? undefined;
+          } else {
+            resource.dynamicLabelFractionNum = undefined;
+            resource.dynamicLabelFractionDen = undefined;
+          }
         }
       } else {
         resource.dynamicLabelBase = 0;
         resource.dynamicLabelLastDelta = 0;
+        resource.dynamicLabelFractionNum = undefined;
+        resource.dynamicLabelFractionDen = undefined;
       }
     } else {
       resource.dynamicLabelBase = hasNumeric ? numeric : 0;
       resource.dynamicLabelLastDelta = 0;
+      if (hasFraction) {
+        resource.dynamicLabelFractionNum = fractionNum ?? undefined;
+        resource.dynamicLabelFractionDen = fractionDen ?? undefined;
+      } else {
+        resource.dynamicLabelFractionNum = undefined;
+        resource.dynamicLabelFractionDen = undefined;
+      }
     }
 
     const base = resource.dynamicLabelBase ?? 0;
+    const baseFractionNum = resource.dynamicLabelFractionNum;
+    const baseFractionDen = resource.dynamicLabelFractionDen;
 
     let totalDelta = 0;
     let hasDynamicMatch = false;
@@ -1525,8 +1581,41 @@ function applyDynamicResourceLabelsMutable(elementsList: GraphElement[]): void {
       const startElement = conn.connectedToStart
         ? elementMap.get(conn.connectedToStart)
         : undefined;
+
+      const rawLabel = (conn.text ?? '').trim();
+      const lowerLabel = rawLabel.toLowerCase();
+      const isConstantNumeric =
+        !!rawLabel &&
+        !lowerLabel.includes('x') &&
+        !lowerLabel.includes('*') &&
+        /^([+-])?\s*\d+(?:\.\d+)?\s*(?:\/\s*\d+)?\s*$/.test(rawLabel);
+
+      if (isConstantNumeric && startElement) {
+        const currentStartValue = getElementValue(startElement);
+        const lastStartValue =
+          typeof conn.lastStartValue === 'number'
+            ? conn.lastStartValue
+            : undefined;
+
+        if (lastStartValue == null) {
+          conn.lastStartValue = currentStartValue;
+          continue;
+        }
+
+        const change = currentStartValue - lastStartValue;
+        conn.lastStartValue = currentStartValue;
+        if (change === 0) continue;
+
+        const { matched, delta } = evaluateDynamicResourceLabel(rawLabel);
+        if (matched && delta !== 0) {
+          totalDelta += delta * change;
+          hasDynamicMatch = true;
+        }
+        continue;
+      }
+
       const { matched, delta } = evaluateDynamicResourceLabel(
-        conn.text ?? '',
+        rawLabel,
         startElement
       );
       if (matched) {
@@ -1537,9 +1626,17 @@ function applyDynamicResourceLabelsMutable(elementsList: GraphElement[]): void {
 
     if (!hasDynamicMatch) continue;
 
-    const finalValue = sanitizeResourceLabelValue(base + totalDelta);
-    resource.text = String(finalValue);
-    resource.dynamicLabelLastDelta = finalValue - base;
+    if (baseFractionNum != null && baseFractionDen != null) {
+      const nextNum = baseFractionNum + totalDelta;
+      resource.text = `${nextNum}/${baseFractionDen}`;
+      resource.dynamicLabelLastDelta = nextNum / baseFractionDen - base;
+      resource.dynamicLabelFractionNum = nextNum;
+      resource.dynamicLabelFractionDen = baseFractionDen;
+    } else {
+      const finalValue = sanitizeResourceLabelValue(base + totalDelta);
+      resource.text = String(finalValue);
+      resource.dynamicLabelLastDelta = finalValue - base;
+    }
   }
 }
 
@@ -1787,7 +1884,7 @@ function parseConnectionLabel(label?: string): number {
     const num = parseInt(fractionMatch[1], 10);
     const den = parseInt(fractionMatch[2], 10);
     if (!isNaN(num) && !isNaN(den) && den > 0) {
-      return Math.random() < num / den ? num : 0;
+      return num / den;
     }
   }
 
@@ -4679,6 +4776,7 @@ const Canvas: React.FC<CanvasProps> = ({
             hasUnsatisfiedCondition: false,
             conditionSatisfied: undefined,
             dynamicLabelLastDelta: 0,
+            lastStartValue: undefined,
             multiplicandLastSourceValue: undefined,
           };
 
@@ -4705,8 +4803,18 @@ const Canvas: React.FC<CanvasProps> = ({
             return { ...baseReset, traderInputs: {}, traderOutputs: {} };
           if (
             el.type === 'Resource Connection' &&
-            el.dynamicLabelBase !== undefined
+            (el.dynamicLabelBase !== undefined ||
+              el.dynamicLabelFractionDen !== undefined)
           ) {
+            if (
+              el.dynamicLabelFractionNum != null &&
+              el.dynamicLabelFractionDen != null
+            ) {
+              return {
+                ...baseReset,
+                text: `${el.dynamicLabelFractionNum}/${el.dynamicLabelFractionDen}`,
+              };
+            }
             return { ...baseReset, text: String(el.dynamicLabelBase) };
           }
           return baseReset;
@@ -4792,6 +4900,7 @@ const Canvas: React.FC<CanvasProps> = ({
             hasUnsatisfiedCondition: false,
             conditionSatisfied: undefined,
             dynamicLabelLastDelta: 0,
+            lastStartValue: undefined,
             multiplicandLastSourceValue: undefined,
           };
           if (el.type === 'Pool') {
@@ -4817,8 +4926,18 @@ const Canvas: React.FC<CanvasProps> = ({
             return { ...baseReset, traderInputs: {}, traderOutputs: {} };
           if (
             el.type === 'Resource Connection' &&
-            el.dynamicLabelBase !== undefined
+            (el.dynamicLabelBase !== undefined ||
+              el.dynamicLabelFractionDen !== undefined)
           ) {
+            if (
+              el.dynamicLabelFractionNum != null &&
+              el.dynamicLabelFractionDen != null
+            ) {
+              return {
+                ...baseReset,
+                text: `${el.dynamicLabelFractionNum}/${el.dynamicLabelFractionDen}`,
+              };
+            }
             return { ...baseReset, text: String(el.dynamicLabelBase) };
           }
           return baseReset;
