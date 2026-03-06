@@ -2173,7 +2173,9 @@ const Canvas: React.FC<CanvasProps> = ({
   const [mouseDownOnCanvas, setMouseDownOnCanvas] = useState(false);
   const [justCompletedBoxSelection, setJustCompletedBoxSelection] =
     useState(false);
-  const [hoveredChartConnId, setHoveredChartConnId] = useState<number | null>(null);
+  const [hoveredChartConnId, setHoveredChartConnId] = useState<number | null>(
+    null
+  );
 
   // Resize state
   const [isResizing, setIsResizing] = useState(false);
@@ -7551,7 +7553,10 @@ const Canvas: React.FC<CanvasProps> = ({
                       const cy = startPoint.y - top;
                       const stemLen = 6;
                       const arrowSize = 6;
-                      const color = hoveredChartConnId === el.id ? '#f5a623' : el.color || '#000000';
+                      const color =
+                        hoveredChartConnId === el.id
+                          ? '#f5a623'
+                          : el.color || '#000000';
                       const lx = cx + ux * stemLen;
                       const ly = cy + uy * stemLen;
                       const tx = cx + ux * (stemLen + arrowSize);
@@ -7560,7 +7565,14 @@ const Canvas: React.FC<CanvasProps> = ({
                       const py = ux * (arrowSize / 2);
                       return (
                         <>
-                          <line x1={cx} y1={cy} x2={lx} y2={ly} stroke={color} strokeWidth={2} />
+                          <line
+                            x1={cx}
+                            y1={cy}
+                            x2={lx}
+                            y2={ly}
+                            stroke={color}
+                            strokeWidth={2}
+                          />
                           <polygon
                             points={`${tx},${ty} ${lx + px},${ly + py} ${lx - px},${ly - py}`}
                             fill={color}
@@ -7570,8 +7582,18 @@ const Canvas: React.FC<CanvasProps> = ({
                     })()}
                   </g>
                   <polygon
-                    points={getArrowPoints(endPoint, pathPoints[pathPoints.length - 2], left, top, 'end')}
-                    fill={hoveredChartConnId === el.id ? '#f5a623' : el.color || '#000000'}
+                    points={getArrowPoints(
+                      endPoint,
+                      pathPoints[pathPoints.length - 2],
+                      left,
+                      top,
+                      'end'
+                    )}
+                    fill={
+                      hoveredChartConnId === el.id
+                        ? '#f5a623'
+                        : el.color || '#000000'
+                    }
                     style={{ pointerEvents: 'auto', cursor: 'pointer' }}
                     onMouseEnter={() => setHoveredChartConnId(el.id)}
                     onMouseLeave={() => setHoveredChartConnId(null)}
