@@ -7360,8 +7360,7 @@ const Canvas: React.FC<CanvasProps> = ({
           tip: { x: number; y: number },
           from: { x: number; y: number },
           offsetLeft: number,
-          offsetTop: number,
-          _side: 'start' | 'end'
+          offsetTop: number
         ): string => {
           const dx = tip.x - from.x;
           const dy = tip.y - from.y;
@@ -7586,8 +7585,7 @@ const Canvas: React.FC<CanvasProps> = ({
                       endPoint,
                       pathPoints[pathPoints.length - 2],
                       left,
-                      top,
-                      'end'
+                      top
                     )}
                     fill={
                       hoveredChartConnId === el.id
