@@ -2173,6 +2173,9 @@ const Canvas: React.FC<CanvasProps> = ({
   const [mouseDownOnCanvas, setMouseDownOnCanvas] = useState(false);
   const [justCompletedBoxSelection, setJustCompletedBoxSelection] =
     useState(false);
+  const [hoveredChartConnId, setHoveredChartConnId] = useState<number | null>(
+    null
+  );
 
   // Resize state
   const [isResizing, setIsResizing] = useState(false);
@@ -7352,6 +7355,27 @@ const Canvas: React.FC<CanvasProps> = ({
         // Snap nodes to their edges in the direction of the next point (first waypoint or end node)
         const startIsConn = isConnectionElement(startTarget);
         const endIsConn = isConnectionElement(endTarget);
+        const isChartConnection = endTarget?.type === 'Chart';
+        const getArrowPoints = (
+          tip: { x: number; y: number },
+          from: { x: number; y: number },
+          offsetLeft: number,
+          offsetTop: number
+        ): string => {
+          const dx = tip.x - from.x;
+          const dy = tip.y - from.y;
+          const len = Math.hypot(dx, dy) || 1;
+          const ux = dx / len;
+          const uy = dy / len;
+          const size = 8;
+          const tx = tip.x - offsetLeft;
+          const ty = tip.y - offsetTop;
+          const bx = tx - ux * size;
+          const by = ty - uy * size;
+          const px = -uy * (size / 2);
+          const py = ux * (size / 2);
+          return `${tx},${ty} ${bx + px},${by + py} ${bx - px},${by - py}`;
+        };
 
         if (startTarget && endTarget && !startIsConn && !endIsConn) {
           // If there are waypoints, snap start to first waypoint; otherwise snap to end node
@@ -7488,6 +7512,7 @@ const Canvas: React.FC<CanvasProps> = ({
                     fill={el.color || '#000000'}
                     stroke={el.color || '#000000'}
                     strokeWidth="1"
+                    // opacity={isChartConnection && !isSelected ? 0 : 1}
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     className="dashed-arrow-polygon"
@@ -7501,10 +7526,82 @@ const Canvas: React.FC<CanvasProps> = ({
                 strokeWidth={isSelected ? 3 : 2}
                 strokeDasharray="5,5"
                 fill="none"
+                strokeOpacity={isChartConnection && !isSelected ? 0 : 1}
                 className={`state-connection-line ${isSelected ? 'selected' : ''}`}
                 markerEnd={`url(#arrowhead-dashed-${el.id})`}
                 style={{ pointerEvents: 'visibleStroke', cursor: 'pointer' }}
               />
+              {isChartConnection && (
+                <>
+                  <g
+                    style={{ pointerEvents: 'auto', cursor: 'pointer' }}
+                    onMouseEnter={() => setHoveredChartConnId(el.id)}
+                    onMouseLeave={() => setHoveredChartConnId(null)}
+                    onMouseDown={e => {
+                      e.stopPropagation();
+                      setSelectedId([el.id]);
+                    }}
+                  >
+                    {(() => {
+                      const dx = pathPoints[1].x - startPoint.x;
+                      const dy = pathPoints[1].y - startPoint.y;
+                      const len = Math.hypot(dx, dy) || 1;
+                      const ux = dx / len;
+                      const uy = dy / len;
+                      const cx = startPoint.x - left;
+                      const cy = startPoint.y - top;
+                      const stemLen = 6;
+                      const arrowSize = 6;
+                      const color =
+                        hoveredChartConnId === el.id
+                          ? '#f5a623'
+                          : el.color || '#000000';
+                      const lx = cx + ux * stemLen;
+                      const ly = cy + uy * stemLen;
+                      const tx = cx + ux * (stemLen + arrowSize);
+                      const ty = cy + uy * (stemLen + arrowSize);
+                      const px = -uy * (arrowSize / 2);
+                      const py = ux * (arrowSize / 2);
+                      return (
+                        <>
+                          <line
+                            x1={cx}
+                            y1={cy}
+                            x2={lx}
+                            y2={ly}
+                            stroke={color}
+                            strokeWidth={2}
+                          />
+                          <polygon
+                            points={`${tx},${ty} ${lx + px},${ly + py} ${lx - px},${ly - py}`}
+                            fill={color}
+                          />
+                        </>
+                      );
+                    })()}
+                  </g>
+                  <polygon
+                    points={getArrowPoints(
+                      endPoint,
+                      pathPoints[pathPoints.length - 2],
+                      left,
+                      top
+                    )}
+                    fill={
+                      hoveredChartConnId === el.id
+                        ? '#f5a623'
+                        : el.color || '#000000'
+                    }
+                    style={{ pointerEvents: 'auto', cursor: 'pointer' }}
+                    onMouseEnter={() => setHoveredChartConnId(el.id)}
+                    onMouseLeave={() => setHoveredChartConnId(null)}
+                    onMouseDown={e => {
+                      e.stopPropagation();
+                      setSelectedId([el.id]);
+                    }}
+                  />
+                </>
+              )}
               {el.text && el.text !== '0' && (
                 <text
                   x={labelX}
