@@ -1646,10 +1646,11 @@ function applyDynamicResourceLabelsMutable(elementsList: GraphElement[]): void {
 
     if (baseFractionNum != null && baseFractionDen != null) {
       if (shouldAccumulateChangeOnly) {
-        const prevDelta = resource.dynamicLabelLastDelta ?? 0;
         const prevNum =
-          baseFractionNum + Math.round(prevDelta * baseFractionDen);
-        const nextNum = prevNum + Math.round(totalDelta * baseFractionDen);
+          typeof resource.dynamicLabelFractionNum === 'number'
+            ? resource.dynamicLabelFractionNum
+            : baseFractionNum;
+        const nextNum = prevNum + totalDelta;
         resource.text = `${nextNum}/${baseFractionDen}`;
         resource.dynamicLabelLastDelta = nextNum / baseFractionDen - base;
         resource.dynamicLabelFractionNum = nextNum;
