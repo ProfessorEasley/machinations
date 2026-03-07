@@ -680,6 +680,10 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
       const startingValue = numAttrAny(el, ['startingValue', 'startValue']);
 
       const script = textAny(el, ['script']);
+      const chartWidth = numAttrAny(el, ['width', 'chartWidth', 'chartW']);
+      const chartHeight = numAttrAny(el, ['height', 'chartHeight', 'chartH']);
+      const chartScaleX = numAttrAny(el, ['scaleX', 'chartScaleX']);
+      const chartScaleY = numAttrAny(el, ['scaleY', 'chartScaleY']);
 
       const base: GraphElement = {
         id: assignedId,
@@ -707,6 +711,14 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
         step: type === 'Register' ? (step ?? 1) : undefined,
 
         ...(type === 'Artifical Intelligence' ? { script: script ?? '' } : {}),
+        ...(type === 'Chart'
+          ? {
+              chartWidth,
+              chartHeight,
+              chartScaleX,
+              chartScaleY,
+            }
+          : {}),
         labelPosition,
       };
 
@@ -1576,6 +1588,8 @@ function applyDynamicResourceLabelsMutable(elementsList: GraphElement[]): void {
 
     let totalDelta = 0;
     let hasDynamicMatch = false;
+    let hasChangeBasedMatch = false;
+    let hasAbsoluteMatch = false;
 
     for (const conn of related) {
       const startElement = conn.connectedToStart
@@ -1610,6 +1624,7 @@ function applyDynamicResourceLabelsMutable(elementsList: GraphElement[]): void {
         if (matched && delta !== 0) {
           totalDelta += delta * change;
           hasDynamicMatch = true;
+          hasChangeBasedMatch = true;
         }
         continue;
       }
@@ -1621,21 +1636,44 @@ function applyDynamicResourceLabelsMutable(elementsList: GraphElement[]): void {
       if (matched) {
         totalDelta += delta;
         hasDynamicMatch = true;
+        hasAbsoluteMatch = true;
       }
     }
 
     if (!hasDynamicMatch) continue;
 
+    const shouldAccumulateChangeOnly = hasChangeBasedMatch && !hasAbsoluteMatch;
+
     if (baseFractionNum != null && baseFractionDen != null) {
-      const nextNum = baseFractionNum + totalDelta;
-      resource.text = `${nextNum}/${baseFractionDen}`;
-      resource.dynamicLabelLastDelta = nextNum / baseFractionDen - base;
-      resource.dynamicLabelFractionNum = nextNum;
-      resource.dynamicLabelFractionDen = baseFractionDen;
+      if (shouldAccumulateChangeOnly) {
+        const prevDelta = resource.dynamicLabelLastDelta ?? 0;
+        const prevNum =
+          baseFractionNum + Math.round(prevDelta * baseFractionDen);
+        const nextNum = prevNum + Math.round(totalDelta * baseFractionDen);
+        resource.text = `${nextNum}/${baseFractionDen}`;
+        resource.dynamicLabelLastDelta = nextNum / baseFractionDen - base;
+        resource.dynamicLabelFractionNum = nextNum;
+        resource.dynamicLabelFractionDen = baseFractionDen;
+      } else {
+        const nextNum = baseFractionNum + totalDelta;
+        resource.text = `${nextNum}/${baseFractionDen}`;
+        resource.dynamicLabelLastDelta = nextNum / baseFractionDen - base;
+        resource.dynamicLabelFractionNum = nextNum;
+        resource.dynamicLabelFractionDen = baseFractionDen;
+      }
     } else {
-      const finalValue = sanitizeResourceLabelValue(base + totalDelta);
-      resource.text = String(finalValue);
-      resource.dynamicLabelLastDelta = finalValue - base;
+      if (shouldAccumulateChangeOnly) {
+        const prevDelta = resource.dynamicLabelLastDelta ?? 0;
+        const finalValue = sanitizeResourceLabelValue(
+          base + prevDelta + totalDelta
+        );
+        resource.text = String(finalValue);
+        resource.dynamicLabelLastDelta = finalValue - base;
+      } else {
+        const finalValue = sanitizeResourceLabelValue(base + totalDelta);
+        resource.text = String(finalValue);
+        resource.dynamicLabelLastDelta = finalValue - base;
+      }
     }
   }
 }
