@@ -5248,6 +5248,28 @@ const Canvas: React.FC<CanvasProps> = ({
         return;
       }
 
+      // Treat Charts using their full rectangular area so clicks
+      // anywhere on the chart body are considered "on" the chart.
+      if (element.type === 'Chart') {
+        const chartWidth = element.chartWidth || 200;
+        const chartHeight = element.chartHeight || 150;
+        const left = element.x;
+        const top = element.y;
+        const right = left + chartWidth;
+        const bottom = top + chartHeight;
+
+        // Distance from point to rectangle (0 if inside).
+        const dx = x < left ? left - x : x > right ? x - right : 0;
+        const dy = y < top ? top - y : y > bottom ? y - bottom : 0;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closestElement = element;
+        }
+        return;
+      }
+
       if (element.type === 'State Connection') {
         return;
       }
