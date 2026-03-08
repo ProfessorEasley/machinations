@@ -583,6 +583,7 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <>
             {fileTools.map(tool => {
               const isImport = tool.startsWith('Import');
+              const isOpen = tool.startsWith('Open');
 
               return (
                 <button
@@ -590,7 +591,7 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
                   className={selectedTool === tool ? 'selected' : ''}
                   onClick={() => {
                     setSelectedTool(tool);
-                    if (isImport) handleXmlImportClick();
+                    if (isImport || isOpen) handleXmlImportClick();
                   }}
                 >
                   {tool}
