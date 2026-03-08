@@ -353,6 +353,13 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
     []
   );
 
+  // When simulation starts, automatically switch to the Run tab
+  useEffect(() => {
+    if (isRunning) {
+      setActiveTab('Run');
+    }
+  }, [isRunning]);
+
   //edit
   // Edit operation handlers
   const handleSelectAll = useCallback(() => {

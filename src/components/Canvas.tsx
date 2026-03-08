@@ -4859,16 +4859,18 @@ const Canvas: React.FC<CanvasProps> = ({
             (el.dynamicLabelBase !== undefined ||
               el.dynamicLabelFractionDen !== undefined)
           ) {
-            if (
-              el.dynamicLabelFractionNum != null &&
-              el.dynamicLabelFractionDen != null
-            ) {
+            const base = el.dynamicLabelBase ?? 0;
+            const den = el.dynamicLabelFractionDen;
+
+            if (den != null && Number.isFinite(den) && den !== 0) {
+              const num = Math.round(base * den);
               return {
                 ...baseReset,
-                text: `${el.dynamicLabelFractionNum}/${el.dynamicLabelFractionDen}`,
+                text: `${num}/${den}`,
               };
             }
-            return { ...baseReset, text: String(el.dynamicLabelBase) };
+
+            return { ...baseReset, text: String(base) };
           }
           return baseReset;
         });
@@ -4982,16 +4984,18 @@ const Canvas: React.FC<CanvasProps> = ({
             (el.dynamicLabelBase !== undefined ||
               el.dynamicLabelFractionDen !== undefined)
           ) {
-            if (
-              el.dynamicLabelFractionNum != null &&
-              el.dynamicLabelFractionDen != null
-            ) {
+            const base = el.dynamicLabelBase ?? 0;
+            const den = el.dynamicLabelFractionDen;
+
+            if (den != null && Number.isFinite(den) && den !== 0) {
+              const num = Math.round(base * den);
               return {
                 ...baseReset,
-                text: `${el.dynamicLabelFractionNum}/${el.dynamicLabelFractionDen}`,
+                text: `${num}/${den}`,
               };
             }
-            return { ...baseReset, text: String(el.dynamicLabelBase) };
+
+            return { ...baseReset, text: String(base) };
           }
           return baseReset;
         })
