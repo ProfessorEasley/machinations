@@ -353,6 +353,13 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
     []
   );
 
+  // When simulation starts, automatically switch to the Run tab
+  useEffect(() => {
+    if (isRunning) {
+      setActiveTab('Run');
+    }
+  }, [isRunning]);
+
   //edit
   // Edit operation handlers
   const handleSelectAll = useCallback(() => {
@@ -583,6 +590,7 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <>
             {fileTools.map(tool => {
               const isImport = tool.startsWith('Import');
+              const isOpen = tool.startsWith('Open');
 
               return (
                 <button
@@ -590,7 +598,7 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
                   className={selectedTool === tool ? 'selected' : ''}
                   onClick={() => {
                     setSelectedTool(tool);
-                    if (isImport) handleXmlImportClick();
+                    if (isImport || isOpen) handleXmlImportClick();
                   }}
                 >
                   {tool}

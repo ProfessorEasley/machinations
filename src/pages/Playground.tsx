@@ -512,7 +512,7 @@ const Playground: React.FC = () => {
             selectedElements={getSelectedElements()}
             allElements={elements}
             isRunning={isRunning}
-            disabled={isRunning}
+            disabled={false}
             runType={runType}
             onRunClick={handleRunClick}
             onMultipleRunClick={handleMultipleRunClick}
