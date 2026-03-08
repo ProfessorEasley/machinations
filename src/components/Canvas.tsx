@@ -209,6 +209,9 @@ interface GraphElement {
   step?: number;
   currentValue?: number;
 
+  // Delay-specific properties
+  queue?: boolean;
+
   // endCondition-specific properties
   isBlinking?: boolean;
 
@@ -2151,29 +2154,6 @@ const Canvas: React.FC<CanvasProps> = ({
   const elements = externalElements ?? internalElements;
   const selectedId = externalSelectedIds ?? internalSelectedIds;
 
-  // Keep the latest elements in a ref so we can use them in stable callbacks
-  const elementsRef = useRef<GraphElement[]>(elements);
-
-  useEffect(() => {
-    elementsRef.current = elements;
-  }, [elements]);
-
-  // const setElements = useCallback(
-  //   (
-  //     newElements: GraphElement[] | ((prev: GraphElement[]) => GraphElement[])
-  //   ) => {
-  //     const updatedElements =
-  //       typeof newElements === 'function' ? newElements(elements) : newElements;
-
-  //     if (onElementsChange) {
-  //       onElementsChange(updatedElements);
-  //     } else {
-  //       setInternalElements(updatedElements);
-  //     }
-  //   },
-  //   [elements, onElementsChange]
-  // );
-
   const setSelectedId = useCallback(
     (newSelection: number[] | ((prev: number[]) => number[])) => {
       const updatedSelection =
@@ -2189,6 +2169,37 @@ const Canvas: React.FC<CanvasProps> = ({
     },
     [selectedId, onSelectionChange]
   );
+
+  // Keep the latest elements in a ref so we can use them in stable callbacks
+  const elementsRef = useRef<GraphElement[]>(elements);
+
+  useEffect(() => {
+    elementsRef.current = elements;
+  }, [elements]);
+
+  // Track previous elements to auto-select newly added element
+  const prevElementsForSelectionRef = useRef<GraphElement[]>(elements);
+
+  useEffect(() => {
+    const prev = prevElementsForSelectionRef.current;
+
+    // Only react when elements have been added (not removed/modified)
+    if (!isRunning && elements.length > prev.length) {
+      const prevIds = new Set(prev.map(e => e.id));
+      const newlyAdded = elements.filter(el => !prevIds.has(el.id));
+
+      if (newlyAdded.length > 0) {
+        // Heuristic: pick the element with the highest id among the new ones
+        const latest = newlyAdded.reduce(
+          (acc, el) => (el.id > acc.id ? el : acc),
+          newlyAdded[0]
+        );
+        setSelectedId([latest.id]);
+      }
+    }
+
+    prevElementsForSelectionRef.current = elements;
+  }, [elements, isRunning, setSelectedId]);
 
   const [hasSimulationStarted, setHasSimulationStarted] = useState(false);
   const [dragOffset, setDragOffset] = useState<{ x: number; y: number } | null>(
@@ -5524,56 +5535,71 @@ const Canvas: React.FC<CanvasProps> = ({
       const defaultScaleX = chartProps?.scaleX ?? 0;
       const defaultScaleY = chartProps?.scaleY ?? 0;
 
-      setElements(prev => [
-        ...prev,
-        {
-          id,
-          type,
-          x,
-          y,
-          color: chartProps?.color || '#000000',
-          thickness: chartProps?.thickness || 2,
-          text: chartProps?.text || '',
-          labelPosition: 0,
-          chartWidth: 200,
-          chartHeight: 150,
-          chartScaleX: defaultScaleX,
-          chartScaleY: defaultScaleY,
-          chartState: createInitialChartState(defaultScaleX, defaultScaleY),
-        },
-      ]);
+      const newChart: GraphElement = {
+        id,
+        type,
+        x,
+        y,
+        color: chartProps?.color || '#000000',
+        thickness: chartProps?.thickness || 2,
+        text: chartProps?.text || '',
+        labelPosition: 0,
+        chartWidth: 200,
+        chartHeight: 150,
+        chartScaleX: defaultScaleX,
+        chartScaleY: defaultScaleY,
+        chartState: createInitialChartState(defaultScaleX, defaultScaleY),
+      };
+
+      setElements(prev => [...prev, newChart]);
       setSelectedId([id]);
+      if (onElementSelection) {
+        onElementSelection(newChart);
+      }
+      if (onToolChange) {
+        onToolChange('Select');
+      }
       return;
     }
 
     if (type === 'Text Label') {
-      setElements(prev => [
-        ...prev,
-        {
-          id,
-          type,
-          x,
-          y,
-          text: toolProperties?.textLabel?.text || '',
-          color: toolProperties?.textLabel?.color || '#000000',
-        },
-      ]);
+      const newLabel: GraphElement = {
+        id,
+        type,
+        x,
+        y,
+        text: toolProperties?.textLabel?.text || '',
+        color: toolProperties?.textLabel?.color || '#000000',
+      };
+
+      setElements(prev => [...prev, newLabel]);
       setSelectedId([id]);
+      if (onElementSelection) {
+        onElementSelection(newLabel);
+      }
+      if (onToolChange) {
+        onToolChange('Select');
+      }
     } else if (type === 'Group') {
-      setElements(prev => [
-        ...prev,
-        {
-          id,
-          type,
-          x,
-          y,
-          width: 200,
-          height: 150,
-          text: toolProperties?.group?.text || '',
-          color: toolProperties?.group?.color || '#000000',
-        },
-      ]);
+      const newGroup: GraphElement = {
+        id,
+        type,
+        x,
+        y,
+        width: 200,
+        height: 150,
+        text: toolProperties?.group?.text || '',
+        color: toolProperties?.group?.color || '#000000',
+      };
+
+      setElements(prev => [...prev, newGroup]);
       setSelectedId([id]);
+      if (onElementSelection) {
+        onElementSelection(newGroup);
+      }
+      if (onToolChange) {
+        onToolChange('Select');
+      }
     } else if (type === 'Pool') {
       const poolProps = toolProperties?.pool;
       const startingPoints =
@@ -5582,29 +5608,34 @@ const Canvas: React.FC<CanvasProps> = ({
           : poolProps?.number || 0;
       const maxPoints = poolProps?.max;
 
-      setElements(prev => [
-        ...prev,
-        {
-          id,
-          type,
-          x,
-          y,
-          color: poolProps?.color,
-          thickness: poolProps?.thickness,
-          text: poolProps?.text,
-          labelPosition: 0,
-          activation: poolProps?.activation,
-          pullMode: poolProps?.pullMode,
-          resources: poolProps?.resources,
-          displayLimit: poolProps?.displayLimit,
-          max: maxPoints,
-          number: startingPoints,
-          currentPoints: maxPoints
-            ? Math.min(startingPoints, maxPoints)
-            : startingPoints,
-        },
-      ]);
+      const newPool: GraphElement = {
+        id,
+        type,
+        x,
+        y,
+        color: poolProps?.color,
+        thickness: poolProps?.thickness,
+        text: poolProps?.text,
+        labelPosition: 0,
+        activation: poolProps?.activation,
+        pullMode: poolProps?.pullMode,
+        resources: poolProps?.resources,
+        displayLimit: poolProps?.displayLimit,
+        max: maxPoints,
+        number: startingPoints,
+        currentPoints: maxPoints
+          ? Math.min(startingPoints, maxPoints)
+          : startingPoints,
+      };
+
+      setElements(prev => [...prev, newPool]);
       setSelectedId([id]);
+      if (onElementSelection) {
+        onElementSelection(newPool);
+      }
+      if (onToolChange) {
+        onToolChange('Select');
+      }
     } else if (type === 'Resource Connection' || type === 'State Connection') {
       setIsCreatingConnection(true);
       const startPoint = { x, y };
@@ -5612,173 +5643,218 @@ const Canvas: React.FC<CanvasProps> = ({
       setConnectionPoints([startPoint]);
       setConnectionPreviewPoint(startPoint);
     } else if (type === 'Source') {
-      setElements(prev => [
-        ...prev,
-        {
-          id,
-          type,
-          x,
-          y,
-          ...toolProperties?.source,
-          // Use the 'text' (Label) field for starting points
-          currentPoints: parseInt(toolProperties?.source?.text || '0', 10),
-        },
-      ]);
+      const newSource: GraphElement = {
+        id,
+        type,
+        x,
+        y,
+        ...toolProperties?.source,
+        // Use the 'text' (Label) field for starting points
+        currentPoints: parseInt(toolProperties?.source?.text || '0', 10),
+      };
+
+      setElements(prev => [...prev, newSource]);
       setSelectedId([id]);
+      if (onElementSelection) {
+        onElementSelection(newSource);
+      }
+      if (onToolChange) {
+        onToolChange('Select');
+      }
     } else if (type === 'Gate') {
-      setElements(prev => [
-        ...prev,
-        {
-          id,
-          type,
-          x,
-          y,
-          color: toolProperties?.gate?.color,
-          thickness: toolProperties?.gate?.thickness,
-          text: toolProperties?.gate?.text,
-          labelPosition: 0,
-          activation: toolProperties?.gate?.activation,
-          actions: toolProperties?.gate?.actions,
-          pullMode: toolProperties?.gate?.pullMode,
-          gateType: toolProperties?.gate?.type,
-        },
-      ]);
+      const newGate: GraphElement = {
+        id,
+        type,
+        x,
+        y,
+        color: toolProperties?.gate?.color,
+        thickness: toolProperties?.gate?.thickness,
+        text: toolProperties?.gate?.text,
+        labelPosition: 0,
+        activation: toolProperties?.gate?.activation,
+        actions: toolProperties?.gate?.actions,
+        pullMode: toolProperties?.gate?.pullMode,
+        gateType: toolProperties?.gate?.type,
+      };
+
+      setElements(prev => [...prev, newGate]);
       setSelectedId([id]);
+      if (onElementSelection) {
+        onElementSelection(newGate);
+      }
+      if (onToolChange) {
+        onToolChange('Select');
+      }
     } else if (type === 'Drain') {
-      setElements(prev => [
-        ...prev,
-        {
-          id,
-          type,
-          x,
-          y,
-          color: toolProperties?.drain?.color,
-          thickness: toolProperties?.drain?.thickness,
-          text: toolProperties?.drain?.text,
-          labelPosition: 0,
-          activation: toolProperties?.drain?.activation,
-          actions: toolProperties?.drain?.actions,
-          pullMode: toolProperties?.drain?.pullMode,
-        },
-      ]);
+      const newDrain: GraphElement = {
+        id,
+        type,
+        x,
+        y,
+        color: toolProperties?.drain?.color,
+        thickness: toolProperties?.drain?.thickness,
+        text: toolProperties?.drain?.text,
+        labelPosition: 0,
+        activation: toolProperties?.drain?.activation,
+        actions: toolProperties?.drain?.actions,
+        pullMode: toolProperties?.drain?.pullMode,
+      };
+
+      setElements(prev => [...prev, newDrain]);
       setSelectedId([id]);
+      if (onElementSelection) {
+        onElementSelection(newDrain);
+      }
+      if (onToolChange) {
+        onToolChange('Select');
+      }
     } else if (type === 'Convertor') {
-      setElements(prev => [
-        ...prev,
-        {
-          id,
-          type,
-          x,
-          y,
-          color: toolProperties?.convertor?.color,
-          thickness: toolProperties?.convertor?.thickness,
-          text: toolProperties?.convertor?.text,
-          labelPosition: 0,
-          activation: toolProperties?.convertor?.activation,
-          actions: toolProperties?.convertor?.actions,
-          pullMode: toolProperties?.convertor?.pullMode,
-          resources: toolProperties?.convertor?.resources,
-        },
-      ]);
+      const newConvertor: GraphElement = {
+        id,
+        type,
+        x,
+        y,
+        color: toolProperties?.convertor?.color,
+        thickness: toolProperties?.convertor?.thickness,
+        text: toolProperties?.convertor?.text,
+        labelPosition: 0,
+        activation: toolProperties?.convertor?.activation,
+        actions: toolProperties?.convertor?.actions,
+        pullMode: toolProperties?.convertor?.pullMode,
+        resources: toolProperties?.convertor?.resources,
+      };
+
+      setElements(prev => [...prev, newConvertor]);
       setSelectedId([id]);
+      if (onElementSelection) {
+        onElementSelection(newConvertor);
+      }
+      if (onToolChange) {
+        onToolChange('Select');
+      }
     } else if (type === 'Trader') {
-      setElements(prev => [
-        ...prev,
-        {
-          id,
-          type,
-          x,
-          y,
-          color: toolProperties?.trader?.color,
-          thickness: toolProperties?.trader?.thickness,
-          text: toolProperties?.trader?.text,
-          labelPosition: 0,
-          activation: toolProperties?.trader?.activation,
-          actions: toolProperties?.trader?.actions,
-          pullMode: toolProperties?.trader?.pullMode,
-          resources: toolProperties?.trader?.resources,
-        },
-      ]);
+      const newTrader: GraphElement = {
+        id,
+        type,
+        x,
+        y,
+        color: toolProperties?.trader?.color,
+        thickness: toolProperties?.trader?.thickness,
+        text: toolProperties?.trader?.text,
+        labelPosition: 0,
+        activation: toolProperties?.trader?.activation,
+        actions: toolProperties?.trader?.actions,
+        pullMode: toolProperties?.trader?.pullMode,
+        resources: toolProperties?.trader?.resources,
+      };
+
+      setElements(prev => [...prev, newTrader]);
       setSelectedId([id]);
+      if (onElementSelection) {
+        onElementSelection(newTrader);
+      }
+      if (onToolChange) {
+        onToolChange('Select');
+      }
     } else if (type === 'Delay') {
-      setElements(prev => [
-        ...prev,
-        {
-          id,
-          type,
-          x,
-          y,
-          color: toolProperties?.delay?.color,
-          thickness: toolProperties?.delay?.thickness,
-          text: toolProperties?.delay?.text,
-          labelPosition: 0,
-          activation: toolProperties?.delay?.activation,
-          actions: toolProperties?.delay?.actions,
-          queue: toolProperties?.delay?.queue,
-        },
-      ]);
+      const newDelay: GraphElement = {
+        id,
+        type,
+        x,
+        y,
+        color: toolProperties?.delay?.color,
+        thickness: toolProperties?.delay?.thickness,
+        text: toolProperties?.delay?.text,
+        labelPosition: 0,
+        activation: toolProperties?.delay?.activation,
+        actions: toolProperties?.delay?.actions,
+        queue: toolProperties?.delay?.queue,
+      };
+
+      setElements(prev => [...prev, newDelay]);
       setSelectedId([id]);
+      if (onElementSelection) {
+        onElementSelection(newDelay);
+      }
+      if (onToolChange) {
+        onToolChange('Select');
+      }
     } else if (type === 'Register') {
       const interactive = toolProperties?.register?.interactive ?? false;
       const startingValue = toolProperties?.register?.startingValue ?? 0;
 
-      setElements(prev => [
-        ...prev,
-        {
-          id,
-          type,
-          x,
-          y,
-          color: toolProperties?.register?.color,
-          thickness: toolProperties?.register?.thickness,
-          formula: toolProperties?.register?.formula || '',
-          minValue: toolProperties?.register?.minValue ?? -9999,
-          maxValue: toolProperties?.register?.maxValue ?? 9999,
-          interactive: interactive,
-          startingValue: startingValue,
-          step: toolProperties?.register?.step ?? 1,
-          currentValue: interactive ? startingValue : 0,
-          labelPosition: 0,
-        },
-      ]);
+      const newRegister: GraphElement = {
+        id,
+        type,
+        x,
+        y,
+        color: toolProperties?.register?.color,
+        thickness: toolProperties?.register?.thickness,
+        formula: toolProperties?.register?.formula || '',
+        minValue: toolProperties?.register?.minValue ?? -9999,
+        maxValue: toolProperties?.register?.maxValue ?? 9999,
+        interactive: interactive,
+        startingValue: startingValue,
+        step: toolProperties?.register?.step ?? 1,
+        currentValue: interactive ? startingValue : 0,
+        labelPosition: 0,
+      };
+
+      setElements(prev => [...prev, newRegister]);
       setSelectedId([id]);
+      if (onElementSelection) {
+        onElementSelection(newRegister);
+      }
+      if (onToolChange) {
+        onToolChange('Select');
+      }
     } else if (type === 'End Condition') {
-      setElements(prev => [
-        ...prev,
-        {
-          id,
-          type,
-          x,
-          y,
-          color: toolProperties?.endCondition?.color,
-          thickness: toolProperties?.endCondition?.thickness,
-          text: toolProperties?.endCondition?.text,
-          labelPosition: 0,
-          actions: toolProperties?.endCondition?.actions,
-          pullMode: toolProperties?.endCondition?.pullMode,
-          inhibited: true,
-          isBlinking: false,
-        },
-      ]);
+      const newEndCondition: GraphElement = {
+        id,
+        type,
+        x,
+        y,
+        color: toolProperties?.endCondition?.color,
+        thickness: toolProperties?.endCondition?.thickness,
+        text: toolProperties?.endCondition?.text,
+        labelPosition: 0,
+        actions: toolProperties?.endCondition?.actions,
+        pullMode: toolProperties?.endCondition?.pullMode,
+        inhibited: true,
+        isBlinking: false,
+      };
+
+      setElements(prev => [...prev, newEndCondition]);
       setSelectedId([id]);
+      if (onElementSelection) {
+        onElementSelection(newEndCondition);
+      }
+      if (onToolChange) {
+        onToolChange('Select');
+      }
     } else if (type === 'Artifical Intelligence') {
-      setElements(prev => [
-        ...prev,
-        {
-          id,
-          type,
-          x,
-          y,
-          color: toolProperties?.artificialIntelligence?.color,
-          thickness: toolProperties?.artificialIntelligence?.thickness,
-          text: toolProperties?.artificialIntelligence?.text,
-          labelPosition: 0,
-          activation: toolProperties?.artificialIntelligence?.activation,
-          actions: toolProperties?.artificialIntelligence?.actions,
-          script: toolProperties?.artificialIntelligence?.script,
-        },
-      ]);
+      const newAi: GraphElement = {
+        id,
+        type,
+        x,
+        y,
+        color: toolProperties?.artificialIntelligence?.color,
+        thickness: toolProperties?.artificialIntelligence?.thickness,
+        text: toolProperties?.artificialIntelligence?.text,
+        labelPosition: 0,
+        activation: toolProperties?.artificialIntelligence?.activation,
+        actions: toolProperties?.artificialIntelligence?.actions,
+        script: toolProperties?.artificialIntelligence?.script,
+      };
+
+      setElements(prev => [...prev, newAi]);
       setSelectedId([id]);
+      if (onElementSelection) {
+        onElementSelection(newAi);
+      }
+      if (onToolChange) {
+        onToolChange('Select');
+      }
     } else {
       setElements(prev => [...prev, { id, type, x, y }]);
       setSelectedId([id]);
@@ -5905,11 +5981,18 @@ const Canvas: React.FC<CanvasProps> = ({
 
     setElements(prev => [...prev, newConnection]);
     setSelectedId([id]);
+    if (onElementSelection) {
+      onElementSelection(newConnection);
+    }
 
     setIsCreatingConnection(false);
     setConnectionType(null);
     setConnectionPoints([]);
     setConnectionPreviewPoint(null);
+
+    if (onToolChange) {
+      onToolChange('Select');
+    }
   };
 
   const handleCanvasDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
