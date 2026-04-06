@@ -342,6 +342,9 @@ const Playground: React.FC = () => {
 
   useEffect(() => {
     const handleGameEnd = () => {
+      // During multiple runs the Canvas manages run sequencing internally,
+      // so we skip freezing the board between individual runs.
+      if (runType === 'multiple') return;
       console.log('🎊 Game ended!');
       setGameEnded(true);
     };
@@ -351,7 +354,7 @@ const Playground: React.FC = () => {
     return () => {
       document.removeEventListener('game-end', handleGameEnd as EventListener);
     };
-  }, []);
+  }, [runType]);
 
   const handleRunClick = () => {
     if (!isRunning) {
@@ -429,6 +432,11 @@ const Playground: React.FC = () => {
     setElements(resetElements);
   };
 
+  // Called by Canvas when a Quick Run or Multiple Runs finishes.
+  const handleSimulationComplete = () => {
+    handleReset();
+  };
+
   const handleElementUpdate = (
     elementId: number,
     updates: Partial<GraphElement>
@@ -493,6 +501,10 @@ const Playground: React.FC = () => {
           <div className="grid-canvas">
             <Canvas
               isRunning={isRunning && !gameEnded}
+              runType={runType}
+              numRuns={numRuns}
+              visibleRuns={visibleRuns}
+              onSimulationComplete={handleSimulationComplete}
               selectedTool={selectedTool}
               elements={elements}
               selectedElementIds={selectedElementIds}
