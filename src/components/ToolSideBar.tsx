@@ -203,6 +203,10 @@ interface ToolSideBarProps {
     };
   };
   isRunning: boolean;
+  numRuns?: number;
+  visibleRuns?: number;
+  onNumRunsChange?: (n: number) => void;
+  onVisibleRunsChange?: (n: number) => void;
   onRunClick: () => void;
   onToolPropertiesChange?: (
     toolType: string,
@@ -304,6 +308,10 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
   onToolPropertiesChange,
   isRunning,
   runType,
+  numRuns = 100,
+  visibleRuns = 25,
+  onNumRunsChange,
+  onVisibleRunsChange,
   onRunClick,
   onMultipleRunClick,
   onReset,
@@ -639,10 +647,30 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
             {!isRunning && (
               <>
                 <label>
-                  Runs <input type="number" defaultValue={100} />
+                  Runs{' '}
+                  <input
+                    type="number"
+                    min={1}
+                    value={numRuns}
+                    onChange={e =>
+                      onNumRunsChange?.(
+                        Math.max(1, parseInt(e.target.value) || 1)
+                      )
+                    }
+                  />
                 </label>
                 <label>
-                  Visible Runs <input type="number" defaultValue={25} />
+                  Visible Runs{' '}
+                  <input
+                    type="number"
+                    min={1}
+                    value={visibleRuns}
+                    onChange={e =>
+                      onVisibleRunsChange?.(
+                        Math.max(1, parseInt(e.target.value) || 1)
+                      )
+                    }
+                  />
                 </label>
               </>
             )}

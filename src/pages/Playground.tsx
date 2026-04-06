@@ -74,6 +74,8 @@ interface GraphElement {
 const Playground: React.FC = () => {
   const [isRunning, setIsRunning] = useState(false);
   const [runType, setRunType] = useState<'quick' | 'multiple' | null>(null);
+  const [numRuns, setNumRuns] = useState(100);
+  const [visibleRuns, setVisibleRuns] = useState(25);
 
   const [gameEnded, setGameEnded] = useState(false);
 
@@ -514,6 +516,10 @@ const Playground: React.FC = () => {
             isRunning={isRunning}
             disabled={false}
             runType={runType}
+            numRuns={numRuns}
+            visibleRuns={visibleRuns}
+            onNumRunsChange={setNumRuns}
+            onVisibleRunsChange={setVisibleRuns}
             onRunClick={handleRunClick}
             onMultipleRunClick={handleMultipleRunClick}
             onReset={handleReset}
