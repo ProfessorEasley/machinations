@@ -4855,15 +4855,21 @@ const Canvas: React.FC<CanvasProps> = ({
         // Multiple Runs: execute N full simulations back-to-back, accumulating
         // chart data across runs. Chart elements preserve their chartState between
         // runs; all other elements reset to their configured initial values.
-        // setTimeout(runNext, 0) yields to the UI thread between runs so the
-        // canvas can re-render each run's result before the next begins.
+        // All runs operate on an in-memory local variable to avoid calling
+        // useHistory.setState on every run — rapid calls corrupt the history array
+        // via stale currentIndex when setTimeout fires before React commits.
+        // setElementsRef is called only once at the end with the final state.
         // =======================================================================
         currentRunRef.current = 0;
         multipleRunsAbortRef.current = false;
 
+        // elementsRef.current is always fresh (synced via useEffect at line 2184)
+        let runEls = elementsRef.current.map(el => ({ ...el }));
+
         const runNext = () => {
           if (multipleRunsAbortRef.current) return;
           if (currentRunRef.current >= (numRunsRef.current ?? 100)) {
+            setElementsRef.current(runEls); // commit all accumulated chart data once
             gameEndedRef.current = true;
             onSimulationCompleteRef.current?.();
             return;
@@ -4876,86 +4882,75 @@ const Canvas: React.FC<CanvasProps> = ({
             (window as unknown as CustomWindow).__GAME_ENDED__ = false;
           }
 
-          setElementsRef.current(prev => {
-            const resetElements = prev.map(el => {
-              const baseReset = {
-                ...el,
-                hasStarted: false,
-                triggerCount: 0,
-                hasUnsatisfiedCondition: false,
-                conditionSatisfied: undefined,
-                dynamicLabelLastDelta: 0,
-                lastStartValue: undefined,
-                multiplicandLastSourceValue: undefined,
+          // Soft reset: restore element initial values, preserve Chart chartState
+          runEls = runEls.map(el => {
+            const baseReset = {
+              ...el,
+              hasStarted: false,
+              triggerCount: 0,
+              hasUnsatisfiedCondition: false,
+              conditionSatisfied: undefined,
+              dynamicLabelLastDelta: 0,
+              lastStartValue: undefined,
+              multiplicandLastSourceValue: undefined,
+            };
+
+            if (el.type === 'Pool') {
+              const startVal =
+                typeof el.number === 'string'
+                  ? parseInt(el.number) || 0
+                  : el.number || 0;
+              const c = normalizeColor(el.color);
+              const initialResources = startVal > 0 ? { [c]: startVal } : {};
+              return {
+                ...baseReset,
+                currentPoints: startVal,
+                resourcesByColor: initialResources,
               };
-
-              if (el.type === 'Pool') {
-                const startVal =
-                  typeof el.number === 'string'
-                    ? parseInt(el.number) || 0
-                    : el.number || 0;
-                const c = normalizeColor(el.color);
-                const initialResources = startVal > 0 ? { [c]: startVal } : {};
-                return {
-                  ...baseReset,
-                  currentPoints: startVal,
-                  resourcesByColor: initialResources,
-                };
-              }
-              if (el.type === 'Register')
-                return { ...baseReset, currentValue: el.startingValue || 0 };
-              if (el.type === 'End Condition')
-                return { ...baseReset, inhibited: true, isBlinking: false };
-              if (el.type === 'Convertor')
-                return {
-                  ...baseReset,
-                  inputResources: {},
-                  outputResources: {},
-                };
-              if (el.type === 'Trader')
-                return { ...baseReset, traderInputs: {}, traderOutputs: {} };
-              if (
-                el.type === 'Resource Connection' &&
-                (el.dynamicLabelBase !== undefined ||
-                  el.dynamicLabelFractionDen !== undefined)
-              ) {
-                const base = el.dynamicLabelBase ?? 0;
-                const den = el.dynamicLabelFractionDen;
-
-                if (den != null && Number.isFinite(den) && den !== 0) {
-                  const num = Math.round(base * den);
-                  return {
-                    ...baseReset,
-                    text: `${num}/${den}`,
-                  };
-                }
-
-                return { ...baseReset, text: String(base) };
-              }
-              return baseReset;
-            });
-
-            const { nextElements: afterOnstart } = runSimulationRef.current(
-              resetElements,
-              'onstart'
-            );
-
-            let els = afterOnstart;
-            for (let tick = 0; tick < QUICK_RUN_MAX_TICKS; tick++) {
-              if (
-                gameEndedRef.current ||
-                (window as unknown as CustomWindow).__GAME_ENDED__
-              )
-                break;
-              const { nextElements } = runSimulationRef.current(
-                els,
-                'automatic'
-              );
-              els = nextElements;
             }
-
-            return els;
+            if (el.type === 'Register')
+              return { ...baseReset, currentValue: el.startingValue || 0 };
+            if (el.type === 'End Condition')
+              return { ...baseReset, inhibited: true, isBlinking: false };
+            if (el.type === 'Convertor')
+              return { ...baseReset, inputResources: {}, outputResources: {} };
+            if (el.type === 'Trader')
+              return { ...baseReset, traderInputs: {}, traderOutputs: {} };
+            if (
+              el.type === 'Resource Connection' &&
+              (el.dynamicLabelBase !== undefined ||
+                el.dynamicLabelFractionDen !== undefined)
+            ) {
+              const base = el.dynamicLabelBase ?? 0;
+              const den = el.dynamicLabelFractionDen;
+              if (den != null && Number.isFinite(den) && den !== 0)
+                return {
+                  ...baseReset,
+                  text: `${Math.round(base * den)}/${den}`,
+                };
+              return { ...baseReset, text: String(base) };
+            }
+            return baseReset;
           });
+
+          const { nextElements: afterOnstart } = runSimulationRef.current(
+            runEls,
+            'onstart'
+          );
+          runEls = afterOnstart;
+
+          for (let tick = 0; tick < QUICK_RUN_MAX_TICKS; tick++) {
+            if (
+              gameEndedRef.current ||
+              (window as unknown as CustomWindow).__GAME_ENDED__
+            )
+              break;
+            const { nextElements } = runSimulationRef.current(
+              runEls,
+              'automatic'
+            );
+            runEls = nextElements;
+          }
 
           currentRunRef.current += 1;
           setTimeout(runNext, 0);
