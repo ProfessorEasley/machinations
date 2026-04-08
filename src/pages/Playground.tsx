@@ -433,8 +433,12 @@ const Playground: React.FC = () => {
   };
 
   // Called by Canvas when a Quick Run or Multiple Runs finishes.
+  // Only stops the simulation — Canvas already froze the board via gameEndedRef,
+  // so Block A will reset on the next run start.
   const handleSimulationComplete = () => {
-    handleReset();
+    setIsRunning(false);
+    setRunType(null);
+    setGameEnded(false);
   };
 
   const handleElementUpdate = (

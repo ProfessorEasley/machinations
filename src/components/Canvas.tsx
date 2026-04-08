@@ -4859,6 +4859,7 @@ const Canvas: React.FC<CanvasProps> = ({
         const runNext = () => {
           if (multipleRunsAbortRef.current) return;
           if (currentRunRef.current >= (numRunsRef.current ?? 100)) {
+            gameEndedRef.current = true;
             onSimulationCompleteRef.current?.();
             return;
           }
@@ -5033,6 +5034,7 @@ const Canvas: React.FC<CanvasProps> = ({
               );
               els = nextElements;
             }
+            gameEndedRef.current = true;
             setTimeout(() => onSimulationCompleteRef.current?.(), 0);
             return els;
           }
