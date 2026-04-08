@@ -2279,9 +2279,9 @@ const Canvas: React.FC<CanvasProps> = ({
   useEffect(() => {
     // Whenever the tool changes (e.g., from 'Select' to 'Pool'), clears selection.
     if (selectedTool !== 'Select') {
-      setSelectedId([]);
+      setSelectedIdRef.current([]);
     }
-  }, [selectedTool, setSelectedId]);
+  }, [selectedTool]);
 
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -4139,6 +4139,7 @@ const Canvas: React.FC<CanvasProps> = ({
   const setElementsRef = useRef(setElements);
   const spawnMovingTokensRef = useRef(spawnMovingTokens);
   const runSimulationRef = useRef(runSimulationAndCollectTransfers);
+  const setSelectedIdRef = useRef(setSelectedId);
   const runTypeRef = useRef(runType);
   const numRunsRef = useRef(numRuns);
   const onSimulationCompleteRef = useRef(onSimulationComplete);
@@ -4156,6 +4157,10 @@ const Canvas: React.FC<CanvasProps> = ({
   useEffect(() => {
     runSimulationRef.current = runSimulationAndCollectTransfers;
   }, [runSimulationAndCollectTransfers]);
+
+  useEffect(() => {
+    setSelectedIdRef.current = setSelectedId;
+  }, [setSelectedId]);
 
   useEffect(() => {
     runTypeRef.current = runType;
