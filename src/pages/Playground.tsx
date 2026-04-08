@@ -380,56 +380,10 @@ const Playground: React.FC = () => {
   };
 
   const handleReset = () => {
-    // Stop the simulation
     setIsRunning(false);
     setRunType(null);
     setGameEnded(false);
-    // Keep runType so we know which button to show when running again
-
-    // Reset all elements to initial state
-    const resetElements = elements.map((el: GraphElement) => {
-      const reset: Partial<GraphElement> = {
-        hasStarted: false,
-        triggerCount: 0,
-        lastGateValue: undefined,
-      };
-
-      // Reset Pool resources to starting value
-      if (el.type === 'Pool') {
-        reset.currentPoints = el.number ?? 0;
-      }
-
-      // Reset Register to starting value
-      if (el.type === 'Register') {
-        if (el.interactive === true || el.interactive === 'true') {
-          reset.currentValue = el.startingValue || 0;
-        } else {
-          reset.currentValue = 0;
-        }
-      }
-
-      // Reset EndCondition state
-      if (el.type === 'End Condition') {
-        reset.inhibited = true;
-        reset.isBlinking = false;
-      }
-
-      // Clear stored resources in Converter and Trader
-      if (el.type === 'Convertor') {
-        reset.inputResources = {};
-        reset.outputResources = {};
-        reset.conversionRate = {};
-      }
-
-      if (el.type === 'Trader') {
-        reset.traderInputs = {};
-        reset.traderOutputs = {};
-      }
-
-      return { ...el, ...reset };
-    });
-
-    setElements(resetElements);
+    // Canvas Block C owns the full board reset when isRunning flips to false
   };
 
   // Called by Canvas when a Quick Run or Multiple Runs finishes.
