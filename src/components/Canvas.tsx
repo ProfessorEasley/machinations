@@ -143,7 +143,13 @@ interface CanvasProps {
       scaleY: number;
     };
   };
+  runType?: 'quick' | 'multiple' | null;
+  numRuns?: number;
+  visibleRuns?: number;
+  onSimulationComplete?: () => void;
 }
+
+const QUICK_RUN_MAX_TICKS = 500;
 
 interface CustomWindow extends Window {
   __GAME_ENDED__?: boolean;
@@ -2137,6 +2143,9 @@ function chooseGateOutputs(
 
 const Canvas: React.FC<CanvasProps> = ({
   isRunning,
+  runType,
+  visibleRuns,
+  onSimulationComplete,
   selectedTool,
   elements: externalElements,
   selectedElementIds: externalSelectedIds,
@@ -4129,6 +4138,8 @@ const Canvas: React.FC<CanvasProps> = ({
   const setElementsRef = useRef(setElements);
   const spawnMovingTokensRef = useRef(spawnMovingTokens);
   const runSimulationRef = useRef(runSimulationAndCollectTransfers);
+  const runTypeRef = useRef(runType);
+  const onSimulationCompleteRef = useRef(onSimulationComplete);
 
   useEffect(() => {
     setElementsRef.current = setElements;
@@ -4141,6 +4152,14 @@ const Canvas: React.FC<CanvasProps> = ({
   useEffect(() => {
     runSimulationRef.current = runSimulationAndCollectTransfers;
   }, [runSimulationAndCollectTransfers]);
+
+  useEffect(() => {
+    runTypeRef.current = runType;
+  }, [runType]);
+
+  useEffect(() => {
+    onSimulationCompleteRef.current = onSimulationComplete;
+  }, [onSimulationComplete]);
 
   // Helper function to collect resources for Pull Any mode
   // const collectResourcesForPullAny = (
@@ -4876,19 +4895,34 @@ const Canvas: React.FC<CanvasProps> = ({
         });
 
         // 2. Run the "OnStart" tick immediately on the clean elements
-        const { nextElements, transfers } = runSimulationRef.current(
-          resetElements,
-          'onstart'
-        );
-        if (transfers.length)
-          spawnMovingTokensRef.current(transfers, nextElements);
+        const { nextElements: afterOnstart, transfers: onstartTransfers } =
+          runSimulationRef.current(resetElements, 'onstart');
 
-        return nextElements;
+        // Quick Run: skip animations, run all ticks synchronously, return final state
+        if (runTypeRef.current === 'quick') {
+          let els = afterOnstart;
+          for (let tick = 0; tick < QUICK_RUN_MAX_TICKS; tick++) {
+            if (
+              gameEndedRef.current ||
+              (window as unknown as CustomWindow).__GAME_ENDED__
+            )
+              break;
+            const { nextElements } = runSimulationRef.current(els, 'automatic');
+            els = nextElements;
+          }
+          setTimeout(() => onSimulationCompleteRef.current?.(), 0);
+          return els;
+        }
+
+        if (onstartTransfers.length)
+          spawnMovingTokensRef.current(onstartTransfers, afterOnstart);
+
+        return afterOnstart;
       });
     }
 
     // B. While the simulation is running:
-    if (isRunning) {
+    if (isRunning && runTypeRef.current !== 'quick') {
       // 2. Start the timer for all "Automatic" actions.
       simulationInterval = setInterval(() => {
         // ✅ FREEZE LOGIC: If game ended, do NOT update elements, do NOT spawn tokens.
@@ -7832,7 +7866,7 @@ const Canvas: React.FC<CanvasProps> = ({
               chartState={chartState}
               isSelected={isSelected}
               isRunning={isRunning}
-              visibleRuns={25}
+              visibleRuns={visibleRuns ?? 25}
               selectableClass={selectableClass}
               applyConditionStyle={applyConditionStyle}
               onMouseDown={e => {
