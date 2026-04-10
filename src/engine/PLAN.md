@@ -6,9 +6,9 @@ Extract simulation logic from `Canvas.tsx` (~8k lines) into standalone headless 
 
 | Step | File | Status |
 |------|------|--------|
-| 1 | `types.ts` | [pending] |
-| 2 | `helpers.ts` | Pending |
-| 3 | `reset.ts` | Pending |
+| 1 | `types.ts` | Done |
+| 2 | `helpers.ts` | Done |
+| 3 | `reset.ts` | Done |
 | 4 | `tick.ts` | Pending |
 | 5 | `simulationLoop.ts` | Pending |
 | 6 | `runner.ts` | Pending |
@@ -16,7 +16,7 @@ Extract simulation logic from `Canvas.tsx` (~8k lines) into standalone headless 
 | 8 | `__tests__/tick.test.ts`, `runner.test.ts` | Pending |
 | 9 | Seeded RNG (future) | Pending |
 
-## Step 1: Types (pending)
+## Step 1: Types (done)
 
 `types.ts` -- `GraphElement`, `GraphElementType`, `ResourceTransfer`, `FractionalDispatchState`, `LabelKind`, `TickOptions`, `TickResult`, `SimulationEvent`. Canvas.tsx imports from here.
 
