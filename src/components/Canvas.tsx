@@ -143,7 +143,13 @@ interface CanvasProps {
       scaleY: number;
     };
   };
+  runType?: 'quick' | 'multiple' | null;
+  numRuns?: number;
+  visibleRuns?: number;
+  onSimulationComplete?: () => void;
 }
+
+const QUICK_RUN_MAX_TICKS = 500;
 
 interface CustomWindow extends Window {
   __GAME_ENDED__?: boolean;
@@ -2137,6 +2143,10 @@ function chooseGateOutputs(
 
 const Canvas: React.FC<CanvasProps> = ({
   isRunning,
+  runType,
+  numRuns,
+  visibleRuns,
+  onSimulationComplete,
   selectedTool,
   elements: externalElements,
   selectedElementIds: externalSelectedIds,
@@ -2269,9 +2279,9 @@ const Canvas: React.FC<CanvasProps> = ({
   useEffect(() => {
     // Whenever the tool changes (e.g., from 'Select' to 'Pool'), clears selection.
     if (selectedTool !== 'Select') {
-      setSelectedId([]);
+      setSelectedIdRef.current([]);
     }
-  }, [selectedTool, setSelectedId]);
+  }, [selectedTool]);
 
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -4129,6 +4139,12 @@ const Canvas: React.FC<CanvasProps> = ({
   const setElementsRef = useRef(setElements);
   const spawnMovingTokensRef = useRef(spawnMovingTokens);
   const runSimulationRef = useRef(runSimulationAndCollectTransfers);
+  const setSelectedIdRef = useRef(setSelectedId);
+  const runTypeRef = useRef(runType);
+  const numRunsRef = useRef(numRuns);
+  const onSimulationCompleteRef = useRef(onSimulationComplete);
+  const currentRunRef = useRef(0);
+  const multipleRunsAbortRef = useRef(false);
 
   useEffect(() => {
     setElementsRef.current = setElements;
@@ -4141,6 +4157,22 @@ const Canvas: React.FC<CanvasProps> = ({
   useEffect(() => {
     runSimulationRef.current = runSimulationAndCollectTransfers;
   }, [runSimulationAndCollectTransfers]);
+
+  useEffect(() => {
+    setSelectedIdRef.current = setSelectedId;
+  }, [setSelectedId]);
+
+  useEffect(() => {
+    runTypeRef.current = runType;
+  }, [runType]);
+
+  useEffect(() => {
+    numRunsRef.current = numRuns;
+  }, [numRuns]);
+
+  useEffect(() => {
+    onSimulationCompleteRef.current = onSimulationComplete;
+  }, [onSimulationComplete]);
 
   // Helper function to collect resources for Pull Any mode
   // const collectResourcesForPullAny = (
@@ -4818,77 +4850,209 @@ const Canvas: React.FC<CanvasProps> = ({
       fractionalDispatchRef.current.clear();
       currentTickRef.current = 0;
 
-      // 1. FORCE RESET ELEMENTS (Clean slate before starting)
-      // This handles the case where we "Froze" the board on the previous Game Over
-      setElementsRef.current(prev => {
-        const resetElements = prev.map(el => {
-          const baseReset = {
-            ...el,
-            hasStarted: false,
-            triggerCount: 0,
-            hasUnsatisfiedCondition: false,
-            conditionSatisfied: undefined,
-            dynamicLabelLastDelta: 0,
-            lastStartValue: undefined,
-            multiplicandLastSourceValue: undefined,
-          };
+      if (runTypeRef.current === 'multiple') {
+        // =======================================================================
+        // Multiple Runs: execute N full simulations back-to-back, accumulating
+        // chart data across runs. Chart elements preserve their chartState between
+        // runs; all other elements reset to their configured initial values.
+        // All runs operate on an in-memory local variable to avoid calling
+        // useHistory.setState on every run — rapid calls corrupt the history array
+        // via stale currentIndex when setTimeout fires before React commits.
+        // setElementsRef is called only once at the end with the final state.
+        // =======================================================================
+        currentRunRef.current = 0;
+        multipleRunsAbortRef.current = false;
 
-          if (el.type === 'Pool') {
-            const startVal =
-              typeof el.number === 'string'
-                ? parseInt(el.number) || 0
-                : el.number || 0;
-            const c = normalizeColor(el.color);
-            const initialResources = startVal > 0 ? { [c]: startVal } : {};
-            return {
-              ...baseReset,
-              currentPoints: startVal,
-              resourcesByColor: initialResources,
-            };
+        // elementsRef.current is always fresh (synced via useEffect at line 2184)
+        let runEls = elementsRef.current.map(el => ({ ...el }));
+
+        const runNext = () => {
+          if (multipleRunsAbortRef.current) return;
+          if (currentRunRef.current >= (numRunsRef.current ?? 100)) {
+            setElementsRef.current(runEls); // commit all accumulated chart data once
+            gameEndedRef.current = true;
+            onSimulationCompleteRef.current?.();
+            return;
           }
-          if (el.type === 'Register')
-            return { ...baseReset, currentValue: el.startingValue || 0 };
-          if (el.type === 'End Condition')
-            return { ...baseReset, inhibited: true, isBlinking: false };
-          if (el.type === 'Convertor')
-            return { ...baseReset, inputResources: {}, outputResources: {} };
-          if (el.type === 'Trader')
-            return { ...baseReset, traderInputs: {}, traderOutputs: {} };
-          if (
-            el.type === 'Resource Connection' &&
-            (el.dynamicLabelBase !== undefined ||
-              el.dynamicLabelFractionDen !== undefined)
-          ) {
-            const base = el.dynamicLabelBase ?? 0;
-            const den = el.dynamicLabelFractionDen;
 
-            if (den != null && Number.isFinite(den) && den !== 0) {
-              const num = Math.round(base * den);
+          fractionalDispatchRef.current.clear();
+          currentTickRef.current = 0;
+          gameEndedRef.current = false;
+          if (typeof window !== 'undefined') {
+            (window as unknown as CustomWindow).__GAME_ENDED__ = false;
+          }
+
+          // Soft reset: restore element initial values, preserve Chart chartState
+          runEls = runEls.map(el => {
+            const baseReset = {
+              ...el,
+              hasStarted: false,
+              triggerCount: 0,
+              hasUnsatisfiedCondition: false,
+              conditionSatisfied: undefined,
+              dynamicLabelLastDelta: 0,
+              lastStartValue: undefined,
+              multiplicandLastSourceValue: undefined,
+            };
+
+            if (el.type === 'Pool') {
+              const startVal =
+                typeof el.number === 'string'
+                  ? parseInt(el.number) || 0
+                  : el.number || 0;
+              const c = normalizeColor(el.color);
+              const initialResources = startVal > 0 ? { [c]: startVal } : {};
               return {
                 ...baseReset,
-                text: `${num}/${den}`,
+                currentPoints: startVal,
+                resourcesByColor: initialResources,
               };
             }
+            if (el.type === 'Register')
+              return { ...baseReset, currentValue: el.startingValue || 0 };
+            if (el.type === 'End Condition')
+              return { ...baseReset, inhibited: true, isBlinking: false };
+            if (el.type === 'Convertor')
+              return { ...baseReset, inputResources: {}, outputResources: {} };
+            if (el.type === 'Trader')
+              return { ...baseReset, traderInputs: {}, traderOutputs: {} };
+            if (
+              el.type === 'Resource Connection' &&
+              (el.dynamicLabelBase !== undefined ||
+                el.dynamicLabelFractionDen !== undefined)
+            ) {
+              const base = el.dynamicLabelBase ?? 0;
+              const den = el.dynamicLabelFractionDen;
+              if (den != null && Number.isFinite(den) && den !== 0)
+                return {
+                  ...baseReset,
+                  text: `${Math.round(base * den)}/${den}`,
+                };
+              return { ...baseReset, text: String(base) };
+            }
+            return baseReset;
+          });
 
-            return { ...baseReset, text: String(base) };
+          const { nextElements: afterOnstart } = runSimulationRef.current(
+            runEls,
+            'onstart'
+          );
+          runEls = afterOnstart;
+
+          for (let tick = 0; tick < QUICK_RUN_MAX_TICKS; tick++) {
+            if (
+              gameEndedRef.current ||
+              (window as unknown as CustomWindow).__GAME_ENDED__
+            )
+              break;
+            const { nextElements } = runSimulationRef.current(
+              runEls,
+              'automatic'
+            );
+            runEls = nextElements;
           }
-          return baseReset;
+
+          currentRunRef.current += 1;
+          setTimeout(runNext, 0);
+        };
+
+        runNext();
+      } else {
+        // 1. FORCE RESET ELEMENTS (Clean slate before starting)
+        // This handles the case where we "Froze" the board on the previous Game Over
+        setElementsRef.current(prev => {
+          const resetElements = prev.map(el => {
+            const baseReset = {
+              ...el,
+              hasStarted: false,
+              triggerCount: 0,
+              hasUnsatisfiedCondition: false,
+              conditionSatisfied: undefined,
+              dynamicLabelLastDelta: 0,
+              lastStartValue: undefined,
+              multiplicandLastSourceValue: undefined,
+            };
+
+            if (el.type === 'Pool') {
+              const startVal =
+                typeof el.number === 'string'
+                  ? parseInt(el.number) || 0
+                  : el.number || 0;
+              const c = normalizeColor(el.color);
+              const initialResources = startVal > 0 ? { [c]: startVal } : {};
+              return {
+                ...baseReset,
+                currentPoints: startVal,
+                resourcesByColor: initialResources,
+              };
+            }
+            if (el.type === 'Register')
+              return { ...baseReset, currentValue: el.startingValue || 0 };
+            if (el.type === 'End Condition')
+              return { ...baseReset, inhibited: true, isBlinking: false };
+            if (el.type === 'Convertor')
+              return { ...baseReset, inputResources: {}, outputResources: {} };
+            if (el.type === 'Trader')
+              return { ...baseReset, traderInputs: {}, traderOutputs: {} };
+            if (
+              el.type === 'Resource Connection' &&
+              (el.dynamicLabelBase !== undefined ||
+                el.dynamicLabelFractionDen !== undefined)
+            ) {
+              const base = el.dynamicLabelBase ?? 0;
+              const den = el.dynamicLabelFractionDen;
+
+              if (den != null && Number.isFinite(den) && den !== 0) {
+                const num = Math.round(base * den);
+                return {
+                  ...baseReset,
+                  text: `${num}/${den}`,
+                };
+              }
+
+              return { ...baseReset, text: String(base) };
+            }
+            return baseReset;
+          });
+
+          // 2. Run the "OnStart" tick immediately on the clean elements
+          const { nextElements: afterOnstart, transfers: onstartTransfers } =
+            runSimulationRef.current(resetElements, 'onstart');
+
+          // Quick Run: skip animations, run all ticks synchronously, return final state
+          if (runTypeRef.current === 'quick') {
+            let els = afterOnstart;
+            for (let tick = 0; tick < QUICK_RUN_MAX_TICKS; tick++) {
+              if (
+                gameEndedRef.current ||
+                (window as unknown as CustomWindow).__GAME_ENDED__
+              )
+                break;
+              const { nextElements } = runSimulationRef.current(
+                els,
+                'automatic'
+              );
+              els = nextElements;
+            }
+            gameEndedRef.current = true;
+            setTimeout(() => onSimulationCompleteRef.current?.(), 0);
+            return els;
+          }
+
+          if (onstartTransfers.length)
+            spawnMovingTokensRef.current(onstartTransfers, afterOnstart);
+
+          return afterOnstart;
         });
-
-        // 2. Run the "OnStart" tick immediately on the clean elements
-        const { nextElements, transfers } = runSimulationRef.current(
-          resetElements,
-          'onstart'
-        );
-        if (transfers.length)
-          spawnMovingTokensRef.current(transfers, nextElements);
-
-        return nextElements;
-      });
+      }
     }
 
-    // B. While the simulation is running:
-    if (isRunning) {
+    // B. While the simulation is running (animated play mode only):
+    if (
+      isRunning &&
+      runTypeRef.current !== 'quick' &&
+      runTypeRef.current !== 'multiple'
+    ) {
       // 2. Start the timer for all "Automatic" actions.
       simulationInterval = setInterval(() => {
         // ✅ FREEZE LOGIC: If game ended, do NOT update elements, do NOT spawn tokens.
@@ -4927,6 +5091,7 @@ const Canvas: React.FC<CanvasProps> = ({
     if (!isRunning && hasSimulationStarted) {
       console.log('--- Stopped ---');
       setHasSimulationStarted(false);
+      multipleRunsAbortRef.current = true;
 
       // ✅ VITAL FIX:
       // If the game ended due to Victory, DO NOT RESET the board.
@@ -7832,7 +7997,7 @@ const Canvas: React.FC<CanvasProps> = ({
               chartState={chartState}
               isSelected={isSelected}
               isRunning={isRunning}
-              visibleRuns={25}
+              visibleRuns={visibleRuns ?? 25}
               selectableClass={selectableClass}
               applyConditionStyle={applyConditionStyle}
               onMouseDown={e => {

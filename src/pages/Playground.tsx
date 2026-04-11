@@ -74,6 +74,8 @@ interface GraphElement {
 const Playground: React.FC = () => {
   const [isRunning, setIsRunning] = useState(false);
   const [runType, setRunType] = useState<'quick' | 'multiple' | null>(null);
+  const [numRuns, setNumRuns] = useState(100);
+  const [visibleRuns, setVisibleRuns] = useState(25);
 
   const [gameEnded, setGameEnded] = useState(false);
 
@@ -340,6 +342,9 @@ const Playground: React.FC = () => {
 
   useEffect(() => {
     const handleGameEnd = () => {
+      // During multiple runs the Canvas manages run sequencing internally,
+      // so we skip freezing the board between individual runs.
+      if (runType === 'multiple') return;
       console.log('🎊 Game ended!');
       setGameEnded(true);
     };
@@ -349,7 +354,7 @@ const Playground: React.FC = () => {
     return () => {
       document.removeEventListener('game-end', handleGameEnd as EventListener);
     };
-  }, []);
+  }, [runType]);
 
   const handleRunClick = () => {
     if (!isRunning) {
@@ -375,56 +380,19 @@ const Playground: React.FC = () => {
   };
 
   const handleReset = () => {
-    // Stop the simulation
     setIsRunning(false);
     setRunType(null);
     setGameEnded(false);
-    // Keep runType so we know which button to show when running again
+    // Canvas Block C owns the full board reset when isRunning flips to false
+  };
 
-    // Reset all elements to initial state
-    const resetElements = elements.map((el: GraphElement) => {
-      const reset: Partial<GraphElement> = {
-        hasStarted: false,
-        triggerCount: 0,
-        lastGateValue: undefined,
-      };
-
-      // Reset Pool resources to starting value
-      if (el.type === 'Pool') {
-        reset.currentPoints = el.number ?? 0;
-      }
-
-      // Reset Register to starting value
-      if (el.type === 'Register') {
-        if (el.interactive === true || el.interactive === 'true') {
-          reset.currentValue = el.startingValue || 0;
-        } else {
-          reset.currentValue = 0;
-        }
-      }
-
-      // Reset EndCondition state
-      if (el.type === 'End Condition') {
-        reset.inhibited = true;
-        reset.isBlinking = false;
-      }
-
-      // Clear stored resources in Converter and Trader
-      if (el.type === 'Convertor') {
-        reset.inputResources = {};
-        reset.outputResources = {};
-        reset.conversionRate = {};
-      }
-
-      if (el.type === 'Trader') {
-        reset.traderInputs = {};
-        reset.traderOutputs = {};
-      }
-
-      return { ...el, ...reset };
-    });
-
-    setElements(resetElements);
+  // Called by Canvas when a Quick Run or Multiple Runs finishes.
+  // Only stops the simulation — Canvas already froze the board via gameEndedRef,
+  // so Block A will reset on the next run start.
+  const handleSimulationComplete = () => {
+    setIsRunning(false);
+    setRunType(null);
+    setGameEnded(false);
   };
 
   const handleElementUpdate = (
@@ -491,6 +459,10 @@ const Playground: React.FC = () => {
           <div className="grid-canvas">
             <Canvas
               isRunning={isRunning && !gameEnded}
+              runType={runType}
+              numRuns={numRuns}
+              visibleRuns={visibleRuns}
+              onSimulationComplete={handleSimulationComplete}
               selectedTool={selectedTool}
               elements={elements}
               selectedElementIds={selectedElementIds}
@@ -514,6 +486,10 @@ const Playground: React.FC = () => {
             isRunning={isRunning}
             disabled={false}
             runType={runType}
+            numRuns={numRuns}
+            visibleRuns={visibleRuns}
+            onNumRunsChange={setNumRuns}
+            onVisibleRunsChange={setVisibleRuns}
             onRunClick={handleRunClick}
             onMultipleRunClick={handleMultipleRunClick}
             onReset={handleReset}
