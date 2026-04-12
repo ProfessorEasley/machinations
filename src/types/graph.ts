@@ -47,6 +47,13 @@ export interface GraphElement {
   startingValue?: number;
   step?: number;
   currentValue?: number;
+  // Convertor / Trader (simulation wallets — persisted in XML)
+  inputResources?: Record<string, number>;
+  outputResources?: Record<string, number>;
+  conversionRate?: Record<string, number>;
+  traderInputs?: Record<string, number>;
+  traderOutputs?: Record<string, number>;
+  isIncompleteTrader?: boolean;
 }
 
 export interface GraphMetadata {

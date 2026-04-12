@@ -477,6 +477,32 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
             break;
         }
       }
+
+      if (!isCtrlOrCmd && activeTab === 'File') {
+        switch (event.key.toLowerCase()) {
+          case 'n':
+            event.preventDefault();
+            document.dispatchEvent(new CustomEvent('canvas-new-document'));
+            break;
+          case 's':
+            event.preventDefault();
+            document.dispatchEvent(new CustomEvent('canvas-save-xml'));
+            break;
+          case 'e':
+            event.preventDefault();
+            document.dispatchEvent(
+              new CustomEvent('canvas-export-selection-xml', {
+                detail: { elements: selectedElements },
+              })
+            );
+            break;
+          case 'g':
+            event.preventDefault();
+            document.dispatchEvent(new CustomEvent('canvas-export-svg'));
+            break;
+        }
+      }
+
       if (event.key === 'Delete' && canDelete) {
         event.preventDefault();
         handleDelete();
@@ -492,6 +518,7 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
     canDelete,
     canUndo,
     canRedo,
+    selectedElements,
     handleSelectAll,
     handleCopy,
     handlePaste,
@@ -599,6 +626,10 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
             {fileTools.map(tool => {
               const isImport = tool.startsWith('Import');
               const isOpen = tool.startsWith('Open');
+              const isNew = tool.startsWith('New');
+              const isSave = tool.startsWith('Save (');
+              const isExportSel = tool.startsWith('Export Selection');
+              const isSaveSvg = tool.startsWith('Save as SVG');
 
               return (
                 <button
@@ -607,6 +638,25 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
                   onClick={() => {
                     setSelectedTool(tool);
                     if (isImport || isOpen) handleXmlImportClick();
+                    else if (isNew) {
+                      document.dispatchEvent(
+                        new CustomEvent('canvas-new-document')
+                      );
+                    } else if (isSave) {
+                      document.dispatchEvent(
+                        new CustomEvent('canvas-save-xml')
+                      );
+                    } else if (isExportSel) {
+                      document.dispatchEvent(
+                        new CustomEvent('canvas-export-selection-xml', {
+                          detail: { elements: selectedElements },
+                        })
+                      );
+                    } else if (isSaveSvg) {
+                      document.dispatchEvent(
+                        new CustomEvent('canvas-export-svg')
+                      );
+                    }
                   }}
                 >
                   {tool}

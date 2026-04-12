@@ -11,6 +11,18 @@ import {
   autoExpandNegScaleY,
 } from '../utils/ChartUtils';
 import './Chart.css';
+import {
+  serializeGraphElementsToXml,
+  downloadTextFile,
+  type XmlSerializeElement,
+} from '../utils/graphXmlSerialize';
+import { exportGraphToSvgString } from '../utils/graphSvgExport';
+import {
+  getElementSize,
+  getResourcePolylineWorldPoints,
+  getLabelPointForConnection,
+  getStateConnectionWorldPath,
+} from '../utils/canvasElementGeometry';
 
 interface CanvasProps {
   isRunning: boolean;
@@ -751,6 +763,49 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
         base.isBlinking = false;
       }
 
+      if (type === 'Convertor' || type === 'Trader') {
+        const walletEl = el.querySelector('walletData');
+        const raw = walletEl?.textContent?.trim();
+        if (raw) {
+          try {
+            const data = JSON.parse(raw) as Record<string, unknown>;
+            const asNumRecord = (
+              v: unknown
+            ): Record<string, number> | undefined => {
+              if (!v || typeof v !== 'object' || Array.isArray(v))
+                return undefined;
+              const o = v as Record<string, unknown>;
+              const out: Record<string, number> = {};
+              for (const [k, val] of Object.entries(o)) {
+                const n = Number(val);
+                if (Number.isFinite(n)) out[k] = n;
+              }
+              return Object.keys(out).length ? out : undefined;
+            };
+            if (type === 'Convertor') {
+              const ir = asNumRecord(data.inputResources);
+              const or = asNumRecord(data.outputResources);
+              const cr = asNumRecord(data.conversionRate);
+              if (ir) base.inputResources = ir;
+              if (or) base.outputResources = or;
+              if (cr) base.conversionRate = cr;
+            } else {
+              const ti = asNumRecord(data.traderInputs);
+              const to = asNumRecord(data.traderOutputs);
+              if (ti) base.traderInputs = ti;
+              if (to) base.traderOutputs = to;
+              if (typeof data.isIncompleteTrader === 'boolean') {
+                base.isIncompleteTrader = data.isIncompleteTrader;
+              }
+            }
+          } catch {
+            warnings.push(
+              `Node ${assignedId}: walletData is not valid JSON; wallet maps ignored.`
+            );
+          }
+        }
+      }
+
       nodeElements.push(base);
 
       addNodeKey(String(nodeOrdinal), assignedId);
@@ -1202,94 +1257,6 @@ const getPointOnPolylineAtT = (
 
   const last = segments[segments.length - 1];
   return last.end;
-};
-
-const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
-
-const getPointAndNormalOnPolylineAtT = (
-  points: { x: number; y: number }[],
-  t: number
-): { point: { x: number; y: number }; normal: { x: number; y: number } } => {
-  if (points.length < 2) {
-    const p = points[0] ?? { x: 0, y: 0 };
-    return { point: p, normal: { x: 0, y: -1 } };
-  }
-
-  const clampedT = clamp01(t);
-
-  let totalLength = 0;
-  const segments: Array<{
-    start: { x: number; y: number };
-    end: { x: number; y: number };
-    length: number;
-  }> = [];
-
-  for (let i = 0; i < points.length - 1; i++) {
-    const a = points[i];
-    const b = points[i + 1];
-    const len = Math.hypot(b.x - a.x, b.y - a.y);
-    if (len === 0) continue;
-    segments.push({ start: a, end: b, length: len });
-    totalLength += len;
-  }
-
-  if (segments.length === 0) {
-    return { point: points[0], normal: { x: 0, y: -1 } };
-  }
-
-  const target = clampedT * totalLength;
-  let traversed = 0;
-
-  for (const seg of segments) {
-    if (traversed + seg.length >= target) {
-      const remaining = target - traversed;
-      const localT = seg.length === 0 ? 0 : remaining / seg.length;
-
-      const dx = seg.end.x - seg.start.x;
-      const dy = seg.end.y - seg.start.y;
-      const len = Math.hypot(dx, dy) || 1;
-
-      const dir = { x: dx / len, y: dy / len };
-      const normal = { x: -dir.y, y: dir.x };
-
-      return {
-        point: {
-          x: seg.start.x + dx * localT,
-          y: seg.start.y + dy * localT,
-        },
-        normal,
-      };
-    }
-    traversed += seg.length;
-  }
-
-  // fallback to end
-  const last = segments[segments.length - 1];
-  const dx = last.end.x - last.start.x;
-  const dy = last.end.y - last.start.y;
-  const len = Math.hypot(dx, dy) || 1;
-  const dir = { x: dx / len, y: dy / len };
-  const normal = { x: -dir.y, y: dir.x };
-
-  return { point: last.end, normal };
-};
-
-const getLabelPointForConnection = (
-  polyline: { x: number; y: number }[],
-  labelPosition?: number,
-  offsetPx = 16
-) => {
-  const pos =
-    labelPosition == null ? 0.5 : Math.max(-1, Math.min(1, labelPosition));
-  const side = pos < 0 ? -1 : 1; // which side of the line
-  const t = clamp01(Math.abs(pos)); // 0..1 along the line start->end
-
-  const { point, normal } = getPointAndNormalOnPolylineAtT(polyline, t);
-
-  return {
-    x: point.x + normal.x * offsetPx * side,
-    y: point.y + normal.y * offsetPx * side,
-  };
 };
 
 /** Get canvas position for a node's label. labelPosition 0 = bottom, 0.25 = right, 0.5 = top, 0.75 = left. */
@@ -2297,47 +2264,6 @@ const Canvas: React.FC<CanvasProps> = ({
   );
   const currentTickRef = useRef(0);
 
-  const getResourcePolylinePointsForConnection = (
-    resource: GraphElement,
-    elementsSnapshot: GraphElement[]
-  ) => {
-    const startNode = elementsSnapshot.find(
-      node => node.id === resource.connectedToStart
-    );
-    const endNode = elementsSnapshot.find(
-      node => node.id === resource.connectedToEnd
-    );
-
-    let startPoint = {
-      x: resource.startX ?? resource.x,
-      y: resource.startY ?? resource.y,
-    };
-    let endPoint = {
-      x: resource.endX ?? resource.x,
-      y: resource.endY ?? resource.y,
-    };
-
-    if (startNode && endNode) {
-      const startTargetPoint =
-        resource.points && resource.points.length > 0
-          ? resource.points[0]
-          : { x: endNode.x, y: endNode.y };
-      const endTargetPoint =
-        resource.points && resource.points.length > 0
-          ? resource.points[resource.points.length - 1]
-          : { x: startNode.x, y: startNode.y };
-
-      startPoint = snapNodeToEdgeInDirection(startNode, startTargetPoint);
-      endPoint = snapNodeToEdgeInDirection(endNode, endTargetPoint);
-    } else if (startNode) {
-      startPoint = { x: startNode.x, y: startNode.y };
-    } else if (endNode) {
-      endPoint = { x: endNode.x, y: endNode.y };
-    }
-
-    return [startPoint, ...(resource.points ?? []), endPoint];
-  };
-
   const spawnMovingTokens = useCallback(
     (transfers: ResourceTransfer[], elementsSnapshot: GraphElement[]) => {
       const tokensToAdd: MovingToken[] = [];
@@ -2349,7 +2275,7 @@ const Canvas: React.FC<CanvasProps> = ({
         if (!conn) continue;
 
         // Full polyline for this connection (start + points + end)
-        const basePolyline = getResourcePolylinePointsForConnection(
+        const basePolyline = getResourcePolylineWorldPoints(
           conn,
           elementsSnapshot
         );
@@ -2591,6 +2517,36 @@ const Canvas: React.FC<CanvasProps> = ({
     [setElements, setSelectedId]
   );
 
+  const resetCanvasForNewDocument = useCallback(() => {
+    setMovingTokens([]);
+    setGameEnded(false);
+    gameEndedRef.current = false;
+    fractionalDispatchRef.current.clear();
+    currentTickRef.current = 0;
+    nextIdRef.current = 0;
+    setPasteCount(0);
+    setIsCreatingConnection(false);
+    setConnectionType(null);
+    setConnectionPoints([]);
+    setConnectionPreviewPoint(null);
+    setDraggingWaypoint(null);
+    setDraggedElements(null);
+    setIsSelectingBox(false);
+    setBoxStart(null);
+    setBoxEnd(null);
+    setMouseDownOnCanvas(false);
+    setDraggingId(null);
+    setDragOffset(null);
+    setDraggingLabelElementId(null);
+    setIsResizing(false);
+    setResizingId(null);
+    setResizeHandle(null);
+    setHoveredChartConnId(null);
+    setHasSimulationStarted(false);
+    setXmlImportError(null);
+    setSelectedId([]);
+  }, [setSelectedId]);
+
   const handleXmlFileChosen = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       try {
@@ -2643,6 +2599,49 @@ const Canvas: React.FC<CanvasProps> = ({
       );
     };
   }, [openXmlPicker, importXmlText]);
+
+  useEffect(() => {
+    const onNew = () => {
+      resetCanvasForNewDocument();
+    };
+
+    const onSaveXml = () => {
+      const els = elementsRef.current as XmlSerializeElement[];
+      const xml = serializeGraphElementsToXml(els);
+      downloadTextFile('diagram.xml', xml, 'application/xml;charset=utf-8');
+    };
+
+    const onExportSelectionXml = (ev: Event) => {
+      const ce = ev as CustomEvent<{ elements?: XmlSerializeElement[] }>;
+      const sel = ce.detail?.elements ?? [];
+      const xml = sel.length ? serializeGraphElementsToXml(sel) : '';
+      downloadTextFile('selection.txt', xml, 'text/plain;charset=utf-8');
+    };
+
+    const onExportSvg = () => {
+      const els = elementsRef.current as XmlSerializeElement[];
+      const svg = exportGraphToSvgString(els);
+      downloadTextFile('diagram.svg', svg, 'image/svg+xml;charset=utf-8');
+    };
+
+    document.addEventListener('canvas-new-document', onNew);
+    document.addEventListener('canvas-save-xml', onSaveXml);
+    document.addEventListener(
+      'canvas-export-selection-xml',
+      onExportSelectionXml as EventListener
+    );
+    document.addEventListener('canvas-export-svg', onExportSvg);
+
+    return () => {
+      document.removeEventListener('canvas-new-document', onNew);
+      document.removeEventListener('canvas-save-xml', onSaveXml);
+      document.removeEventListener(
+        'canvas-export-selection-xml',
+        onExportSelectionXml as EventListener
+      );
+      document.removeEventListener('canvas-export-svg', onExportSvg);
+    };
+  }, [resetCanvasForNewDocument]);
 
   const applyStateConnectionDelta = (
     target: GraphElement,
@@ -5415,10 +5414,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
       if (element.type === 'Resource Connection') {
         if (!includeConnections) return;
-        const polyline = getResourcePolylinePointsForConnection(
-          element,
-          elements
-        );
+        const polyline = getResourcePolylineWorldPoints(element, elements);
         if (polyline.length < 2) return;
         const { distance } = getClosestPointOnPolyline({ x, y }, polyline);
         if (distance < closestDistance) {
@@ -5547,76 +5543,6 @@ const Canvas: React.FC<CanvasProps> = ({
     }
 
     return { x: connectionX, y: connectionY };
-  };
-
-  // Helper function to snap a node's center to its edge in the direction of another point
-  const snapNodeToEdgeInDirection = (
-    node: GraphElement,
-    targetPoint: { x: number; y: number }
-  ): { x: number; y: number } => {
-    const nodeCenter = { x: node.x, y: node.y };
-
-    // Get node size
-    let nodeWidth: number;
-    let nodeHeight: number;
-    if (node.type === 'Group') {
-      nodeWidth = node.width || 200;
-      nodeHeight = node.height || 150;
-    } else {
-      const size = getElementSize(node.thickness);
-      nodeWidth = size;
-      nodeHeight = size;
-    }
-
-    const offsetX = nodeWidth / 2;
-    const offsetY = nodeHeight / 2;
-    const left = node.x - offsetX;
-    const right = node.x + offsetX;
-    const top = node.y - offsetY;
-    const bottom = node.y + offsetY;
-
-    // Calculate direction from node center to target point
-    const dx = targetPoint.x - nodeCenter.x;
-    const dy = targetPoint.y - nodeCenter.y;
-    const distance = Math.hypot(dx, dy);
-
-    if (distance === 0) {
-      // If target is at same position, return node center
-      return nodeCenter;
-    }
-
-    // Normalize direction
-    const dirX = dx / distance;
-    const dirY = dy / distance;
-
-    // Find intersection of ray from node center in direction of target with node edges
-    // Calculate t values where ray intersects each edge
-    const tLeft =
-      offsetX > 0 ? (left - nodeCenter.x) / (dirX || 1e-10) : Infinity;
-    const tRight =
-      offsetX > 0 ? (right - nodeCenter.x) / (dirX || 1e-10) : Infinity;
-    const tTop =
-      offsetY > 0 ? (top - nodeCenter.y) / (dirY || 1e-10) : Infinity;
-    const tBottom =
-      offsetY > 0 ? (bottom - nodeCenter.y) / (dirY || 1e-10) : Infinity;
-
-    // Find the closest positive t (intersection in direction of target)
-    const validTs = [
-      dirX > 0 ? tRight : tLeft,
-      dirY > 0 ? tBottom : tTop,
-    ].filter(t => t > 0);
-
-    const t = Math.min(...validTs);
-
-    if (!isFinite(t)) {
-      return nodeCenter;
-    }
-
-    // Calculate intersection point
-    const intersectionX = nodeCenter.x + dirX * t;
-    const intersectionY = nodeCenter.y + dirY * t;
-
-    return { x: intersectionX, y: intersectionY };
   };
 
   // const normalizeVector = (
@@ -6106,10 +6032,7 @@ const Canvas: React.FC<CanvasProps> = ({
       }
       if (index === pointsSequence.length - 1 && endElement) {
         if (endElement.type === 'Resource Connection') {
-          const polyline = getResourcePolylinePointsForConnection(
-            endElement,
-            elements
-          );
+          const polyline = getResourcePolylineWorldPoints(endElement, elements);
           const { point: anchorPoint } = getClosestPointOnPolyline(
             { x: endPoint.x, y: endPoint.y },
             polyline
@@ -6655,20 +6578,6 @@ const Canvas: React.FC<CanvasProps> = ({
         );
       }
     }
-  };
-
-  // Calculate element size based on thickness
-  // Default thickness is 2, default size is 40
-  // Size increases slowly as thickness increases, max size is 50
-  const getElementSize = (thickness?: number): number => {
-    const defaultThickness = 2;
-    const defaultSize = 40;
-    const maxSize = 50;
-    const thicknessValue = thickness || defaultThickness;
-    // Size increases slowly: 1.25 units per thickness point above default
-    const calculatedSize =
-      defaultSize + (thicknessValue - defaultThickness) * 1.25;
-    return Math.min(calculatedSize, maxSize);
   };
 
   // Render text label under/beside a node; position controlled by el.labelPosition (0=bottom, draggable when selected)
@@ -7429,49 +7338,14 @@ const Canvas: React.FC<CanvasProps> = ({
         );
       }
       case 'Resource Connection': {
-        // Get the connected nodes to calculate proper positioning
-        const startNode = elements.find(
-          node => node.id === el.connectedToStart
-        );
-        const endNode = elements.find(node => node.id === el.connectedToEnd);
-
-        let startPoint = {
-          x: el.startX ?? el.x,
-          y: el.startY ?? el.y,
-        };
-        let endPoint = {
-          x: el.endX ?? el.x,
-          y: el.endY ?? el.y,
-        };
-
-        // Snap nodes to their edges in the direction of the next point (first waypoint or end node)
-        if (startNode && endNode) {
-          // If there are waypoints, snap start to first waypoint; otherwise snap to end node
-          const startTargetPoint =
-            el.points && el.points.length > 0
-              ? el.points[0]
-              : { x: endNode.x, y: endNode.y };
-
-          // If there are waypoints, snap end to last waypoint; otherwise snap to start node
-          const endTargetPoint =
-            el.points && el.points.length > 0
-              ? el.points[el.points.length - 1]
-              : { x: startNode.x, y: startNode.y };
-
-          startPoint = snapNodeToEdgeInDirection(startNode, startTargetPoint);
-          endPoint = snapNodeToEdgeInDirection(endNode, endTargetPoint);
-        } else if (startNode) {
-          startPoint = { x: startNode.x, y: startNode.y };
-        } else if (endNode) {
-          endPoint = { x: endNode.x, y: endNode.y };
-        }
-
-        // Include intermediate waypoints if they exist, creating a polyline that follows breakpoints
-        const pathPoints = [startPoint, ...(el.points ?? []), endPoint];
+        const pathPoints = getResourcePolylineWorldPoints(el, elements);
 
         if (pathPoints.length < 2) {
           return null;
         }
+
+        const startPoint = pathPoints[0];
+        const endPoint = pathPoints[pathPoints.length - 1];
 
         const padding = 15;
         const polyline = pathPoints;
@@ -7650,25 +7524,17 @@ const Canvas: React.FC<CanvasProps> = ({
         );
       }
       case 'State Connection': {
-        // Get the connected nodes to calculate proper positioning
-        const startTarget = elements.find(
-          node => node.id === el.connectedToStart
-        );
         const endTarget = elements.find(node => node.id === el.connectedToEnd);
-
-        let startPoint = {
-          x: el.startX ?? el.x,
-          y: el.startY ?? el.y,
-        };
-        let endPoint = {
-          x: el.endX ?? el.x,
-          y: el.endY ?? el.y,
-        };
-
-        // Snap nodes to their edges in the direction of the next point (first waypoint or end node)
-        const startIsConn = isConnectionElement(startTarget);
-        const endIsConn = isConnectionElement(endTarget);
         const isChartConnection = endTarget?.type === 'Chart';
+
+        const pathPoints = getStateConnectionWorldPath(el, elements);
+        if (pathPoints.length < 2) {
+          return null;
+        }
+
+        const startPoint = pathPoints[0];
+        const endPoint = pathPoints[pathPoints.length - 1];
+
         const getArrowPoints = (
           tip: { x: number; y: number },
           from: { x: number; y: number },
@@ -7689,41 +7555,6 @@ const Canvas: React.FC<CanvasProps> = ({
           const py = ux * (size / 2);
           return `${tx},${ty} ${bx + px},${by + py} ${bx - px},${by - py}`;
         };
-
-        if (startTarget && endTarget && !startIsConn && !endIsConn) {
-          // If there are waypoints, snap start to first waypoint; otherwise snap to end node
-          const startTargetPoint =
-            el.points && el.points.length > 0
-              ? el.points[0]
-              : { x: endTarget.x, y: endTarget.y };
-
-          // If there are waypoints, snap end to last waypoint; otherwise snap to start node
-          const endTargetPoint =
-            el.points && el.points.length > 0
-              ? el.points[el.points.length - 1]
-              : { x: startTarget.x, y: startTarget.y };
-
-          startPoint = snapNodeToEdgeInDirection(startTarget, startTargetPoint);
-          endPoint = snapNodeToEdgeInDirection(endTarget, endTargetPoint);
-        } else if (startTarget && !startIsConn) {
-          startPoint = { x: startTarget.x, y: startTarget.y };
-        } else if (endTarget && !endIsConn) {
-          endPoint = { x: endTarget.x, y: endTarget.y };
-        }
-
-        if (endTarget && endTarget.type === 'Resource Connection') {
-          const labelAnchor = getResourceConnectionLabelAnchor(endTarget);
-          if (labelAnchor) {
-            endPoint = labelAnchor;
-          }
-        }
-
-        // Include intermediate waypoints if they exist, creating a polyline that follows breakpoints
-        const pathPoints = [startPoint, ...(el.points ?? []), endPoint];
-
-        if (pathPoints.length < 2) {
-          return null;
-        }
 
         const padding = 15;
         const polyline = pathPoints;
@@ -8178,69 +8009,6 @@ const Canvas: React.FC<CanvasProps> = ({
       );
     }
     return null;
-  };
-
-  const isConnectionElement = (element: GraphElement | undefined) =>
-    element != null &&
-    (element.type === 'Resource Connection' ||
-      element.type === 'State Connection');
-
-  const getResourceConnectionLabelAnchor = (
-    conn: GraphElement
-  ): { x: number; y: number } | null => {
-    if (conn.type !== 'Resource Connection') return null;
-
-    const startNode = elements.find(node => node.id === conn.connectedToStart);
-    const endNode = elements.find(node => node.id === conn.connectedToEnd);
-
-    let startPoint = {
-      x: conn.startX ?? conn.x,
-      y: conn.startY ?? conn.y,
-    };
-    let endPoint = {
-      x: conn.endX ?? conn.x,
-      y: conn.endY ?? conn.y,
-    };
-
-    const startIsConn = isConnectionElement(startNode);
-    const endIsConn = isConnectionElement(endNode);
-
-    if (startNode && endNode && !startIsConn && !endIsConn) {
-      const startTargetPoint =
-        conn.points && conn.points.length > 0
-          ? conn.points[0]
-          : { x: endNode.x, y: endNode.y };
-      const endTargetPoint =
-        conn.points && conn.points.length > 0
-          ? conn.points[conn.points.length - 1]
-          : { x: startNode.x, y: startNode.y };
-
-      startPoint = snapNodeToEdgeInDirection(startNode, startTargetPoint);
-      endPoint = snapNodeToEdgeInDirection(endNode, endTargetPoint);
-    } else if (startNode && !startIsConn) {
-      startPoint = { x: startNode.x, y: startNode.y };
-    } else if (endNode && !endIsConn) {
-      endPoint = { x: endNode.x, y: endNode.y };
-    }
-
-    const pathPoints = [startPoint, ...(conn.points ?? []), endPoint];
-    if (pathPoints.length < 2) return null;
-
-    type LegacyPositionCarrier = { position?: unknown };
-    const legacyPosRaw = (conn as LegacyPositionCarrier).position;
-    const legacyPosNum =
-      typeof legacyPosRaw === 'number'
-        ? legacyPosRaw
-        : typeof legacyPosRaw === 'string'
-          ? Number(legacyPosRaw)
-          : NaN;
-
-    const labelPos =
-      conn.labelPosition ??
-      (Number.isFinite(legacyPosNum) ? legacyPosNum : undefined) ??
-      0.5;
-
-    return getLabelPointForConnection(pathPoints, labelPos);
   };
 
   // const displayElements = draggedElements || elements;
