@@ -500,6 +500,11 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
             event.preventDefault();
             document.dispatchEvent(new CustomEvent('canvas-export-svg'));
             break;
+          case 'o':
+          case 'i':
+            event.preventDefault();
+            handleXmlImportClick();
+            break;
         }
       }
 
@@ -526,6 +531,7 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
     handleRedo,
     handleZoom,
     handleDelete,
+    handleXmlImportClick,
   ]);
 
   const handleDragStart = (e: React.DragEvent, tool: string) => {
