@@ -71,6 +71,122 @@ interface GraphElement {
   isIncompleteTrader?: boolean;
 }
 
+function createInitialToolbox() {
+  return {
+    textLabel: { text: '', color: '#000000' },
+    group: { text: '', color: '#000000' },
+    pool: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      activation: 'passive' as const,
+      pullMode: 'pull any' as const,
+      resources: '',
+      number: 0,
+      max: 100,
+      displayLimit: 10,
+    },
+    gate: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      activation: 'passive' as const,
+      actions: 1,
+      pullMode: 'pull any' as const,
+      type: 'deterministic' as const,
+    },
+    resourceConnection: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      minValue: -999,
+      maxValue: 999,
+    },
+    stateConnection: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      minValue: -999,
+      maxValue: 999,
+    },
+    source: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      activation: 'automatic' as const,
+      actions: 1,
+      pullMode: 'pull any' as const,
+      resources: '',
+    },
+    convertor: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      activation: 'passive' as const,
+      actions: 1,
+      pullMode: 'pull any' as const,
+      resources: '',
+    },
+    trader: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      activation: 'passive' as const,
+      actions: 1,
+      pullMode: 'pull any' as const,
+      resources: '',
+    },
+    drain: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      activation: 'passive' as const,
+      actions: 1,
+      pullMode: 'pull any' as const,
+    },
+    delay: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      activation: 'passive' as const,
+      actions: 1,
+      queue: false,
+    },
+    register: {
+      color: '#000000',
+      thickness: 2,
+      formula: '',
+      minValue: -9999,
+      maxValue: 9999,
+      interactive: false,
+      startingValue: 0,
+      step: 1,
+    },
+    endCondition: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      actions: 1,
+      pullMode: 'pull any' as const,
+    },
+    artificialIntelligence: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      activation: 'passive' as const,
+      actions: 1,
+      script: '',
+    },
+    chart: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      scaleX: 0,
+      scaleY: 0,
+    },
+  };
+}
+
 const Playground: React.FC = () => {
   const [isRunning, setIsRunning] = useState(false);
   const [runType, setRunType] = useState<'quick' | 'multiple' | null>(null);
@@ -92,6 +208,7 @@ const Playground: React.FC = () => {
     redo,
     canUndo,
     canRedo,
+    resetToState,
   } = useHistory<GraphElement[]>([]);
 
   const [toolProperties, setToolProperties] = useState<{
@@ -206,119 +323,7 @@ const Playground: React.FC = () => {
       scaleX: number;
       scaleY: number;
     };
-  }>({
-    textLabel: { text: '', color: '#000000' },
-    group: { text: '', color: '#000000' },
-    pool: {
-      color: '#000000',
-      thickness: 2,
-      text: '',
-      activation: 'passive',
-      pullMode: 'pull any',
-      resources: '',
-      number: 0,
-      max: 100,
-      displayLimit: 10,
-    },
-    gate: {
-      color: '#000000',
-      thickness: 2,
-      text: '',
-      activation: 'passive',
-      actions: 1,
-      pullMode: 'pull any',
-      type: 'deterministic',
-    },
-    resourceConnection: {
-      color: '#000000',
-      thickness: 2,
-      text: '',
-      minValue: -999,
-      maxValue: 999,
-    },
-    stateConnection: {
-      color: '#000000',
-      thickness: 2,
-      text: '',
-      minValue: -999,
-      maxValue: 999,
-    },
-    source: {
-      color: '#000000',
-      thickness: 2,
-      text: '',
-      activation: 'automatic',
-      actions: 1,
-      pullMode: 'pull any',
-      resources: '',
-    },
-    convertor: {
-      color: '#000000',
-      thickness: 2,
-      text: '',
-      activation: 'passive',
-      actions: 1,
-      pullMode: 'pull any',
-      resources: '',
-    },
-    trader: {
-      color: '#000000',
-      thickness: 2,
-      text: '',
-      activation: 'passive',
-      actions: 1,
-      pullMode: 'pull any',
-      resources: '',
-    },
-    drain: {
-      color: '#000000',
-      thickness: 2,
-      text: '',
-      activation: 'passive',
-      actions: 1,
-      pullMode: 'pull any',
-    },
-    delay: {
-      color: '#000000',
-      thickness: 2,
-      text: '',
-      activation: 'passive',
-      actions: 1,
-      queue: false,
-    },
-    register: {
-      color: '#000000',
-      thickness: 2,
-      formula: '',
-      minValue: -9999,
-      maxValue: 9999,
-      interactive: false,
-      startingValue: 0,
-      step: 1,
-    },
-    endCondition: {
-      color: '#000000',
-      thickness: 2,
-      text: '',
-      actions: 1,
-      pullMode: 'pull any',
-    },
-    artificialIntelligence: {
-      color: '#000000',
-      thickness: 2,
-      text: '',
-      activation: 'passive',
-      actions: 1,
-      script: '',
-    },
-    chart: {
-      color: '#000000',
-      thickness: 2,
-      text: '',
-      scaleX: 0,
-      scaleY: 0,
-    },
-  });
+  }>(createInitialToolbox);
 
   useEffect(() => {
     const handleUndo = () => {
@@ -339,6 +344,23 @@ const Playground: React.FC = () => {
       document.removeEventListener('canvas-redo', handleRedo);
     };
   }, [undo, redo]);
+
+  useEffect(() => {
+    const handleNewDocument = () => {
+      resetToState([]);
+      setSelectedElementIds([]);
+      setSelectedElement(null);
+      setSelectedTool('Select');
+      setToolProperties(createInitialToolbox());
+      setIsRunning(false);
+      setRunType(null);
+      setGameEnded(false);
+    };
+
+    document.addEventListener('canvas-new-document', handleNewDocument);
+    return () =>
+      document.removeEventListener('canvas-new-document', handleNewDocument);
+  }, [resetToState]);
 
   useEffect(() => {
     const handleGameEnd = () => {
