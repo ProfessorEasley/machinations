@@ -128,7 +128,11 @@ export type LabelKind =
   | 'empty'
   | 'invalid';
 
-export type ActivationType = 'passive' | 'interactive' | 'automatic' | 'onstart';
+export type ActivationType =
+  | 'passive'
+  | 'interactive'
+  | 'automatic'
+  | 'onstart';
 
 export interface TickOptions {
   mode: ActivationType | 'all';
