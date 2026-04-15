@@ -4,17 +4,17 @@ Extract simulation logic from `Canvas.tsx` (~8k lines) into standalone headless 
 
 ## Status
 
-| Step | File | Status |
-|------|------|--------|
-| 1 | `types.ts` | Done |
-| 2 | `helpers.ts` | Done |
-| 3 | `reset.ts` | Done |
-| 4 | `tick.ts` | Pending |
-| 5 | `simulationLoop.ts` | Pending |
-| 6 | `runner.ts` | Pending |
-| 7 | `index.ts` + rewire Canvas | Pending |
-| 8 | `__tests__/tick.test.ts`, `runner.test.ts` | Pending |
-| 9 | Seeded RNG (future) | Pending |
+| Step | File                                       | Status  |
+| ---- | ------------------------------------------ | ------- |
+| 1    | `types.ts`                                 | Done    |
+| 2    | `helpers.ts`                               | Done    |
+| 3    | `reset.ts`                                 | Done    |
+| 4    | `tick.ts`                                  | Pending |
+| 5    | `simulationLoop.ts`                        | Pending |
+| 6    | `runner.ts`                                | Pending |
+| 7    | `index.ts` + rewire Canvas                 | Pending |
+| 8    | `__tests__/tick.test.ts`, `runner.test.ts` | Pending |
+| 9    | Seeded RNG (future)                        | Pending |
 
 ## Step 1: Types (done)
 
@@ -45,6 +45,7 @@ simulateTick(elements, options: TickOptions): TickResult
 ```
 
 Key changes:
+
 - Tick counter + fractional dispatch via `TickOptions` (not React refs)
 - Replace `window.__GAME_ENDED__` / `document.dispatchEvent` with `TickResult.events`
 - Inline `evaluateStateCondition` + `updateStateConnectionVisualState` (pure logic, not DOM)
@@ -80,6 +81,7 @@ Calls `resetElements` then loops `simulateTick`. Stops early on game-end event.
 ## Step 8: Tests
 
 `__tests__/tick.test.ts` -- Fixture-based, no React/DOM:
+
 - Source -> Pool (resource flow over N ticks)
 - Gate routing (deterministic conditions)
 - Register formula evaluation
@@ -87,6 +89,7 @@ Calls `resetElements` then loops `simulateTick`. Stops early on game-end event.
 - resetElements returns to initial state
 
 `__tests__/runner.test.ts`:
+
 - runSimulation completes maxTicks
 - runSimulation stops early on game-end
 
@@ -97,6 +100,20 @@ Add optional `rng?: () => number` to `TickOptions`. Update `shouldActivateTrigge
 ## Validation
 
 After every step: `npm run build && npm run test -- --run && npm run lint` must pass. No user-visible behavior change.
+
+## Validation Tasks
+
+### **1. Logic Testing (`tick.test.ts`)**
+
+- **Resource Flow**: Check that Sources fill Pools at the correct rate per tick.
+- **Gates**: Ensure resources route correctly through deterministic gates.
+- **Formulas**: Verify Register labels (e.g., `a + b`) calculate correctly.
+- **Events**: Confirm `GAME_ENDED` triggers when conditions are met.
+
+### **2. Execution Testing (`runner.test.ts`)**
+
+- **Multi-Tick**: Run 100 ticks and verify the final resource counts.
+- **Early Stop**: Ensure the simulation stops immediately if the game ends.
 
 ## Dependency Order
 
