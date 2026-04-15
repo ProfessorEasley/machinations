@@ -71,9 +71,127 @@ interface GraphElement {
   isIncompleteTrader?: boolean;
 }
 
+function createInitialToolbox() {
+  return {
+    textLabel: { text: '', color: '#000000' },
+    group: { text: '', color: '#000000' },
+    pool: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      activation: 'passive' as const,
+      pullMode: 'pull any' as const,
+      resources: '',
+      number: 0,
+      max: 100,
+      displayLimit: 10,
+    },
+    gate: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      activation: 'passive' as const,
+      actions: 1,
+      pullMode: 'pull any' as const,
+      type: 'deterministic' as const,
+    },
+    resourceConnection: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      minValue: -999,
+      maxValue: 999,
+    },
+    stateConnection: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      minValue: -999,
+      maxValue: 999,
+    },
+    source: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      activation: 'automatic' as const,
+      actions: 1,
+      pullMode: 'pull any' as const,
+      resources: '',
+    },
+    convertor: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      activation: 'passive' as const,
+      actions: 1,
+      pullMode: 'pull any' as const,
+      resources: '',
+    },
+    trader: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      activation: 'passive' as const,
+      actions: 1,
+      pullMode: 'pull any' as const,
+      resources: '',
+    },
+    drain: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      activation: 'passive' as const,
+      actions: 1,
+      pullMode: 'pull any' as const,
+    },
+    delay: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      activation: 'passive' as const,
+      actions: 1,
+      queue: false,
+    },
+    register: {
+      color: '#000000',
+      thickness: 2,
+      formula: '',
+      minValue: -9999,
+      maxValue: 9999,
+      interactive: false,
+      startingValue: 0,
+      step: 1,
+    },
+    endCondition: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      actions: 1,
+      pullMode: 'pull any' as const,
+    },
+    artificialIntelligence: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      activation: 'passive' as const,
+      actions: 1,
+      script: '',
+    },
+    chart: {
+      color: '#000000',
+      thickness: 2,
+      text: '',
+      scaleX: 0,
+      scaleY: 0,
+    },
+  };
+}
+
 const Playground: React.FC = () => {
   const [isRunning, setIsRunning] = useState(false);
   const [runType, setRunType] = useState<'quick' | 'multiple' | null>(null);
+  const [numRuns, setNumRuns] = useState(100);
+  const [visibleRuns, setVisibleRuns] = useState(25);
 
   const [gameEnded, setGameEnded] = useState(false);
 
@@ -90,6 +208,7 @@ const Playground: React.FC = () => {
     redo,
     canUndo,
     canRedo,
+    resetToState,
   } = useHistory<GraphElement[]>([]);
 
   const [toolProperties, setToolProperties] = useState<{
@@ -204,119 +323,7 @@ const Playground: React.FC = () => {
       scaleX: number;
       scaleY: number;
     };
-  }>({
-    textLabel: { text: '', color: '#000000' },
-    group: { text: '', color: '#000000' },
-    pool: {
-      color: '#000000',
-      thickness: 2,
-      text: '',
-      activation: 'passive',
-      pullMode: 'pull any',
-      resources: '',
-      number: 0,
-      max: 100,
-      displayLimit: 10,
-    },
-    gate: {
-      color: '#000000',
-      thickness: 2,
-      text: '',
-      activation: 'passive',
-      actions: 1,
-      pullMode: 'pull any',
-      type: 'deterministic',
-    },
-    resourceConnection: {
-      color: '#000000',
-      thickness: 2,
-      text: '',
-      minValue: -999,
-      maxValue: 999,
-    },
-    stateConnection: {
-      color: '#000000',
-      thickness: 2,
-      text: '',
-      minValue: -999,
-      maxValue: 999,
-    },
-    source: {
-      color: '#000000',
-      thickness: 2,
-      text: '',
-      activation: 'automatic',
-      actions: 1,
-      pullMode: 'pull any',
-      resources: '',
-    },
-    convertor: {
-      color: '#000000',
-      thickness: 2,
-      text: '',
-      activation: 'passive',
-      actions: 1,
-      pullMode: 'pull any',
-      resources: '',
-    },
-    trader: {
-      color: '#000000',
-      thickness: 2,
-      text: '',
-      activation: 'passive',
-      actions: 1,
-      pullMode: 'pull any',
-      resources: '',
-    },
-    drain: {
-      color: '#000000',
-      thickness: 2,
-      text: '',
-      activation: 'passive',
-      actions: 1,
-      pullMode: 'pull any',
-    },
-    delay: {
-      color: '#000000',
-      thickness: 2,
-      text: '',
-      activation: 'passive',
-      actions: 1,
-      queue: false,
-    },
-    register: {
-      color: '#000000',
-      thickness: 2,
-      formula: '',
-      minValue: -9999,
-      maxValue: 9999,
-      interactive: false,
-      startingValue: 0,
-      step: 1,
-    },
-    endCondition: {
-      color: '#000000',
-      thickness: 2,
-      text: '',
-      actions: 1,
-      pullMode: 'pull any',
-    },
-    artificialIntelligence: {
-      color: '#000000',
-      thickness: 2,
-      text: '',
-      activation: 'passive',
-      actions: 1,
-      script: '',
-    },
-    chart: {
-      color: '#000000',
-      thickness: 2,
-      text: '',
-      scaleX: 0,
-      scaleY: 0,
-    },
-  });
+  }>(createInitialToolbox);
 
   useEffect(() => {
     const handleUndo = () => {
@@ -339,7 +346,27 @@ const Playground: React.FC = () => {
   }, [undo, redo]);
 
   useEffect(() => {
+    const handleNewDocument = () => {
+      resetToState([]);
+      setSelectedElementIds([]);
+      setSelectedElement(null);
+      setSelectedTool('Select');
+      setToolProperties(createInitialToolbox());
+      setIsRunning(false);
+      setRunType(null);
+      setGameEnded(false);
+    };
+
+    document.addEventListener('canvas-new-document', handleNewDocument);
+    return () =>
+      document.removeEventListener('canvas-new-document', handleNewDocument);
+  }, [resetToState]);
+
+  useEffect(() => {
     const handleGameEnd = () => {
+      // During multiple runs the Canvas manages run sequencing internally,
+      // so we skip freezing the board between individual runs.
+      if (runType === 'multiple') return;
       console.log('🎊 Game ended!');
       setGameEnded(true);
     };
@@ -349,7 +376,7 @@ const Playground: React.FC = () => {
     return () => {
       document.removeEventListener('game-end', handleGameEnd as EventListener);
     };
-  }, []);
+  }, [runType]);
 
   const handleRunClick = () => {
     if (!isRunning) {
@@ -375,56 +402,19 @@ const Playground: React.FC = () => {
   };
 
   const handleReset = () => {
-    // Stop the simulation
     setIsRunning(false);
     setRunType(null);
     setGameEnded(false);
-    // Keep runType so we know which button to show when running again
+    // Canvas Block C owns the full board reset when isRunning flips to false
+  };
 
-    // Reset all elements to initial state
-    const resetElements = elements.map((el: GraphElement) => {
-      const reset: Partial<GraphElement> = {
-        hasStarted: false,
-        triggerCount: 0,
-        lastGateValue: undefined,
-      };
-
-      // Reset Pool resources to starting value
-      if (el.type === 'Pool') {
-        reset.currentPoints = el.number ?? 0;
-      }
-
-      // Reset Register to starting value
-      if (el.type === 'Register') {
-        if (el.interactive === true || el.interactive === 'true') {
-          reset.currentValue = el.startingValue || 0;
-        } else {
-          reset.currentValue = 0;
-        }
-      }
-
-      // Reset EndCondition state
-      if (el.type === 'End Condition') {
-        reset.inhibited = true;
-        reset.isBlinking = false;
-      }
-
-      // Clear stored resources in Converter and Trader
-      if (el.type === 'Convertor') {
-        reset.inputResources = {};
-        reset.outputResources = {};
-        reset.conversionRate = {};
-      }
-
-      if (el.type === 'Trader') {
-        reset.traderInputs = {};
-        reset.traderOutputs = {};
-      }
-
-      return { ...el, ...reset };
-    });
-
-    setElements(resetElements);
+  // Called by Canvas when a Quick Run or Multiple Runs finishes.
+  // Only stops the simulation — Canvas already froze the board via gameEndedRef,
+  // so Block A will reset on the next run start.
+  const handleSimulationComplete = () => {
+    setIsRunning(false);
+    setRunType(null);
+    setGameEnded(false);
   };
 
   const handleElementUpdate = (
@@ -491,6 +481,10 @@ const Playground: React.FC = () => {
           <div className="grid-canvas">
             <Canvas
               isRunning={isRunning && !gameEnded}
+              runType={runType}
+              numRuns={numRuns}
+              visibleRuns={visibleRuns}
+              onSimulationComplete={handleSimulationComplete}
               selectedTool={selectedTool}
               elements={elements}
               selectedElementIds={selectedElementIds}
@@ -514,6 +508,10 @@ const Playground: React.FC = () => {
             isRunning={isRunning}
             disabled={false}
             runType={runType}
+            numRuns={numRuns}
+            visibleRuns={visibleRuns}
+            onNumRunsChange={setNumRuns}
+            onVisibleRunsChange={setVisibleRuns}
             onRunClick={handleRunClick}
             onMultipleRunClick={handleMultipleRunClick}
             onReset={handleReset}

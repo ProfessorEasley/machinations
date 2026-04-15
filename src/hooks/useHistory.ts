@@ -8,6 +8,8 @@ interface UseHistoryReturn<T> {
   canUndo: boolean;
   canRedo: boolean;
   clearHistory: () => void;
+  /** Replace history with a single snapshot (e.g. new document). */
+  resetToState: (next: T) => void;
 }
 
 export function useHistory<T>(initialState: T): UseHistoryReturn<T> {
@@ -64,6 +66,15 @@ export function useHistory<T>(initialState: T): UseHistoryReturn<T> {
     setCurrentIndex(0);
   }, [state]);
 
+  const resetToState = useCallback((next: T) => {
+    isApplyingHistoryRef.current = true;
+    setHistory([next]);
+    setCurrentIndex(0);
+    setTimeout(() => {
+      isApplyingHistoryRef.current = false;
+    }, 0);
+  }, []);
+
   return {
     state,
     setState,
@@ -72,5 +83,6 @@ export function useHistory<T>(initialState: T): UseHistoryReturn<T> {
     canUndo,
     canRedo,
     clearHistory,
+    resetToState,
   };
 }
