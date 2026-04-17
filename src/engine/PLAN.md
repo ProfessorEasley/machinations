@@ -9,14 +9,14 @@ Extract simulation logic from `Canvas.tsx` (~8k lines) into standalone headless 
 | 1    | `types.ts`                                 | Done    |
 | 2    | `helpers.ts`                               | Done    |
 | 3    | `reset.ts`                                 | Done    |
-| 4    | `tick.ts`                                  | Pending |
-| 5    | `simulationLoop.ts`                        | Pending |
-| 6    | `runner.ts`                                | Pending |
+| 4    | `tick.ts`                                  | Done    |
+| 5    | `simulationLoop.ts`                        | Done    |
+| 6    | `runner.ts`                                | Done    |
 | 7    | `index.ts` + rewire Canvas                 | Pending |
 | 8    | `__tests__/tick.test.ts`, `runner.test.ts` | Pending |
 | 9    | Seeded RNG (future)                        | Pending |
 
-## Step 1: Types (done)
+## Step 1: Types
 
 `types.ts` -- `GraphElement`, `GraphElementType`, `ResourceTransfer`, `FractionalDispatchState`, `LabelKind`, `TickOptions`, `TickResult`, `SimulationEvent`. Canvas.tsx imports from here.
 
@@ -54,6 +54,8 @@ Key changes:
 
 Canvas keeps a thin wrapper that calls `simulateTick` and handles UI-only side effects (DOM events, token animation).
 
+Status: Done.
+
 ## Step 5: Simulation Loop
 
 `simulationLoop.ts` -- Headless `setInterval` wrapper (~40 lines):
@@ -63,6 +65,8 @@ startSimulationLoop({ intervalMs, shouldSkipTick?, onTick, onError? }): { stop()
 ```
 
 Canvas replaces inline `setInterval` with this.
+
+Status: Done.
 
 ## Step 6: Runner
 
@@ -74,9 +78,13 @@ runSimulation(elements, { maxTicks }): { finalState, tickLog: TickResult[] }
 
 Calls `resetElements` then loops `simulateTick`. Stops early on game-end event.
 
+Status: Done.
+
 ## Step 7: Barrel + Rewire Canvas
 
 `index.ts` -- Re-exports from all engine modules. Consolidate Canvas imports. Net ~2300 line reduction in Canvas.tsx.
+
+Status: In progress (Canvas was rewired to `simulateTick` and `startSimulationLoop`; barrel `index.ts` still pending).
 
 ## Step 8: Tests
 
