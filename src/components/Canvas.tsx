@@ -1698,6 +1698,7 @@ const Canvas: React.FC<CanvasProps> = ({
         elementsToUpdate,
         activationType,
         {
+          mode: activationType,
           currentTick: currentTickRef.current - 1,
           fractionalDispatch: fractionalDispatchRef.current,
         },

@@ -163,7 +163,7 @@ function processIncompleteTrader(
         canTrade = false;
         break;
       }
-      if (el.type !== 'Pool' && el.type !== 'Source') {
+      if (el.type !== 'Pool') {
         canTrade = false;
         break;
       }
@@ -392,7 +392,7 @@ function processCompleteTrader(
         canTrade = false;
         break;
       }
-      if (el.type !== 'Pool' && el.type !== 'Source') {
+      if (el.type !== 'Pool') {
         canTrade = false;
         break;
       }
