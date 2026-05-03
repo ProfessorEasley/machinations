@@ -45,6 +45,7 @@ export function runSimulation(
   let currentTick = 0;
 
   const onStartResult = simulateTick(currentElements, 'onstart', {
+    mode: 'onstart',
     currentTick,
     fractionalDispatch,
   });
@@ -63,6 +64,7 @@ export function runSimulation(
 
   for (let i = 0; i < maxTicks; i++) {
     const result = simulateTick(currentElements, 'automatic', {
+      mode: 'automatic',
       currentTick,
       fractionalDispatch,
     });
