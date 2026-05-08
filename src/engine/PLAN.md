@@ -13,8 +13,8 @@ Extract simulation logic from `Canvas.tsx` (~8k lines) into standalone headless 
 | 5    | `simulationLoop.ts`                        | Done    |
 | 6    | `runner.ts`                                | Done    |
 | 7    | `index.ts` + rewire Canvas                 | Pending |
-| 8    | `__tests__/tick.test.ts`, `runner.test.ts` | Pending |
-| 9    | Seeded RNG (future)                        | Pending |
+| 8    | `__tests__/tick.test.ts`, `runner.test.ts` | Done    |
+| 9    | Headless CLI (`io.ts`, `cli.ts`)           | Done    |
 
 ## Step 1: Types
 
@@ -101,9 +101,77 @@ Status: In progress (Canvas was rewired to `simulateTick` and `startSimulationLo
 - runSimulation completes maxTicks
 - runSimulation stops early on game-end
 
-## Step 9: Seeded RNG (Future)
+Status: Done.
 
-Add optional `rng?: () => number` to `TickOptions`. Update `shouldActivateTrigger`, `randInt`, `chooseGateOutputs`. Enables deterministic replay and reproducible multi-run stats.
+Latest validation snapshot:
+
+- Build status: zero TypeScript errors.
+- Tests: 117 passing across 11 files.
+- Coverage includes focused tests for `tick.ts`, `runner.ts`, `simulationLoop.ts`, and the new `io.ts` + `cli.ts`.
+
+## Step 9: Headless CLI
+
+Status: Done.
+
+Goal: run a saved `.xml` graph end-to-end from the terminal with no browser, no React, no DOM. Same engine the UI uses, just driven by a Node entry point.
+
+### 9a. `io.ts` -- headless XML loader (Done)
+
+`src/engine/io.ts` parses serialized graph XML using `fast-xml-parser` (no browser `DOMParser` dependency). Round-trip compatible with `serializeGraphElementsToXml`.
+
+- Public surface:
+  - `loadGraphFromXml(xmlText): { elements: GraphElement[]; warnings: string[] }`
+  - `loadGraphFromFile(path): { elements, warnings }` (wraps `fs.readFileSync`)
+- Replicates the per-type initialization logic the UI parser uses (Pool `currentPoints`/`resourcesByColor`, Register `currentValue`, End Condition `inhibited` etc.).
+- Handles `<walletData>` JSON for Convertor/Trader and `<script>` CDATA for Artifical Intelligence.
+- The legacy multi-schema importer in `Canvas.tsx` (`parseGraphFromXml`) remains in place for now — it accepts foreign XML schemas and uses browser `DOMParser`. A later pass can route it through `io.ts` once we decide which alternate tag aliases to keep.
+
+### 9b. `cli.ts` -- Node entry point (Done)
+
+`src/engine/cli.ts`:
+
+```
+machinations-sim <graph.xml> [--max-ticks N] [--collect-log] [--format json|summary]
+```
+
+- Hand-rolled argv parser, no new dep.
+- `runCli(argv): { exitCode, stdout, stderr }` is exported for in-process testing; a `if (isMain())` guard wires it up to `process.exit` when invoked directly.
+- `--format summary` (default): final Pool/Register state + `ticksRun` + `gameEnded`.
+- `--format json`: full result as JSON; `tickLog` only included with `--collect-log`.
+- Exit codes: `0` success, `1` load/parse error, `2` invalid arguments.
+
+### 9c. `package.json` wiring (Done)
+
+- `"sim": "tsx src/engine/cli.ts"` under `scripts`.
+- `tsx` added to `devDependencies`.
+- Recommended invocation: `npx tsx src/engine/cli.ts <graph.xml> --max-ticks N`. (Note: `npm run sim` strips `--*` flags before forwarding due to a long-standing npm argv quirk; `npx tsx` is the clean path until we ship a real `bin`.)
+
+### 9d. Tests (Done)
+
+`src/engine/__tests__/cli.test.ts` (7 tests, all passing):
+
+- `loadGraphFromFile` parses the fixture into 3 elements with correct types.
+- `runSimulation` accumulates resources from a Source(automatic) -> Pool over N ticks.
+- `runCli --format summary` reports pool state and exits 0.
+- `runCli --format json` emits a parseable result.
+- `runCli` reports load failure with exit code 1.
+- `runCli` reports invalid args with exit code 2.
+- `loadGraphFromXml` round-trips an inline document (Pool init, Register defaults).
+
+Fixture: `src/engine/__tests__/fixtures/source-pool.xml`.
+
+### Validation (Done)
+
+```
+npx tsx src/engine/cli.ts src/engine/__tests__/fixtures/source-pool.xml --max-ticks 10  --format json
+=>
+Simulation finished: ticksRun=10 gameEnded=false
+
+Final state:
+  Pool#2 = 50 (#FF0000:50)
+```
+
+Build, lint, and 117/117 tests pass.
 
 ## Validation
 
@@ -126,7 +194,9 @@ After every step: `npm run build && npm run test -- --run && npm run lint` must 
 ## Dependency Order
 
 ```
-Step 1-> Step 2 -> Step 3 \
-                         -> Step 4 -> Step 5 -> Step 7 -> Step 8 -> Step 9
-                                   -> Step 6 /
+Step 1 -> Step 2 -> Step 3 \
+                          -> Step 4 -> Step 5 -> Step 7 -> Step 8
+                                    -> Step 6 -----------------> Step 9
 ```
+
+Step 9 only needs `runner.ts` (Step 6) and the new `io.ts`; it does not block on the Canvas rewire.
