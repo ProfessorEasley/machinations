@@ -272,8 +272,6 @@ const fileTools = [
   'Save as SVG (G)',
 ];
 
-// const runTools = ['Quick Run', 'Multiple Runs'];
-
 // Color mapping for predefined colors
 const COLOR_MAP: Record<string, string> = {
   red: '#FF0000',
