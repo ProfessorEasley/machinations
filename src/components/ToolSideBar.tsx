@@ -233,36 +233,6 @@ const graphTools = [
   'Artifical Intelligence',
 ];
 
-/** Inline SVG for Graph toolbox Delay button (circle + hourglass) */
-function DelayToolboxIcon() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      aria-hidden
-      className="delay-tool-icon"
-    >
-      <circle
-        cx="12"
-        cy="12"
-        r="10"
-        fill="none"
-        stroke="#000000"
-        strokeWidth="1.6"
-      />
-      <path
-        d="M 6 7 L 18 7 L 12 11.5 Z M 6 17 L 18 17 L 12 12.5 Z"
-        fill="none"
-        stroke="#000000"
-        strokeWidth="1.45"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
 const fileTools = [
   'New (N)',
   'Open (O)',
@@ -587,25 +557,8 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
                 onClick={() => setSelectedTool(tool)}
                 draggable
                 onDragStart={e => handleDragStart(e, tool)}
-                style={
-                  tool === 'Delay'
-                    ? {
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                      }
-                    : undefined
-                }
               >
-                {tool === 'Delay' ? (
-                  <>
-                    <DelayToolboxIcon />
-                    <span>Delay</span>
-                  </>
-                ) : (
-                  tool
-                )}
+                {tool}
               </button>
             ))}
           </>
