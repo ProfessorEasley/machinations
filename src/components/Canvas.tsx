@@ -13,6 +13,7 @@ import type {
 import {
   normalizeColor,
   getElementValue,
+  delayGlyphStrokeForFill,
   applyDynamicResourceLabels,
   classifyLabel,
   parseInterval,
@@ -2771,7 +2772,7 @@ const Canvas: React.FC<CanvasProps> = ({
         type,
         x,
         y,
-        color: toolProperties?.delay?.color,
+        color: toolProperties?.delay?.color ?? '#ffffff',
         thickness: toolProperties?.delay?.thickness,
         text: toolProperties?.delay?.text,
         labelPosition: 0,
@@ -4202,6 +4203,10 @@ const Canvas: React.FC<CanvasProps> = ({
         const center = size / 2;
         const scale = size / 40;
         const offset = size / 2; // Offset to center element at el.x, el.y
+        const held = getElementValue(el);
+        const fill = el.color || '#ffffff';
+        const glyphStroke = delayGlyphStrokeForFill(fill);
+        const ringStroke = isSelected ? '#0078d4' : glyphStroke;
         return (
           <>
             <svg
@@ -4233,19 +4238,39 @@ const Canvas: React.FC<CanvasProps> = ({
                 cx={center}
                 cy={center}
                 r={15 * scale}
-                fill={el.color || '#000000'}
-                stroke={isSelected ? '#0078d4' : el.color || '#000000'}
+                fill={fill}
+                stroke={ringStroke}
                 strokeWidth={el.thickness || 2}
                 className={`delay-circle ${isSelected ? 'selected' : ''}`}
               />
-              <text
-                x={center}
-                y={center + 2 * scale}
-                className="delay-text"
-                fontSize={11 * scale}
+              <g
+                className="delay-hourglass-glyph"
+                transform={`translate(${center},${center}) scale(${scale})`}
+                style={{ pointerEvents: 'none' }}
               >
-                8
-              </text>
+                <path
+                  d="M -11 -11 L 11 -11 L 0 -3 Z M -11 11 L 11 11 L 0 3 Z"
+                  fill="none"
+                  stroke={glyphStroke}
+                  strokeWidth={1.35}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+              </g>
+              {held > 0 ? (
+                <text
+                  x={center}
+                  y={center + 13 * scale}
+                  className="delay-held-count"
+                  fill={glyphStroke}
+                  fontSize={Math.max(6, 7 * scale)}
+                  textAnchor="middle"
+                  fontWeight="bold"
+                  style={{ pointerEvents: 'none' }}
+                >
+                  {held}
+                </text>
+              ) : null}
             </svg>
             {renderNodeLabel(el, size)}
           </>

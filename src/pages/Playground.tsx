@@ -145,7 +145,7 @@ function createInitialToolbox() {
       pullMode: 'pull any' as const,
     },
     delay: {
-      color: '#000000',
+      color: '#ffffff',
       thickness: 2,
       text: '',
       activation: 'passive' as const,
