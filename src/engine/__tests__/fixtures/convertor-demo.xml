@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<diagram>
+  <!-- Two sources producing different colors -->
+  <source id="1" x="0" y="0" color="#FF0000" activation="automatic"/>
+  <source id="2" x="0" y="100" color="#00FF00" activation="automatic"/>
+  <!-- Convertor transforms resources -->
+  <convertor id="3" x="200" y="50" color="#0000FF"/>
+  <!-- Drain collects output -->
+  <drain id="4" x="400" y="50" color="#0000FF" activation="automatic"/>
+  <!-- Connections -->
+  <resourceConnection id="5" from="1" to="3" startX="0" startY="0" endX="200" endY="50" text="2" color="#FF0000" labelPosition="0.5"/>
+  <resourceConnection id="6" from="2" to="3" startX="0" startY="100" endX="200" endY="50" text="3" color="#00FF00" labelPosition="0.5"/>
+  <resourceConnection id="7" from="3" to="4" startX="200" startY="50" endX="400" endY="50" text="5" color="#0000FF" labelPosition="0.5"/>
+</diagram>

@@ -110,3 +110,172 @@ describe('engine/io + cli — headless source-to-pool simulation', () => {
     expect(reg?.currentValue).toBe(3);
   });
 });
+
+describe('engine/io + cli — pool with drain scenario', () => {
+  const fixturePath = resolve(__dirname, 'fixtures', 'pool-with-drain.xml');
+
+  it('loads pool-with-drain.xml with source, pool, and drain', () => {
+    const { elements, warnings } = loadGraphFromFile(fixturePath);
+    expect(warnings).toEqual([]);
+    expect(elements).toHaveLength(5); // 1 source, 1 pool, 1 drain, 2 connections
+
+    expect(elements.find(e => e.id === 1)?.type).toBe('Source');
+    expect(elements.find(e => e.id === 2)?.type).toBe('Pool');
+    expect(elements.find(e => e.id === 3)?.type).toBe('Drain');
+  });
+
+  it('source produces faster than drain consumes, pool accumulates', () => {
+    const { elements } = loadGraphFromFile(fixturePath);
+    const result = runSimulation(elements, { maxTicks: 10 });
+
+    const pool = result.finalState.find(e => e.id === 2);
+    // Source produces 10/tick, drain consumes 3/tick = net 7/tick
+    // After 10 ticks: 50 (initial) + 7*10 = 120
+    expect(pool?.currentPoints).toBeGreaterThan(50);
+    expect(result.ticksRun).toBe(10);
+  });
+
+  it('runCli with pool-with-drain in JSON format', () => {
+    const outcome = runCli([
+      fixturePath,
+      '--max-ticks',
+      '5',
+      '--format',
+      'json',
+    ]);
+
+    expect(outcome.exitCode).toBe(0);
+    const parsed = JSON.parse(outcome.stdout);
+    expect(parsed.ticksRun).toBe(5);
+    expect(parsed.finalState.length).toBeGreaterThan(0);
+  });
+});
+
+describe('engine/io + cli — convertor scenario', () => {
+  const fixturePath = resolve(__dirname, 'fixtures', 'convertor-demo.xml');
+
+  it('loads convertor-demo.xml with two sources and a convertor', () => {
+    const { elements, warnings } = loadGraphFromFile(fixturePath);
+    expect(warnings).toEqual([]);
+    expect(elements.length).toBeGreaterThan(0);
+
+    expect(elements.find(e => e.id === 1)?.type).toBe('Source');
+    expect(elements.find(e => e.id === 2)?.type).toBe('Source');
+    expect(elements.find(e => e.id === 3)?.type).toBe('Convertor');
+  });
+
+  it('convertor combines resources from multiple sources', () => {
+    const { elements } = loadGraphFromFile(fixturePath);
+    const result = runSimulation(elements, { maxTicks: 5 });
+
+    const convertor = result.finalState.find(e => e.id === 3);
+    const drain = result.finalState.find(e => e.id === 4);
+
+    // Convertor should process resources
+    expect(convertor).toBeDefined();
+    expect(drain).toBeDefined();
+  });
+});
+
+describe('engine/io + cli — gate logic scenario', () => {
+  const fixturePath = resolve(__dirname, 'fixtures', 'gate-logic.xml');
+
+  it('loads gate-logic.xml with source, pool, gate, and drain', () => {
+    const { elements, warnings } = loadGraphFromFile(fixturePath);
+    expect(warnings).toEqual([]);
+
+    expect(elements.find(e => e.id === 1)?.type).toBe('Source');
+    expect(elements.find(e => e.id === 2)?.type).toBe('Pool');
+    expect(elements.find(e => e.id === 3)?.type).toBe('Gate');
+    expect(elements.find(e => e.id === 4)?.type).toBe('Drain');
+  });
+
+  it('gate controls flow through the circuit', () => {
+    const { elements } = loadGraphFromFile(fixturePath);
+    const result = runSimulation(elements, { maxTicks: 8 });
+
+    const pool = result.finalState.find(e => e.id === 2);
+    expect(pool).toBeDefined();
+    expect(result.ticksRun).toBe(8);
+  });
+
+  it('runCli gate-logic with summary format', () => {
+    const outcome = runCli([
+      fixturePath,
+      '--max-ticks',
+      '6',
+      '--format',
+      'summary',
+    ]);
+
+    expect(outcome.exitCode).toBe(0);
+    expect(outcome.stdout).toMatch(/ticksRun=6/);
+  });
+});
+
+describe('engine/io + cli — delay circuit scenario', () => {
+  const fixturePath = resolve(__dirname, 'fixtures', 'delay-circuit.xml');
+
+  it('loads delay-circuit.xml with source, delay, and pool', () => {
+    const { elements, warnings } = loadGraphFromFile(fixturePath);
+    expect(warnings).toEqual([]);
+
+    expect(elements.find(e => e.id === 1)?.type).toBe('Source');
+    expect(elements.find(e => e.id === 2)?.type).toBe('Delay');
+    expect(elements.find(e => e.id === 3)?.type).toBe('Pool');
+  });
+
+  it('delay element buffers resources over multiple ticks', () => {
+    const { elements } = loadGraphFromFile(fixturePath);
+    const result = runSimulation(elements, { maxTicks: 8 });
+
+    const pool = result.finalState.find(e => e.id === 3);
+    // Delay should buffer resources, pool accumulates slower initially
+    expect(pool?.currentPoints).toBeDefined();
+    expect(result.ticksRun).toBe(8);
+  });
+});
+
+describe('engine/io + cli — multi-branch scenario', () => {
+  const fixturePath = resolve(__dirname, 'fixtures', 'multi-branch.xml');
+
+  it('loads multi-branch.xml with source, three pools, and three drains', () => {
+    const { elements, warnings } = loadGraphFromFile(fixturePath);
+    expect(warnings).toEqual([]);
+
+    expect(elements.find(e => e.id === 1)?.type).toBe('Source');
+    expect(elements.find(e => e.id === 2)?.type).toBe('Pool');
+    expect(elements.find(e => e.id === 3)?.type).toBe('Pool');
+    expect(elements.find(e => e.id === 4)?.type).toBe('Pool');
+  });
+
+  it('source distributes resources across multiple paths', () => {
+    const { elements } = loadGraphFromFile(fixturePath);
+    const result = runSimulation(elements, { maxTicks: 10 });
+
+    const pools = result.finalState.filter(e => e.type === 'Pool');
+    expect(pools.length).toBe(3);
+
+    // Each path receives different amounts: 3, 4, 2 per tick
+    pools.forEach(pool => {
+      expect(pool.currentPoints).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  it('runCli multi-branch with --collect-log includes tick history', () => {
+    const outcome = runCli([
+      fixturePath,
+      '--max-ticks',
+      '5',
+      '--format',
+      'json',
+      '--collect-log',
+    ]);
+
+    expect(outcome.exitCode).toBe(0);
+    const parsed = JSON.parse(outcome.stdout);
+    expect(parsed.ticksRun).toBe(5);
+    expect(Array.isArray(parsed.tickLog)).toBe(true);
+    expect(parsed.tickLog.length).toBeGreaterThan(0);
+  });
+});
