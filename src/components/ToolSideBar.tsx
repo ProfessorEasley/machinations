@@ -242,8 +242,6 @@ const fileTools = [
   'Save as SVG (G)',
 ];
 
-// const runTools = ['Quick Run', 'Multiple Runs'];
-
 // Color mapping for predefined colors
 const COLOR_MAP: Record<string, string> = {
   red: '#FF0000',
@@ -1511,7 +1509,7 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <div className="machinations-label">Delay</div>
           <label>
             Color
-            {renderColorDropdown(selectedElement.color || '#000000', color =>
+            {renderColorDropdown(selectedElement.color || '#ffffff', color =>
               handleElementPropertyChange('color', color)
             )}
           </label>
@@ -1557,7 +1555,7 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
             </div>
           </label>
           <label>
-            Actions
+            Intervals
             <input
               type="number"
               value={selectedElement.actions || 1}
@@ -3078,7 +3076,7 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <label>
             Color
             {renderColorDropdown(
-              toolProperties?.delay?.color || '#000000',
+              toolProperties?.delay?.color || '#ffffff',
               color => {
                 if (onToolPropertiesChange) {
                   onToolPropertiesChange('delay', {
@@ -3150,7 +3148,7 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
             </div>
           </label>
           <label>
-            Actions
+            Intervals
             <input
               type="number"
               value={toolProperties?.delay?.actions || 1}
