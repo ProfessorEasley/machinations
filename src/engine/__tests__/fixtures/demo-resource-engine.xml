@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<diagram>
+  <source id="1" x="120" y="160" color="#FFD700" activation="automatic" text="Gold Mine"/>
+  <pool id="2" x="380" y="160" color="#FFD700" number="50" max="1000" text="Treasury"/>
+  <drain id="3" x="640" y="160" color="#8B0000" activation="automatic" text="Upkeep"/>
+
+  <resourceConnection id="4" from="1" to="2"
+    startX="120" startY="160" endX="380" endY="160"
+    text="10" color="#FFD700" labelPosition="0.5"/>
+  <resourceConnection id="5" from="2" to="3"
+    startX="380" startY="160" endX="640" endY="160"
+    text="3" color="#FFD700" labelPosition="0.5"/>
+</diagram>

@@ -3,7 +3,7 @@
   <!-- Source produces 10 per tick -->
   <source id="1" x="0" y="0" color="#FF0000" activation="automatic"/>
   <!-- Delay element - holds resources for 3 ticks -->
-  <delay id="2" x="200" y="0" color="#FF0000" delayMax="3"/>
+  <delay id="2" x="200" y="0" color="#FF0000" actions="3"/>
   <!-- Pool collects delayed output -->
   <pool id="3" x="400" y="0" color="#FF0000" number="0" max="200"/>
   <!-- Source to Delay -->
