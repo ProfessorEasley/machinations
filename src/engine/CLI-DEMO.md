@@ -223,6 +223,7 @@ To add a new simulation fixture:
 
 1. Create an XML file in `src/engine/__tests__/fixtures/`
 2. Add test cases in `src/engine/__tests__/cli.test.ts`:
+
    ```typescript
    describe('my-simulation', () => {
      const fixturePath = resolve(__dirname, 'fixtures', 'my-simulation.xml');
@@ -234,6 +235,7 @@ To add a new simulation fixture:
      });
    });
    ```
+
 3. Run tests to validate:
    ```bash
    npm test -- src/engine/__tests__/cli.test.ts
