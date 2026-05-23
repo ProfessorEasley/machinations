@@ -1,3 +1,17 @@
+/** One batch of resources currently being held inside a Delay node */
+export interface DelaySlot {
+  ticksRemaining: number;
+  amount: number;
+  color: string;
+  /** Skip the next per-tick decrement (batch entered the pipeline this same tick) */
+  skipDecrementOnce: boolean;
+}
+
+export interface DelayPendingBatch {
+  amount: number;
+  color: string;
+}
+
 export type GraphElementType =
   | 'Text Label'
   | 'Group'
@@ -56,6 +70,13 @@ export interface GraphElement {
   currentValue?: number;
 
   queue?: boolean;
+
+  /** Runtime: batches in the retarder pipeline (classic: many; queue: at most one) */
+  delaySlots?: DelaySlot[];
+  /** Runtime: arrivals not yet promoted to slots (flushed when the delay is active) */
+  delayPendingArrivals?: DelayPendingBatch[];
+  /** Runtime: queue mode — feeds waiting while one batch is in the pipeline */
+  delayWaitQueue?: DelayPendingBatch[];
 
   isBlinking?: boolean;
 

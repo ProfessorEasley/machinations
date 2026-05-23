@@ -145,7 +145,7 @@ function createInitialToolbox() {
       pullMode: 'pull any' as const,
     },
     delay: {
-      color: '#000000',
+      color: '#ffffff',
       thickness: 2,
       text: '',
       activation: 'passive' as const,
@@ -378,16 +378,24 @@ const Playground: React.FC = () => {
     };
   }, [runType]);
 
-  const handleRunClick = () => {
+  /** Top bar ▶ Run — step-by-step simulation with UI / token flows */
+  const handleNormalRunClick = () => {
     if (!isRunning) {
-      // Starting quick run
+      setRunType(null);
+      setIsRunning(true);
+      setGameEnded(false);
+    } else {
+      handleReset();
+    }
+  };
+
+  /** Run tab "Quick Run" — synchronous simulation to final state */
+  const handleQuickRunClick = () => {
+    if (!isRunning) {
       setRunType('quick');
       setIsRunning(true);
       setGameEnded(false);
     } else {
-      // Stopping
-      //setIsRunning(false);
-      //setRunType(null);
       handleReset();
     }
   };
@@ -475,7 +483,7 @@ const Playground: React.FC = () => {
 
   return (
     <div className="playground-wrapper">
-      <TopBar isRunning={isRunning} onRunClick={handleRunClick} />
+      <TopBar isRunning={isRunning} onRunClick={handleNormalRunClick} />
       <div className="playground-body">
         <div className="canvas-section">
           <div className="grid-canvas">
@@ -512,7 +520,7 @@ const Playground: React.FC = () => {
             visibleRuns={visibleRuns}
             onNumRunsChange={setNumRuns}
             onVisibleRunsChange={setVisibleRuns}
-            onRunClick={handleRunClick}
+            onRunClick={handleQuickRunClick}
             onMultipleRunClick={handleMultipleRunClick}
             onReset={handleReset}
             onElementUpdate={handleElementUpdate}

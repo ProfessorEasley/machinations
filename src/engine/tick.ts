@@ -11,6 +11,7 @@ import type {
   ResourceTransfer,
   TickOptions,
   TickResult,
+  DelaySlot,
 } from './types';
 import {
   getElementValue,
@@ -700,6 +701,76 @@ export function simulateTick(
       const max = end.max ?? Infinity;
       const accepted = Math.min(units, max - currentTotal);
       if (accepted > 0) modResCount(end, color, accepted);
+      return;
+    }
+    if (end.type === 'Delay') {
+      if (!end.delayPendingArrivals) end.delayPendingArrivals = [];
+      end.delayPendingArrivals.push({ amount: units, color });
+    }
+  };
+
+  /** Intervals to hold each batch (Machinations: property on the retarder; UI "Actions"). */
+  const getDelayIntervalTicks = (delay: GraphElement): number =>
+    Math.max(1, Math.floor(delay.actions ?? 1));
+
+  const flushDelayPendingToSlots = (delay: GraphElement) => {
+    const pending = delay.delayPendingArrivals ?? [];
+    delay.delayPendingArrivals = [];
+    for (const p of pending) {
+      const N = getDelayIntervalTicks(delay);
+      if (delay.queue) {
+        const slots = delay.delaySlots ?? [];
+        if (slots.length === 0) {
+          delay.delaySlots = [
+            {
+              ticksRemaining: N,
+              amount: p.amount,
+              color: p.color,
+              skipDecrementOnce: true,
+            },
+          ];
+        } else {
+          if (!delay.delayWaitQueue) delay.delayWaitQueue = [];
+          delay.delayWaitQueue.push(p);
+        }
+      } else {
+        if (!delay.delaySlots) delay.delaySlots = [];
+        delay.delaySlots.push({
+          ticksRemaining: N,
+          amount: p.amount,
+          color: p.color,
+          skipDecrementOnce: true,
+        });
+      }
+    }
+  };
+
+  const releaseDelaySlot = (delay: GraphElement, slot: DelaySlot) => {
+    const outputConns = nextElements.filter(
+      c =>
+        c.connectedToStart === delay.id &&
+        (c.type === 'State Connection' ||
+          (isResourceLikeConnection(c) && !c.inhibited))
+    );
+    const resourceOuts = outputConns.filter(isResourceLikeConnection);
+    if (resourceOuts.length > 0) {
+      const conn = resourceOuts[0];
+      const labelValue = parseConnectionLabel(conn.text);
+      const flow = handleDecimalResourceDispatch(
+        conn,
+        labelValue,
+        fractionalDispatch,
+        currentTick
+      );
+      const toSend = slot.amount * flow;
+      if (toSend > 0) deliverUnits(conn, toSend, delay);
+    }
+    for (const sc of outputConns) {
+      if (sc.type !== 'State Connection') continue;
+      const raw = (sc.text ?? '').trim();
+      if (shouldActivateTrigger(raw) || isTriggerOutput(raw)) {
+        deliverUnits(sc, 1, delay);
+      }
     }
   };
 
@@ -986,6 +1057,14 @@ export function simulateTick(
               modResCount(pool, o.color, -o.units);
               if (o.endEl!.type === 'Pool')
                 modResCount(o.endEl!, o.color, o.units);
+              else if (o.endEl!.type === 'Delay') {
+                if (!o.endEl!.delayPendingArrivals)
+                  o.endEl!.delayPendingArrivals = [];
+                o.endEl!.delayPendingArrivals.push({
+                  amount: o.units,
+                  color: o.color,
+                });
+              }
               recordTransfer(transfers, o.conn, o.units, pool);
             }
           });
@@ -1003,6 +1082,14 @@ export function simulateTick(
               modResCount(pool, o.color, -o.units);
               if (o.endEl!.type === 'Pool')
                 modResCount(o.endEl!, o.color, o.units);
+              else if (o.endEl!.type === 'Delay') {
+                if (!o.endEl!.delayPendingArrivals)
+                  o.endEl!.delayPendingArrivals = [];
+                o.endEl!.delayPendingArrivals.push({
+                  amount: o.units,
+                  color: o.color,
+                });
+              }
               recordTransfer(transfers, o.conn, o.units, pool);
             }
           }
@@ -1512,6 +1599,72 @@ export function simulateTick(
       }
     }
     if (activationType === 'onstart') trader.hasStarted = true;
+  }
+
+  // ==========================================================================
+  // PASS 4.5: Delay (retarder)
+  // ==========================================================================
+  for (const delay of nextElements) {
+    if (delay.type !== 'Delay') continue;
+    const isForced = isForcedActivation(delay);
+    let active = isForced;
+    if (!active) {
+      if (activationType === 'automatic') {
+        if (delay.activation === 'automatic') active = true;
+        else if (delay.activation === 'passive' && consumePassiveTrigger(delay))
+          active = true;
+      } else if (activationType === 'interactive') {
+        if (
+          delay.activation === 'interactive' &&
+          interactiveElementId === delay.id
+        )
+          active = true;
+      } else if (activationType === 'onstart') {
+        if (delay.activation === 'onstart' && !delay.hasStarted) active = true;
+      }
+    }
+    if (!active) continue;
+
+    flushDelayPendingToSlots(delay);
+
+    const kept: DelaySlot[] = [];
+    const released: DelaySlot[] = [];
+    for (const slot of delay.delaySlots ?? []) {
+      if (slot.skipDecrementOnce) {
+        slot.skipDecrementOnce = false;
+        kept.push(slot);
+        continue;
+      }
+      if (slot.ticksRemaining > 0) slot.ticksRemaining--;
+      if (slot.ticksRemaining <= 0) released.push(slot);
+      else kept.push(slot);
+    }
+    delay.delaySlots = kept;
+
+    for (const slot of released) {
+      releaseDelaySlot(delay, slot);
+      delay.triggerCount = (delay.triggerCount ?? 0) + 1;
+    }
+
+    if (delay.queue) {
+      while (
+        (delay.delaySlots?.length ?? 0) === 0 &&
+        (delay.delayWaitQueue?.length ?? 0) > 0
+      ) {
+        const next = delay.delayWaitQueue!.shift()!;
+        const N = getDelayIntervalTicks(delay);
+        delay.delaySlots = [
+          {
+            ticksRemaining: N,
+            amount: next.amount,
+            color: next.color,
+            skipDecrementOnce: true,
+          },
+        ];
+      }
+    }
+
+    if (activationType === 'onstart') delay.hasStarted = true;
   }
 
   // ==========================================================================

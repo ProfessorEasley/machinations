@@ -1,4 +1,6 @@
 import type { XmlSerializeElement } from './graphXmlSerialize';
+import type { GraphElement } from '../engine/types';
+import { getElementValue, delayGlyphStrokeForFill } from '../engine/helpers';
 import {
   getElementSize,
   getResourcePolylineWorldPoints,
@@ -276,10 +278,17 @@ function renderNodeSvg(el: XmlSerializeElement): string {
     case 'Trader':
       shape = `<polygon points="${x0 + 8 * scale},${y0 + 5 * scale} ${x0 + 35 * scale},${y0 + 5 * scale} ${x0 + 32 * scale},${y0 + 35 * scale} ${x0 + 5 * scale},${y0 + 35 * scale}" fill="none" stroke="${escapeSvgText(stroke)}" stroke-width="${sw}"/>`;
       break;
-    case 'Delay':
-      shape = `<circle cx="${el.x}" cy="${el.y}" r="${15 * scale}" fill="none" stroke="${escapeSvgText(stroke)}" stroke-width="${sw}"/>`;
-      shape += `<text x="${el.x}" y="${el.y + 2 * scale}" text-anchor="middle" font-size="${11 * scale}" font-weight="bold" fill="#000000">8</text>`;
+    case 'Delay': {
+      const fill = el.color || '#ffffff';
+      const glyph = delayGlyphStrokeForFill(fill);
+      const held = getElementValue(el as GraphElement);
+      shape = `<circle cx="${el.x}" cy="${el.y}" r="${15 * scale}" fill="${escapeSvgText(fill)}" stroke="${escapeSvgText(glyph)}" stroke-width="${sw}"/>`;
+      shape += `<g transform="translate(${el.x},${el.y}) scale(${scale})"><path d="M -11 -11 L 11 -11 L 0 -3 Z M -11 11 L 11 11 L 0 3 Z" fill="none" stroke="${escapeSvgText(glyph)}" stroke-width="1.35" stroke-linejoin="round" stroke-linecap="round"/></g>`;
+      if (held > 0) {
+        shape += `<text x="${el.x}" y="${el.y + 13 * scale}" text-anchor="middle" font-size="${Math.max(6, 7 * scale)}" font-weight="bold" fill="${escapeSvgText(glyph)}">${escapeSvgText(String(held))}</text>`;
+      }
       break;
+    }
     case 'Register': {
       const val = el.currentValue ?? 0;
       shape = `<rect x="${x0 + 5 * scale}" y="${y0 + 5 * scale}" width="${30 * scale}" height="${30 * scale}" fill="#ffffff" stroke="${escapeSvgText(stroke)}" stroke-width="${sw}"/>`;

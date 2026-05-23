@@ -48,6 +48,15 @@ export function resetElements(elements: GraphElement[]): GraphElement[] {
       return { ...base, traderInputs: {}, traderOutputs: {} };
     }
 
+    if (el.type === 'Delay') {
+      return {
+        ...base,
+        delaySlots: [],
+        delayPendingArrivals: [],
+        delayWaitQueue: [],
+      };
+    }
+
     if (
       el.type === 'Resource Connection' &&
       (el.dynamicLabelBase !== undefined ||

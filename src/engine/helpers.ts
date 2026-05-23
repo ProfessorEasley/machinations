@@ -21,6 +21,20 @@ export const MULTIPLY_EXPRESSION_REGEX =
 
 export const normalizeColor = (color?: string) => color || '#000000';
 
+/** Stroke for Delay hourglass / held count: black on light fills, light on dark fills */
+export function delayGlyphStrokeForFill(fill?: string): string {
+  const hex = normalizeColor(fill || '#ffffff');
+  const raw = hex.replace(/^#/, '');
+  if (!/^[\da-f]{6}$/i.test(raw)) return '#000000';
+  const r = parseInt(raw.slice(0, 2), 16) / 255;
+  const g = parseInt(raw.slice(2, 4), 16) / 255;
+  const b = parseInt(raw.slice(4, 6), 16) / 255;
+  const lin = (x: number) =>
+    x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+  const L = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  return L > 0.45 ? '#000000' : '#f5f5f5';
+}
+
 export const isResourceLikeConnection = (element: GraphElement) =>
   element.type === 'Resource Connection';
 
@@ -46,6 +60,14 @@ export function getElementValue(element: GraphElement | undefined): number {
   }
 
   if (element.type === 'Register') return element.currentValue || 0;
+
+  if (element.type === 'Delay') {
+    let sum = 0;
+    for (const s of element.delaySlots ?? []) sum += s.amount;
+    for (const p of element.delayPendingArrivals ?? []) sum += p.amount;
+    for (const w of element.delayWaitQueue ?? []) sum += w.amount;
+    return sum;
+  }
 
   if (element.type === 'Source') {
     return typeof element.number === 'string'
