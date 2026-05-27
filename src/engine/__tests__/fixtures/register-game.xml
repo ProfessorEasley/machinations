@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<diagram>
+  <!-- A register that counts something -->
+  <register id="1" x="0" y="0" color="#0000FF" formula="a + 1" startingValue="0" interactive="false"/>
+  <!-- Pool for tracking game state -->
+  <pool id="2" x="200" y="0" color="#FF0000" number="100" max="1000"/>
+  <!-- Source that decrements -->
+  <drain id="3" x="400" y="0" color="#FF0000" activation="automatic"/>
+  <!-- Connection from pool to drain -->
+  <resourceConnection id="4" from="2" to="3" startX="200" startY="0" endX="400" endY="0" text="1" color="#FF0000" labelPosition="0.5"/>
+  <!-- End condition: game ends when register reaches 10 -->
+  <endCondition id="5" x="0" y="100" color="#000000" linkedRegister="1" compareValue="10" operator="equal"/>
+</diagram>

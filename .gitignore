@@ -43,3 +43,6 @@ storybook-static
 
 # Misc
 xmls/
+
+# Test files
+machinations_examples/

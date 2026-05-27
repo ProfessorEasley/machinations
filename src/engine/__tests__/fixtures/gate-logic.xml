@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<diagram>
+  <!-- Source -->
+  <source id="1" x="0" y="0" color="#FF0000" activation="automatic"/>
+  <!-- Pool to track state -->
+  <pool id="2" x="200" y="0" color="#FF0000" number="0" max="100"/>
+  <!-- Gate that opens/closes -->
+  <gate id="3" x="300" y="0" color="#FF0000"/>
+  <!-- Drain consumes when gate is open -->
+  <drain id="4" x="400" y="0" color="#FF0000" activation="automatic"/>
+  <!-- Source to Pool -->
+  <resourceConnection id="5" from="1" to="2" startX="0" startY="0" endX="200" endY="0" text="5" color="#FF0000" labelPosition="0.5"/>
+  <!-- Pool to Gate -->
+  <resourceConnection id="6" from="2" to="3" startX="200" startY="0" endX="300" endY="0" text="all" color="#FF0000" labelPosition="0.5"/>
+  <!-- Gate to Drain -->
+  <resourceConnection id="7" from="3" to="4" startX="300" startY="0" endX="400" endY="0" text="all" color="#FF0000" labelPosition="0.5"/>
+</diagram>
