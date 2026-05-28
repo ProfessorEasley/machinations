@@ -655,6 +655,14 @@ function parseGraphFromXml(xmlText: string): XmlImportResult {
         base.isBlinking = false;
       }
 
+      if (type === 'Delay') {
+        const queueRaw = attrAny(el, ['queue']);
+        if (queueRaw != null) {
+          base.queue = queueRaw.trim().toLowerCase() === 'true';
+        }
+        if (!base.activation) base.activation = 'automatic';
+      }
+
       if (type === 'Convertor' || type === 'Trader') {
         const walletEl = el.querySelector('walletData');
         const raw = walletEl?.textContent?.trim();

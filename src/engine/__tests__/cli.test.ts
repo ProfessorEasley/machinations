@@ -230,9 +230,38 @@ describe('engine/io + cli — delay circuit scenario', () => {
     const result = runSimulation(elements, { maxTicks: 8 });
 
     const pool = result.finalState.find(e => e.id === 3);
-    // Delay should buffer resources, pool accumulates slower initially
-    expect(pool?.currentPoints).toBeDefined();
+    const delay = result.finalState.find(e => e.id === 2);
+    expect(delay?.activation).toBe('automatic');
+    expect(pool?.currentPoints).toBeGreaterThan(0);
     expect(result.ticksRun).toBe(8);
+  });
+});
+
+describe('engine/io + cli — pool delay pool conservation', () => {
+  const classicPath = resolve(__dirname, 'fixtures', 'pool-delay-pool.xml');
+
+  it('classic delay conserves 100 resources (no label multiply)', () => {
+    const { elements } = loadGraphFromFile(classicPath);
+    const result = runSimulation(elements, { maxTicks: 150 });
+
+    const poolA = result.finalState.find(e => e.id === 1);
+    const poolB = result.finalState.find(e => e.id === 3);
+    expect(poolA?.currentPoints).toBe(0);
+    expect(poolB?.currentPoints).toBe(100);
+  });
+
+  it('queue delay conserves 100 resources and finishes slower than classic', () => {
+    const classicEls = loadGraphFromFile(classicPath).elements;
+    const queueEls = classicEls.map(e =>
+      e.id === 2 ? { ...e, queue: true as const } : e
+    );
+
+    const classic = runSimulation(classicEls, { maxTicks: 150 });
+    const queued = runSimulation(queueEls, { maxTicks: 250 });
+
+    expect(classic.finalState.find(e => e.id === 3)?.currentPoints).toBe(100);
+    expect(queued.finalState.find(e => e.id === 3)?.currentPoints).toBe(100);
+    expect(queued.ticksRun).toBeGreaterThan(classic.ticksRun);
   });
 });
 

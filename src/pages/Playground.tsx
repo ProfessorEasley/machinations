@@ -148,7 +148,7 @@ function createInitialToolbox() {
       color: '#ffffff',
       thickness: 2,
       text: '',
-      activation: 'passive' as const,
+      activation: 'automatic' as const,
       actions: 1,
       queue: false,
     },
