@@ -177,7 +177,7 @@ export interface QuickRunCompletePayload {
   endConditionMessage?: string;
 }
 
-const QUICK_RUN_MAX_TICKS = 500;
+const QUICK_RUN_MAX_TICKS = 1000;
 
 /** Automatic tick cap when quick run has no end condition (avoids infinite loop). */
 const QUICK_RUN_TICK_CAP_WITHOUT_END = 1000;
