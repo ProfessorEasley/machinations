@@ -1344,10 +1344,10 @@ const Canvas: React.FC<CanvasProps> = ({
   const gameEndedRef = useRef(false);
   const nextIdRef = useRef(0);
 
-  // Sync ref with state
-  useEffect(() => {
-    gameEndedRef.current = gameEnded;
-  }, [gameEnded]);
+  const applyGameEnded = useCallback((ended: boolean) => {
+    setGameEnded(ended);
+    gameEndedRef.current = ended;
+  }, []);
 
   useEffect(() => {
     // Whenever the tool changes (e.g., from 'Select' to 'Pool'), clears selection.
@@ -1607,8 +1607,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
       // stop any running visuals/state
       setMovingTokens([]);
-      setGameEnded(false);
-      gameEndedRef.current = false;
+      applyGameEnded(false);
 
       // Reset fractional dispatch state
       fractionalDispatchRef.current.clear();
@@ -1625,8 +1624,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
   const resetCanvasForNewDocument = useCallback(() => {
     setMovingTokens([]);
-    setGameEnded(false);
-    gameEndedRef.current = false;
+    applyGameEnded(false);
     fractionalDispatchRef.current.clear();
     currentTickRef.current = 0;
     nextIdRef.current = 0;
@@ -1933,8 +1931,7 @@ const Canvas: React.FC<CanvasProps> = ({
     if (isRunning && !hasSimulationStarted) {
       console.log('--- Starting Simulation ---');
       setHasSimulationStarted(true);
-      setGameEnded(false);
-      gameEndedRef.current = false;
+      applyGameEnded(false);
 
       // Reset fractional dispatch state for new simulation
       fractionalDispatchRef.current.clear();
@@ -2049,52 +2046,50 @@ const Canvas: React.FC<CanvasProps> = ({
         runNext();
       } else {
         // 1. FORCE RESET ELEMENTS (Clean slate before starting)
-        setElementsRef.current(prev => {
-          const cleanElements = resetElements(prev);
+        if (runTypeRef.current === 'quick') {
+          const totalRuns = Math.max(1, numRunsRef.current ?? 1);
+          const baseSnapshot = resetElements(elementsRef.current);
+          const startedAt = performance.now();
+          let finalElements = baseSnapshot;
+          let lastEndMessage: string | undefined;
+          let hadGameEnd = false;
 
-          // Quick Run: N synchronous runs; final canvas = last run; no per-tick cap
-          if (runTypeRef.current === 'quick') {
-            const totalRuns = Math.max(1, numRunsRef.current ?? 1);
-            const baseSnapshot = cleanElements;
-            const startedAt = performance.now();
-            let els = cleanElements;
-            let lastEndMessage: string | undefined;
-            let hadGameEnd = false;
-
-            for (let run = 0; run < totalRuns; run++) {
-              fractionalDispatchRef.current.clear();
-              const dispatch = fractionalDispatchRef.current;
-              const { finalElements, gameEnded, endMessage } =
-                runOneQuickSimulation(baseSnapshot, dispatch);
-              els = finalElements;
-              if (gameEnded) {
-                hadGameEnd = true;
-                lastEndMessage = endMessage;
-              }
+          for (let run = 0; run < totalRuns; run++) {
+            fractionalDispatchRef.current.clear();
+            const dispatch = fractionalDispatchRef.current;
+            const result = runOneQuickSimulation(baseSnapshot, dispatch);
+            finalElements = result.finalElements;
+            if (result.gameEnded) {
+              hadGameEnd = true;
+              lastEndMessage = result.endMessage;
             }
-
-            const durationSeconds = (performance.now() - startedAt) / 1000;
-            gameEndedRef.current = hadGameEnd;
-            setTimeout(
-              () =>
-                onSimulationCompleteRef.current?.({
-                  durationSeconds,
-                  endConditionMessage: hadGameEnd ? lastEndMessage : undefined,
-                }),
-              0
-            );
-            return els;
           }
 
-          // 2. Run the "OnStart" tick immediately on the clean elements
-          const { nextElements: afterOnstart, transfers: onstartTransfers } =
-            runSimulationRef.current(cleanElements, 'onstart');
+          const durationSeconds = (performance.now() - startedAt) / 1000;
+          setElementsRef.current(finalElements);
+          applyGameEnded(hadGameEnd);
+          setTimeout(
+            () =>
+              onSimulationCompleteRef.current?.({
+                durationSeconds,
+                endConditionMessage: hadGameEnd ? lastEndMessage : undefined,
+              }),
+            0
+          );
+        } else {
+          setElementsRef.current(prev => {
+            const cleanElements = resetElements(prev);
 
-          if (onstartTransfers.length)
-            spawnMovingTokensRef.current(onstartTransfers, afterOnstart);
+            // 2. Run the "OnStart" tick immediately on the clean elements
+            const { nextElements: afterOnstart, transfers: onstartTransfers } =
+              runSimulationRef.current(cleanElements, 'onstart');
 
-          return afterOnstart;
-        });
+            if (onstartTransfers.length)
+              spawnMovingTokensRef.current(onstartTransfers, afterOnstart);
+
+            return afterOnstart;
+          });
+        }
       }
     }
 
@@ -2150,7 +2145,7 @@ const Canvas: React.FC<CanvasProps> = ({
       // If it was a manual stop (user clicked Stop), Reset immediately.
       console.log('--- Manual Stop: Resetting Board ---');
       setMovingTokens([]);
-      setGameEnded(false);
+      applyGameEnded(false);
 
       // Reset fractional dispatch state
       fractionalDispatchRef.current.clear();
@@ -2165,7 +2160,7 @@ const Canvas: React.FC<CanvasProps> = ({
     };
     // Ensure ALL dependencies used inside are listed.
     // If setIsRunning comes from props/context, add it too.
-  }, [isRunning, hasSimulationStarted]);
+  }, [isRunning, hasSimulationStarted, applyGameEnded]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -2360,8 +2355,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
   useEffect(() => {
     const handleGameEnd = () => {
-      setGameEnded(true);
-      gameEndedRef.current = true;
+      applyGameEnded(true);
     };
 
     document.addEventListener('game-end', handleGameEnd);
@@ -2369,13 +2363,7 @@ const Canvas: React.FC<CanvasProps> = ({
     return () => {
       document.removeEventListener('game-end', handleGameEnd);
     };
-  }, []);
-
-  useEffect(() => {
-    if (!isRunning) {
-      setGameEnded(gameEndedRef.current);
-    }
-  }, [isRunning]);
+  }, [applyGameEnded]);
 
   useEffect(() => {
     if (!onElementSelection) return;
