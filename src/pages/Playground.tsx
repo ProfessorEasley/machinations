@@ -3,7 +3,8 @@ import { useState, useCallback, useEffect } from 'react';
 import TopBar from '../components/TopBar';
 import ToolSideBar from '../components/ToolSideBar';
 import './Playground.css';
-import Canvas from '../components/Canvas';
+import Canvas, { type QuickRunCompletePayload } from '../components/Canvas';
+import QuickRunResultDialog from '../components/QuickRunResultDialog';
 import { useHistory } from '../hooks/useHistory';
 
 type GraphElementType =
@@ -194,6 +195,10 @@ const Playground: React.FC = () => {
   const [visibleRuns, setVisibleRuns] = useState(25);
 
   const [gameEnded, setGameEnded] = useState(false);
+  const [quickRunResult, setQuickRunResult] = useState<{
+    durationSeconds: number;
+    endConditionMessage: string;
+  } | null>(null);
 
   const [selectedTool, setSelectedTool] = useState<string>('Select');
   const [selectedElementIds, setSelectedElementIds] = useState<number[]>([]);
@@ -366,7 +371,7 @@ const Playground: React.FC = () => {
     const handleGameEnd = () => {
       // During multiple runs the Canvas manages run sequencing internally,
       // so we skip freezing the board between individual runs.
-      if (runType === 'multiple') return;
+      if (runType === 'multiple' || runType === 'quick') return;
       console.log('🎊 Game ended!');
       setGameEnded(true);
     };
@@ -392,6 +397,7 @@ const Playground: React.FC = () => {
   /** Run tab "Quick Run" — synchronous simulation to final state */
   const handleQuickRunClick = () => {
     if (!isRunning) {
+      setQuickRunResult(null);
       setRunType('quick');
       setIsRunning(true);
       setGameEnded(false);
@@ -413,16 +419,23 @@ const Playground: React.FC = () => {
     setIsRunning(false);
     setRunType(null);
     setGameEnded(false);
+    setQuickRunResult(null);
     // Canvas Block C owns the full board reset when isRunning flips to false
   };
 
   // Called by Canvas when a Quick Run or Multiple Runs finishes.
-  // Only stops the simulation — Canvas already froze the board via gameEndedRef,
-  // so Block A will reset on the next run start.
-  const handleSimulationComplete = () => {
+  const handleSimulationComplete = (result?: QuickRunCompletePayload) => {
     setIsRunning(false);
     setRunType(null);
-    setGameEnded(false);
+    if (result?.endConditionMessage) {
+      setGameEnded(true);
+      setQuickRunResult({
+        durationSeconds: result.durationSeconds,
+        endConditionMessage: result.endConditionMessage,
+      });
+    } else {
+      setGameEnded(false);
+    }
   };
 
   const handleElementUpdate = (
@@ -483,6 +496,13 @@ const Playground: React.FC = () => {
 
   return (
     <div className="playground-wrapper">
+      {quickRunResult && (
+        <QuickRunResultDialog
+          durationSeconds={quickRunResult.durationSeconds}
+          endConditionMessage={quickRunResult.endConditionMessage}
+          onClose={() => setQuickRunResult(null)}
+        />
+      )}
       <TopBar isRunning={isRunning} onRunClick={handleNormalRunClick} />
       <div className="playground-body">
         <div className="canvas-section">

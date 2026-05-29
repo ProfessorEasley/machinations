@@ -169,10 +169,64 @@ interface CanvasProps {
   runType?: 'quick' | 'multiple' | null;
   numRuns?: number;
   visibleRuns?: number;
-  onSimulationComplete?: () => void;
+  onSimulationComplete?: (result?: QuickRunCompletePayload) => void;
+}
+
+export interface QuickRunCompletePayload {
+  durationSeconds: number;
+  endConditionMessage?: string;
 }
 
 const QUICK_RUN_MAX_TICKS = 500;
+
+/** Automatic tick cap when quick run has no end condition (avoids infinite loop). */
+const QUICK_RUN_TICK_CAP_WITHOUT_END = 1000;
+
+/** One headless simulation: onstart + automatic ticks until game_end or tick cap. */
+function runOneQuickSimulation(
+  baseElements: GraphElement[],
+  fractionalDispatch: Map<number, FractionalDispatchState>
+): {
+  finalElements: GraphElement[];
+  gameEnded: boolean;
+  endMessage?: string;
+} {
+  let els = resetElements(baseElements);
+  let currentTick = 0;
+  let gameEnded = false;
+  let endMessage: string | undefined;
+
+  const runTick = (mode: 'onstart' | 'automatic'): boolean => {
+    const result = simulateTick(els, mode, {
+      mode,
+      currentTick,
+      fractionalDispatch,
+    });
+    currentTick += 1;
+    els = result.nextElements;
+    const gameEndEvent = result.events.find(e => e.type === 'game_end');
+    if (gameEndEvent) {
+      gameEnded = true;
+      endMessage =
+        (gameEndEvent.payload as { message?: string } | undefined)?.message ??
+        'Victory!';
+      return true;
+    }
+    return false;
+  };
+
+  if (runTick('onstart')) {
+    return { finalElements: els, gameEnded, endMessage };
+  }
+
+  let automaticTicks = 0;
+  while (!gameEnded && automaticTicks < QUICK_RUN_TICK_CAP_WITHOUT_END) {
+    automaticTicks += 1;
+    if (runTick('automatic')) break;
+  }
+
+  return { finalElements: els, gameEnded, endMessage };
+}
 
 interface CustomWindow extends Window {
   __GAME_ENDED__?: boolean;
@@ -1998,29 +2052,43 @@ const Canvas: React.FC<CanvasProps> = ({
         setElementsRef.current(prev => {
           const cleanElements = resetElements(prev);
 
+          // Quick Run: N synchronous runs; final canvas = last run; no per-tick cap
+          if (runTypeRef.current === 'quick') {
+            const totalRuns = Math.max(1, numRunsRef.current ?? 1);
+            const baseSnapshot = cleanElements;
+            const startedAt = performance.now();
+            let els = cleanElements;
+            let lastEndMessage: string | undefined;
+            let hadGameEnd = false;
+
+            for (let run = 0; run < totalRuns; run++) {
+              fractionalDispatchRef.current.clear();
+              const dispatch = fractionalDispatchRef.current;
+              const { finalElements, gameEnded, endMessage } =
+                runOneQuickSimulation(baseSnapshot, dispatch);
+              els = finalElements;
+              if (gameEnded) {
+                hadGameEnd = true;
+                lastEndMessage = endMessage;
+              }
+            }
+
+            const durationSeconds = (performance.now() - startedAt) / 1000;
+            gameEndedRef.current = hadGameEnd;
+            setTimeout(
+              () =>
+                onSimulationCompleteRef.current?.({
+                  durationSeconds,
+                  endConditionMessage: hadGameEnd ? lastEndMessage : undefined,
+                }),
+              0
+            );
+            return els;
+          }
+
           // 2. Run the "OnStart" tick immediately on the clean elements
           const { nextElements: afterOnstart, transfers: onstartTransfers } =
             runSimulationRef.current(cleanElements, 'onstart');
-
-          // Quick Run: skip animations, run all ticks synchronously, return final state
-          if (runTypeRef.current === 'quick') {
-            let els = afterOnstart;
-            for (let tick = 0; tick < QUICK_RUN_MAX_TICKS; tick++) {
-              if (
-                gameEndedRef.current ||
-                (window as unknown as CustomWindow).__GAME_ENDED__
-              )
-                break;
-              const { nextElements } = runSimulationRef.current(
-                els,
-                'automatic'
-              );
-              els = nextElements;
-            }
-            gameEndedRef.current = true;
-            setTimeout(() => onSimulationCompleteRef.current?.(), 0);
-            return els;
-          }
 
           if (onstartTransfers.length)
             spawnMovingTokensRef.current(onstartTransfers, afterOnstart);
@@ -2305,7 +2373,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
   useEffect(() => {
     if (!isRunning) {
-      setGameEnded(false);
+      setGameEnded(gameEndedRef.current);
     }
   }, [isRunning]);
 
