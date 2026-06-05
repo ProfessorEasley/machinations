@@ -25,6 +25,7 @@ interface ParsedArgs {
   maxTicks: number;
   collectLog: boolean;
   format: 'json' | 'summary';
+  seed?: number;
   showHelp: boolean;
   unknownFlag?: string;
 }
@@ -36,6 +37,7 @@ Usage:
 
 Options:
   --max-ticks N        Maximum number of ticks to run (default 1000).
+  --seed N             Seed the PRNG for a deterministic, reproducible run.
   --collect-log        Include per-tick TickResult entries in JSON output.
   --format json        Print full RunSimulationResult as JSON to stdout.
   --format summary     Print a human-readable summary (default).
@@ -47,13 +49,42 @@ Exit codes:
   2  invalid arguments
 `;
 
-function parseArgs(argv: string[]): ParsedArgs {
+/**
+ * `npm run sim -- <file> --seed 42` does not always forward `--flags` to the
+ * script: npm parses them into its own config and exposes them as
+ * `npm_config_*` environment variables instead. To keep `npm run sim` usable,
+ * we reconstruct any missing flag tokens from those env vars and prepend them
+ * to argv (explicit argv still wins, since it is parsed afterwards).
+ */
+function npmConfigArgv(): string[] {
+  if (typeof process === 'undefined' || !process.env) return [];
+  const env = process.env;
+  const read = (name: string): string | undefined =>
+    env[`npm_config_${name}`] ?? env[`npm_config_${name.replace(/-/g, '_')}`];
+
+  const extra: string[] = [];
+  const seed = read('seed');
+  if (seed !== undefined && Number.isFinite(Number(seed)))
+    extra.push('--seed', seed);
+  const maxTicks = read('max-ticks');
+  if (maxTicks !== undefined && Number.isFinite(Number(maxTicks)))
+    extra.push('--max-ticks', maxTicks);
+  const format = read('format');
+  if (format === 'json' || format === 'summary') extra.push('--format', format);
+  const collectLog = read('collect-log');
+  if (collectLog === 'true' || collectLog === '') extra.push('--collect-log');
+  return extra;
+}
+
+function parseArgs(rawArgv: string[]): ParsedArgs {
   const out: ParsedArgs = {
     maxTicks: 1000,
     collectLog: false,
     format: 'summary',
     showHelp: false,
   };
+
+  const argv = [...npmConfigArgv(), ...rawArgv];
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -73,6 +104,16 @@ function parseArgs(argv: string[]): ParsedArgs {
         return out;
       }
       out.maxTicks = Math.floor(n);
+      continue;
+    }
+    if (a === '--seed') {
+      const v = argv[++i];
+      const n = Number(v);
+      if (!Number.isFinite(n)) {
+        out.unknownFlag = `--seed expects a number, got "${v}"`;
+        return out;
+      }
+      out.seed = Math.floor(n);
       continue;
     }
     if (a === '--format') {
@@ -103,11 +144,13 @@ function summarize(
   elements: GraphElement[],
   ticksRun: number,
   gameEnded: boolean,
-  warnings: string[]
+  warnings: string[],
+  seed?: number
 ): string {
   const lines: string[] = [];
   lines.push(
-    `Simulation finished: ticksRun=${ticksRun} gameEnded=${gameEnded}`
+    `Simulation finished: ticksRun=${ticksRun} gameEnded=${gameEnded}` +
+      (seed !== undefined ? ` seed=${seed}` : '')
   );
 
   if (warnings.length) {
@@ -187,12 +230,14 @@ export function runCli(argv: string[]): CliOutcome {
   const result = runSimulation(loaded.elements, {
     maxTicks: args.maxTicks,
     collectLog: args.collectLog,
+    seed: args.seed,
   });
 
   if (args.format === 'json') {
     const payload = {
       ticksRun: result.ticksRun,
       gameEnded: result.gameEnded,
+      seed: args.seed,
       warnings: loaded.warnings,
       finalState: result.finalState,
       ...(args.collectLog ? { tickLog: result.tickLog } : {}),
@@ -210,7 +255,8 @@ export function runCli(argv: string[]): CliOutcome {
       result.finalState,
       result.ticksRun,
       result.gameEnded,
-      loaded.warnings
+      loaded.warnings,
+      args.seed
     ),
     stderr: '',
   };

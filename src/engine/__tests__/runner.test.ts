@@ -393,4 +393,101 @@ describe('engine/runner', () => {
       expect(result.tickLog.length).toBe(0);
     });
   });
+
+  describe('runSimulation — deterministic seeding', () => {
+    // Probabilistic model: Source -> Convertor -> Pool where the converter
+    // output is gated by a 50% probability. Without a seed the pool count
+    // varies run to run; with a seed it must be identical every time.
+    const buildProbabilisticModel = (): GraphElement[] => [
+      {
+        id: 1,
+        type: 'Source',
+        x: 0,
+        y: 0,
+        activation: 'automatic',
+        color: '#FF0000',
+      } as GraphElement,
+      {
+        id: 2,
+        type: 'Convertor',
+        x: 100,
+        y: 0,
+        activation: 'automatic',
+        pullMode: 'pull any',
+      } as GraphElement,
+      {
+        id: 3,
+        type: 'Pool',
+        x: 200,
+        y: 0,
+        max: 10000,
+        currentPoints: 0,
+        resourcesByColor: {},
+        pullMode: 'pull any',
+      } as GraphElement,
+      {
+        id: 4,
+        type: 'Resource Connection',
+        connectedToStart: 1,
+        connectedToEnd: 2,
+        text: '1',
+        color: '#FF0000',
+        inhibited: false,
+      } as GraphElement,
+      {
+        id: 5,
+        type: 'Resource Connection',
+        connectedToStart: 2,
+        connectedToEnd: 3,
+        text: '50%',
+        color: '#FF0000',
+        inhibited: false,
+      } as GraphElement,
+    ];
+
+    const poolCount = (els: GraphElement[]): number =>
+      els.find(e => e.id === 3)?.currentPoints ?? 0;
+
+    it('produces identical outcomes for the same seed', () => {
+      const a = runSimulation(buildProbabilisticModel(), {
+        maxTicks: 200,
+        seed: 42,
+      });
+      const b = runSimulation(buildProbabilisticModel(), {
+        maxTicks: 200,
+        seed: 42,
+      });
+
+      expect(b.finalState).toEqual(a.finalState);
+      expect(poolCount(b.finalState)).toBe(poolCount(a.finalState));
+    });
+
+    it('different seeds can produce different outcomes', () => {
+      const counts = [7, 13, 99, 1234, 56789].map(seed =>
+        poolCount(
+          runSimulation(buildProbabilisticModel(), { maxTicks: 200, seed })
+            .finalState
+        )
+      );
+      // With 200 probabilistic draws across distinct seeds, at least two of the
+      // resulting pool counts should differ.
+      const unique = new Set(counts);
+      expect(unique.size).toBeGreaterThan(1);
+    });
+
+    it('runs are reproducible after running other seeds in between', () => {
+      const first = poolCount(
+        runSimulation(buildProbabilisticModel(), { maxTicks: 200, seed: 42 })
+          .finalState
+      );
+      // Run unrelated seeds to advance/replace global RNG state.
+      runSimulation(buildProbabilisticModel(), { maxTicks: 50, seed: 1 });
+      runSimulation(buildProbabilisticModel(), { maxTicks: 73, seed: 2 });
+      const again = poolCount(
+        runSimulation(buildProbabilisticModel(), { maxTicks: 200, seed: 42 })
+          .finalState
+      );
+      expect(again).toBe(first);
+    });
+  });
 });

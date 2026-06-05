@@ -4,6 +4,7 @@ import type {
   FractionalDispatchState,
   LabelKind,
 } from './types';
+import { random } from './rng';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -106,7 +107,7 @@ export const shouldActivateTrigger = (raw?: string): boolean => {
   const chance = parseTriggerChance(raw);
   if (chance === null) return false;
   if (chance >= 1) return true;
-  return Math.random() < chance;
+  return random() < chance;
 };
 
 // ---------------------------------------------------------------------------
@@ -527,7 +528,7 @@ export function handleDecimalResourceDispatch(
 // ---------------------------------------------------------------------------
 
 export const randInt = (min: number, max: number) =>
-  Math.floor(Math.random() * (max - min + 1)) + min;
+  Math.floor(random() * (max - min + 1)) + min;
 
 // ---------------------------------------------------------------------------
 // Arithmetic expression parser
@@ -875,7 +876,7 @@ export function chooseGateOutputs(
 
     if (sumPercent <= 0) return elseIdx >= 0 ? [outputs[elseIdx]] : [];
 
-    let r = Math.random() * sumPercent;
+    let r = random() * sumPercent;
     for (let i = 0; i < outputs.length; i++) {
       r -= weights[i];
       if (r <= 0 && weights[i] > 0) return [outputs[i]];
@@ -894,7 +895,7 @@ export function chooseGateOutputs(
   const total = weights.reduce((a, b) => a + b, 0);
   if (total <= 0) return elseIdx >= 0 ? [outputs[elseIdx]] : [];
 
-  let r = Math.random() * total;
+  let r = random() * total;
   for (let i = 0; i < outputs.length; i++) {
     r -= weights[i];
     if (r <= 0 && weights[i] > 0) return [outputs[i]];

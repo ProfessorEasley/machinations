@@ -3,6 +3,8 @@
  * Support: +, -, *, /, %, D (dice), variables a–w, and parentheses
  */
 
+import { random } from '../engine/rng';
+
 type Token = number | string;
 
 export class RegisterExpression {
@@ -187,7 +189,7 @@ export class RegisterExpression {
           case 'D':
             result = 0;
             for (let i = 0; i < a; i++) {
-              result += 1 + Math.floor(Math.random() * b);
+              result += 1 + Math.floor(random() * b);
             }
             break;
           default:

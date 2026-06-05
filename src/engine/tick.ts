@@ -28,6 +28,7 @@ import {
   chooseGateOutputs,
   getBaseInputAmountFromMultiplyLabel,
 } from './helpers';
+import { random } from './rng';
 
 // ---------------------------------------------------------------------------
 // Pure helpers used only inside tick
@@ -930,9 +931,7 @@ export function simulateTick(
       } else {
         const choices = command.targets;
         if (choices.length > 0) {
-          queueForcedActivation(
-            choices[Math.floor(Math.random() * choices.length)]
-          );
+          queueForcedActivation(choices[Math.floor(random() * choices.length)]);
         }
       }
     }
@@ -1433,10 +1432,7 @@ export function simulateTick(
           }
         });
         outputs.forEach(o => {
-          if (
-            typeof o.probability === 'number' &&
-            Math.random() > o.probability
-          )
+          if (typeof o.probability === 'number' && random() > o.probability)
             return;
           deliverUnits(o.conn, o.units * speedFactor, convertor);
         });

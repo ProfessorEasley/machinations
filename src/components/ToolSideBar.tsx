@@ -205,8 +205,10 @@ interface ToolSideBarProps {
   isRunning: boolean;
   numRuns?: number;
   visibleRuns?: number;
+  seed?: number;
   onNumRunsChange?: (n: number) => void;
   onVisibleRunsChange?: (n: number) => void;
+  onSeedChange?: (n: number) => void;
   onRunClick: () => void;
   onToolPropertiesChange?: (
     toolType: string,
@@ -308,8 +310,10 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
   runType,
   numRuns = 100,
   visibleRuns = 25,
+  seed = 1,
   onNumRunsChange,
   onVisibleRunsChange,
+  onSeedChange,
   onRunClick,
   onMultipleRunClick,
   onReset,
@@ -723,6 +727,16 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
                       onVisibleRunsChange?.(
                         Math.max(1, parseInt(e.target.value) || 1)
                       )
+                    }
+                  />
+                </label>
+                <label title="Same model + same seed + same tick count always produces the same outcome. Change the seed to explore a different but reproducible run.">
+                  Seed{' '}
+                  <input
+                    type="number"
+                    value={seed}
+                    onChange={e =>
+                      onSeedChange?.(Math.floor(Number(e.target.value)) || 0)
                     }
                   />
                 </label>

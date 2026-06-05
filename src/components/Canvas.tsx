@@ -22,6 +22,7 @@ import {
 import { resetElements } from '../engine/reset';
 import { simulateTick } from '../engine/tick';
 import { startSimulationLoop } from '../engine/simulationLoop';
+import { setSeed } from '../engine/rng';
 import {
   serializeGraphElementsToXml,
   downloadTextFile,
@@ -170,6 +171,7 @@ interface CanvasProps {
   runType?: 'quick' | 'multiple' | null;
   numRuns?: number;
   visibleRuns?: number;
+  seed?: number;
   onSimulationComplete?: () => void;
 }
 
@@ -305,6 +307,7 @@ const Canvas: React.FC<CanvasProps> = ({
   runType,
   numRuns,
   visibleRuns,
+  seed,
   onSimulationComplete,
   selectedTool,
   elements: externalElements,
@@ -904,6 +907,7 @@ const Canvas: React.FC<CanvasProps> = ({
   const setSelectedIdRef = useRef(setSelectedId);
   const runTypeRef = useRef(runType);
   const numRunsRef = useRef(numRuns);
+  const seedRef = useRef(seed);
   const onSimulationCompleteRef = useRef(onSimulationComplete);
   const currentRunRef = useRef(0);
   const multipleRunsAbortRef = useRef(false);
@@ -931,6 +935,10 @@ const Canvas: React.FC<CanvasProps> = ({
   useEffect(() => {
     numRunsRef.current = numRuns;
   }, [numRuns]);
+
+  useEffect(() => {
+    seedRef.current = seed;
+  }, [seed]);
 
   useEffect(() => {
     onSimulationCompleteRef.current = onSimulationComplete;
@@ -1024,6 +1032,11 @@ const Canvas: React.FC<CanvasProps> = ({
       setHasSimulationStarted(true);
       setGameEnded(false);
       gameEndedRef.current = false;
+
+      // Seed the PRNG so this simulation is reproducible. A defined seed makes
+      // every probabilistic decision deterministic for the whole run (or batch
+      // of runs); passing undefined falls back to Math.random().
+      setSeed(seedRef.current);
 
       // Reset fractional dispatch state for new simulation
       fractionalDispatchRef.current.clear();
