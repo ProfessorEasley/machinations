@@ -180,7 +180,7 @@ export interface QuickRunCompletePayload {
 }
 
 /** Max automatic ticks when quick run has no end condition. */
-const QUICK_RUN_TICK_CAP_WITHOUT_END = 2000;
+const QUICK_RUN_TICK_CAP_WITHOUT_END = 5000;
 
 /** Internal simulation steps per visible frame during Quick Run. */
 const QUICK_RUN_BATCH_SIZE = 100;
@@ -1327,9 +1327,21 @@ const Canvas: React.FC<CanvasProps> = ({
 
   // ---------- Moving Tokens (for Resource Connections) ----------
   const TOKEN_TRAVEL_TIME = 600; // ms
+  /** Delay between consecutive resources on the same connection (queue spacing). */
+  const TOKEN_STAGGER_MS = 160;
 
   const [movingTokens, setMovingTokens] = useState<MovingToken[]>([]);
   const nextTokenIdRef = useRef(1);
+  /** Next available departure time per connection (keeps batches in a single file). */
+  const connectionTokenQueueRef = useRef<Map<number, number>>(new Map());
+  /** Bumped to invalidate in-flight token timeouts when animations are cleared. */
+  const tokenAnimationSessionRef = useRef(0);
+
+  const clearMovingTokens = useCallback(() => {
+    tokenAnimationSessionRef.current += 1;
+    connectionTokenQueueRef.current.clear();
+    setMovingTokens([]);
+  }, []);
 
   // Track fractional dispatch progress for decimal-labeled connections
   const fractionalDispatchRef = useRef<Map<number, FractionalDispatchState>>(
@@ -1340,6 +1352,7 @@ const Canvas: React.FC<CanvasProps> = ({
   const spawnMovingTokens = useCallback(
     (transfers: ResourceTransfer[], elementsSnapshot: GraphElement[]) => {
       const tokensToAdd: MovingToken[] = [];
+      const session = tokenAnimationSessionRef.current;
       const now =
         typeof performance !== 'undefined' ? performance.now() : Date.now();
 
@@ -1347,47 +1360,41 @@ const Canvas: React.FC<CanvasProps> = ({
         const conn = elementsSnapshot.find(el => el.id === tr.connectionId);
         if (!conn) continue;
 
-        // Full polyline for this connection (start + points + end)
         const basePolyline = getResourcePolylineWorldPoints(
           conn,
           elementsSnapshot
         );
         if (basePolyline.length < 2) continue;
 
-        const unitsToShow = Math.min(tr.units, 5); // Cap for performance
+        const unitsToShow = Math.min(tr.units, 5);
+        let queueTime =
+          connectionTokenQueueRef.current.get(tr.connectionId) ?? now;
+        if (queueTime < now) queueTime = now;
 
         for (let i = 0; i < unitsToShow; i++) {
           const id = nextTokenIdRef.current++;
-
-          // Slight offset so multiple tokens don't sit exactly on top of each other
-          let path = basePolyline;
-          if (unitsToShow > 1 && basePolyline.length >= 2) {
-            const offset = (i - (unitsToShow - 1) / 2) * 4;
-            const dx = basePolyline[1].x - basePolyline[0].x;
-            const dy = basePolyline[1].y - basePolyline[0].y;
-            const len = Math.hypot(dx, dy) || 1;
-            const nx = -dy / len;
-            const ny = dx / len;
-
-            path = basePolyline.map(p => ({
-              x: p.x + nx * offset,
-              y: p.y + ny * offset,
-            }));
-          }
+          const startTime = queueTime + i * TOKEN_STAGGER_MS;
+          const delayUntilRemove = startTime - now + TOKEN_TRAVEL_TIME + 50;
 
           tokensToAdd.push({
             id,
             connectionId: tr.connectionId,
-            color: tr.color, // ✅ Use specific color
-            path,
-            startTime: now,
-            currentX: path[0].x,
-            currentY: path[0].y,
+            color: tr.color,
+            path: basePolyline,
+            startTime,
+            currentX: basePolyline[0].x,
+            currentY: basePolyline[0].y,
           });
           setTimeout(() => {
+            if (tokenAnimationSessionRef.current !== session) return;
             setMovingTokens(prev => prev.filter(t => t.id !== id));
-          }, TOKEN_TRAVEL_TIME + 50);
+          }, delayUntilRemove);
         }
+
+        connectionTokenQueueRef.current.set(
+          tr.connectionId,
+          queueTime + unitsToShow * TOKEN_STAGGER_MS
+        );
       }
 
       if (tokensToAdd.length) {
@@ -1414,7 +1421,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
         for (const token of prevTokens) {
           const elapsed = now - token.startTime;
-          const t = Math.min(1, elapsed / TOKEN_TRAVEL_TIME); // 0 → 1 over lifetime
+          const t = elapsed < 0 ? 0 : Math.min(1, elapsed / TOKEN_TRAVEL_TIME);
           const p = getPointOnPolylineAtT(token.path, t);
 
           if (elapsed < TOKEN_TRAVEL_TIME + 50) {
@@ -1573,7 +1580,7 @@ const Canvas: React.FC<CanvasProps> = ({
       }
 
       // stop any running visuals/state
-      setMovingTokens([]);
+      clearMovingTokens();
       applyGameEnded(false);
 
       // Reset fractional dispatch state
@@ -1586,11 +1593,11 @@ const Canvas: React.FC<CanvasProps> = ({
       setElements(imported);
       setSelectedId([]);
     },
-    [setElements, setSelectedId]
+    [setElements, setSelectedId, clearMovingTokens]
   );
 
   const resetCanvasForNewDocument = useCallback(() => {
-    setMovingTokens([]);
+    clearMovingTokens();
     applyGameEnded(false);
     fractionalDispatchRef.current.clear();
     currentTickRef.current = 0;
@@ -1616,7 +1623,7 @@ const Canvas: React.FC<CanvasProps> = ({
     setHasSimulationStarted(false);
     setXmlImportError(null);
     setSelectedId([]);
-  }, [setSelectedId]);
+  }, [setSelectedId, clearMovingTokens]);
 
   const handleXmlFileChosen = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1776,6 +1783,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
   const setElementsRef = useRef(setElements);
   const spawnMovingTokensRef = useRef(spawnMovingTokens);
+  const clearMovingTokensRef = useRef(clearMovingTokens);
   const runSimulationRef = useRef(runSimulationAndCollectTransfers);
   const setSelectedIdRef = useRef(setSelectedId);
   const runTypeRef = useRef(runType);
@@ -1798,6 +1806,10 @@ const Canvas: React.FC<CanvasProps> = ({
   useEffect(() => {
     spawnMovingTokensRef.current = spawnMovingTokens;
   }, [spawnMovingTokens]);
+
+  useEffect(() => {
+    clearMovingTokensRef.current = clearMovingTokens;
+  }, [clearMovingTokens]);
 
   useEffect(() => {
     runSimulationRef.current = runSimulationAndCollectTransfers;
@@ -1826,11 +1838,11 @@ const Canvas: React.FC<CanvasProps> = ({
     setQuickRunLiveElements(null);
     applyGameEnded(false);
     setHasSimulationStarted(false);
-    setMovingTokens([]);
+    clearMovingTokens();
     fractionalDispatchRef.current.clear();
     currentTickRef.current = 0;
     quickRunFinishedRef.current = false;
-  }, [boardResetKey, applyGameEnded]);
+  }, [boardResetKey, applyGameEnded, clearMovingTokens]);
 
   // Helper function to collect resources for Pull Any mode
   // const collectResourcesForPullAny = (
@@ -1928,6 +1940,7 @@ const Canvas: React.FC<CanvasProps> = ({
         : `Stopped after ${QUICK_RUN_TICK_CAP_WITHOUT_END} ticks`;
 
       setQuickRunLiveElements(null);
+      clearMovingTokensRef.current();
       setElementsRef.current(quickRunElsRef.current);
       applyGameEnded(true);
       onSimulationCompleteRef.current?.({
@@ -2223,7 +2236,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
       // If it was a manual stop (user clicked Stop), Reset immediately.
       console.log('--- Manual Stop: Resetting Board ---');
-      setMovingTokens([]);
+      clearMovingTokensRef.current();
       applyGameEnded(false);
 
       // Reset fractional dispatch state
