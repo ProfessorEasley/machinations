@@ -4,17 +4,18 @@ Extract simulation logic from `Canvas.tsx` (~8k lines) into standalone headless 
 
 ## Status
 
-| Step | File                                       | Status  |
-| ---- | ------------------------------------------ | ------- |
-| 1    | `types.ts`                                 | Done    |
-| 2    | `helpers.ts`                               | Done    |
-| 3    | `reset.ts`                                 | Done    |
-| 4    | `tick.ts`                                  | Done    |
-| 5    | `simulationLoop.ts`                        | Done    |
-| 6    | `runner.ts`                                | Done    |
-| 7    | `index.ts` + rewire Canvas                 | Pending |
-| 8    | `__tests__/tick.test.ts`, `runner.test.ts` | Done    |
-| 9    | Headless CLI (`io.ts`, `cli.ts`)           | Done    |
+| Step   | File                                       | Status  |
+| ------ | ------------------------------------------ | ------- |
+| 1      | `types.ts`                                 | Done    |
+| 2      | `helpers.ts`                               | Done    |
+| 3      | `reset.ts`                                 | Done    |
+| 4      | `tick.ts`                                  | Done    |
+| 5      | `simulationLoop.ts`                        | Done    |
+| 6      | `runner.ts`                                | Done    |
+| 7      | `index.ts` + rewire Canvas                 | Pending |
+| 8      | `__tests__/tick.test.ts`, `runner.test.ts` | Done    |
+| 9      | Headless CLI (`io.ts`, `cli.ts`)           | Done    |
+| 9a-bis | Legacy `<graph>` XML import in CLI         | Done    |
 
 ## Step 1: Types
 
@@ -117,14 +118,24 @@ Goal: run a saved `.xml` graph end-to-end from the terminal with no browser, no 
 
 ### 9a. `io.ts` -- headless XML loader (Done)
 
-`src/engine/io.ts` parses serialized graph XML using `fast-xml-parser` (no browser `DOMParser` dependency). Round-trip compatible with `serializeGraphElementsToXml`.
+`src/engine/io.ts` is a thin wrapper over `src/utils/graphXmlImport.ts`, which is the **single shared XML parser** used by both the CLI and the UI. It uses `fast-xml-parser` (no browser `DOMParser`), so it works in Node, Vitest, and the browser.
 
 - Public surface:
   - `loadGraphFromXml(xmlText): { elements: GraphElement[]; warnings: string[] }`
   - `loadGraphFromFile(path): { elements, warnings }` (wraps `fs.readFileSync`)
-- Replicates the per-type initialization logic the UI parser uses (Pool `currentPoints`/`resourcesByColor`, Register `currentValue`, End Condition `inhibited` etc.).
+- Replicates the per-type initialization logic the UI uses (Pool `currentPoints`/`resourcesByColor`, Register `currentValue`, End Condition `inhibited`, etc.).
 - Handles `<walletData>` JSON for Convertor/Trader and `<script>` CDATA for Artifical Intelligence.
-- The legacy multi-schema importer in `Canvas.tsx` (`parseGraphFromXml`) remains in place for now — it accepts foreign XML schemas and uses browser `DOMParser`. A later pass can route it through `io.ts` once we decide which alternate tag aliases to keep.
+
+### 9a-bis. Legacy `<graph>` import (Done)
+
+The same `parseGraphFromXmlText` in `src/utils/graphXmlImport.ts` now accepts **both** schemas, so the CLI can run the official Machinations examples (`machinations_examples/official examples/games/*.xml`) directly:
+
+- **Native** — `<diagram>` root, one tag per element type (`<source>`, `<pool>`, `<resourceConnection>` …), explicit `id` attributes, `from` / `to` endpoints. Produced by `serializeGraphElementsToXml`.
+- **Legacy Machinations** — `<graph version="v4.04">` root, `<node symbol="…">` and `<connection type="…">`, no explicit ids on most elements, endpoints reference siblings by **document-order ordinal** (`start="38"` ≙ the element at document position 38).
+
+Attribute aliases the legacy importer translates to native names: `caption` → `text`, `activationMode` → `activation`, `startingResources` → `number`, `capacity` → `max` (`-1` ⇒ unlimited), `displayCapacity` → `displayLimit`, `position`/`captionPos` → `labelPosition`, `start`/`end` → `from`/`to`, plus the `GroupBox` → `Group` and `Converter` → `Convertor` symbol aliases.
+
+`Canvas.tsx`'s prior inline `parseGraphFromXml` (DOM-based) has been removed; it now imports `parseGraphFromXmlText` from the shared module like the CLI does.
 
 ### 9b. `cli.ts` -- Node entry point (Done)
 

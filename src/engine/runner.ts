@@ -5,12 +5,21 @@ import type {
 } from './types';
 import { resetElements } from './reset';
 import { simulateTick } from './tick';
+import { setSeed } from './rng';
 
 export interface RunSimulationOptions {
   /** Maximum number of automatic ticks to run (default 1000). */
   maxTicks?: number;
   /** If true, each TickResult is stored in the returned tickLog (memory cost). */
   collectLog?: boolean;
+  /**
+   * Optional PRNG seed. When provided, all randomness in the run (converter
+   * probabilities, dice gates, trigger chances, register `D` rolls, random AI
+   * picks) is drawn from a deterministic stream, so the same model + seed +
+   * tick count always produces the same outcome. When omitted, the run uses
+   * non-deterministic `Math.random()`.
+   */
+  seed?: number;
 }
 
 export interface RunSimulationResult {
@@ -36,7 +45,11 @@ export function runSimulation(
   elements: GraphElement[],
   options: RunSimulationOptions = {}
 ): RunSimulationResult {
-  const { maxTicks = 1000, collectLog = false } = options;
+  const { maxTicks = 1000, collectLog = false, seed } = options;
+
+  // Seed (or clear) the PRNG before resetting so the run starts from a clean,
+  // reproducible random stream. Passing `undefined` restores Math.random().
+  setSeed(seed);
 
   let currentElements = resetElements(elements);
 

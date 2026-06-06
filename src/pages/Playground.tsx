@@ -194,6 +194,7 @@ const Playground: React.FC = () => {
   const [runType, setRunType] = useState<'quick' | 'multiple' | null>(null);
   const [numRuns, setNumRuns] = useState(100);
   const [visibleRuns, setVisibleRuns] = useState(25);
+  const [seed, setSeed] = useState(1);
 
   const [gameEnded, setGameEnded] = useState(false);
   const [quickRunResult, setQuickRunResult] = useState<{
@@ -513,6 +514,7 @@ const Playground: React.FC = () => {
               runType={runType}
               numRuns={numRuns}
               visibleRuns={visibleRuns}
+              seed={seed}
               boardResetKey={boardResetKey}
               onSimulationComplete={handleSimulationComplete}
               selectedTool={selectedTool}
@@ -540,8 +542,10 @@ const Playground: React.FC = () => {
             runType={runType}
             numRuns={numRuns}
             visibleRuns={visibleRuns}
+            seed={seed}
             onNumRunsChange={setNumRuns}
             onVisibleRunsChange={setVisibleRuns}
+            onSeedChange={setSeed}
             onRunClick={handleQuickRunClick}
             onMultipleRunClick={handleMultipleRunClick}
             onReset={handleReset}

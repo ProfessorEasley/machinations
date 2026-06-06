@@ -65,7 +65,7 @@ The Delay holds each arriving batch for 3 ticks before releasing it. Early in th
 **Verified headless output**
 
 ```
-npx tsx src/engine/cli.ts src/engine/__tests__/fixtures/demo-production-line.xml --max-ticks 1 --format summary
+$ npx tsx src/engine/cli.ts src/engine/__tests__/fixtures/demo-production-line.xml --max-ticks 1 --format summary
 $ ... --max-ticks 2
   Pool#3 "Inventory" = 0          # batches still in the queue
 
@@ -111,3 +111,59 @@ Even though we asked for `--max-ticks 50`, the run stopped at tick 10 because th
 3. **Open `demo-win-condition.xml`** — let the run finish on its own; show the headless `gameEnded=true` and `ticksRun=10`.
 
 The whole story: _one XML, two execution paths, identical results — UI for stakeholders, CLI for automation._
+
+---
+
+## Bonus — Legacy Machinations XML
+
+The CLI also accepts files saved by the legacy Machinations desktop tool (`<graph version="v4.04">` root with `<node symbol="…">` and `<connection type="…">` children — the format used by the files in `machinations_examples/official examples/games/`). The UI and CLI share a single parser (`src/utils/graphXmlImport.ts`), so anything that imports cleanly in the UI runs identically headless.
+
+### Mini fixture — `legacy-rpg-mini.xml`
+
+```
+[GoldMine] --10/tick--> [Treasury] --3/tick--> [Upkeep]
+                              ===>=100===> [Victory]
+```
+
+Same Resource Engine story as Demo 1, but written in the legacy schema (interleaved nodes/connections, no explicit `id`s, endpoints referenced by document-order ordinal).
+
+```powershell
+npx tsx src/engine/cli.ts src/engine/__tests__/fixtures/legacy-rpg-mini.xml --max-ticks 5 --format summary
+# Pool#2 "Treasury" = 35     (net +7 per tick from a starting balance of 0)
+```
+
+### Official examples — `RPG.xml` and `Diablo3.xml`
+
+These are the files the legacy tool ships with. They previously only loaded in the UI; now they also run headless.
+
+```powershell
+npx tsx src/engine/cli.ts "machinations_examples/official examples/games/Diablo3.xml" --max-ticks 10 --format summary
+```
+
+**Verified headless output** (player vs. monster combat — monster's `Attack` Drain pulls 10/tick from `Hit Points`)
+
+```
+Simulation finished: ticksRun=10 gameEnded=false
+
+Final state:
+  Pool#8  "Stats"      = 1   (Black:1)
+  Pool#9  "Hit Points" = 150 (Black:150)   # player HP: 250 - 10×10 = 150
+  Pool#10 "Spirit"     = 150 (Black:150)
+  Pool#22 "Dificulty"  = 1   (Black:1)
+  Pool#24 "Hit Points" = 250 (Black:250)   # monster HP: untouched until skills fire
+```
+
+```powershell
+npx tsx src/engine/cli.ts "machinations_examples/official examples/games/RPG.xml" --max-ticks 10 --format summary
+```
+
+Simulation finished: ticksRun=10 gameEnded=false
+
+Final state:
+Pool#8 "MP" = 40 (Green:40)
+Pool#25 "Improve" = 0
+Pool#38 "HP" = 100 (Green:100)
+Pool#46 = 0
+Pool#52 "Potions" = 2 (Green:2)
+
+**Talking point:** “One parser, two schemas, two execution paths. We can plug a 15-year-old Machinations file into our automation pipeline and get identical numbers to what the original tool would render.”
