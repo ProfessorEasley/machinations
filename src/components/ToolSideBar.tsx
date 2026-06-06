@@ -89,6 +89,8 @@ interface ToolSideBarProps {
   runType?: 'quick' | 'multiple' | null;
   onMultipleRunClick?: () => void;
   onReset?: () => void;
+  /** Show Reset below run buttons after Quick/Multiple run completes (canvas frozen). */
+  showRunReset?: boolean;
   toolProperties?: {
     textLabel: { text: string; color: string };
     group: { text: string; color: string };
@@ -313,6 +315,7 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
   onRunClick,
   onMultipleRunClick,
   onReset,
+  showRunReset = false,
 }) => {
   const [activeTab, setActiveTab] = useState<'Graph' | 'Edit' | 'File' | 'Run'>(
     'Graph'
@@ -698,7 +701,12 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
                 <button onClick={onMultipleRunClick}>Multiple Runs</button>
               </>
             )}
-            {!isRunning && (
+            {showRunReset && (
+              <button onClick={onReset} className="reset-button">
+                Reset
+              </button>
+            )}
+            {!isRunning && !showRunReset && (
               <>
                 <label>
                   Runs{' '}
@@ -1555,7 +1563,7 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
             </div>
           </label>
           <label>
-            Intervals
+            Actions
             <input
               type="number"
               value={selectedElement.actions || 1}
@@ -1568,13 +1576,14 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           <label>
             <input
               type="checkbox"
-              checked={selectedElement.queue || false}
-              onChange={e =>
-                handleElementPropertyChange(
-                  'queue',
-                  e.target.checked.toString()
-                )
-              }
+              checked={Boolean(selectedElement.queue)}
+              onChange={e => {
+                if (selectedElement && onElementUpdate) {
+                  onElementUpdate(selectedElement.id, {
+                    queue: e.target.checked,
+                  });
+                }
+              }}
             />
             Queue
           </label>
@@ -3148,18 +3157,11 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
             </div>
           </label>
           <label>
-            Intervals
+            Actions
             <input
               type="number"
               value={toolProperties?.delay?.actions || 1}
-              onChange={e => {
-                if (onToolPropertiesChange) {
-                  onToolPropertiesChange('delay', {
-                    ...toolProperties?.delay,
-                    actions: parseInt(e.target.value) || 1,
-                  });
-                }
-              }}
+              disabled
               min="1"
             />
           </label>
