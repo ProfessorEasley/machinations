@@ -172,6 +172,9 @@ function serializeNode(el: XmlSerializeElement): string {
   if (el.pullMode) attrs.push(optionalAttr('pullMode', el.pullMode));
   if (el.gateType) attrs.push(optionalAttr('gateType', el.gateType));
   if (el.actions != null) attrs.push(optionalAttr('actions', el.actions));
+  if (el.type === 'Delay' && el.queue) {
+    attrs.push(optionalAttr('queue', 'true'));
+  }
 
   if (el.type === 'Pool') {
     attrs.push(optionalAttr('number', poolStartingNumber(el)));

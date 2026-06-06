@@ -12,6 +12,7 @@ import type {
   TickOptions,
   TickResult,
   DelaySlot,
+  DelayPendingBatch,
 } from './types';
 import {
   getElementValue,
@@ -705,8 +706,7 @@ export function simulateTick(
       return;
     }
     if (end.type === 'Delay') {
-      if (!end.delayPendingArrivals) end.delayPendingArrivals = [];
-      end.delayPendingArrivals.push({ amount: units, color });
+      enqueueDelayArrival(end, units, color);
     }
   };
 
@@ -714,39 +714,124 @@ export function simulateTick(
   const getDelayIntervalTicks = (delay: GraphElement): number =>
     Math.max(1, Math.floor(delay.actions ?? 1));
 
-  const flushDelayPendingToSlots = (delay: GraphElement) => {
-    const pending = delay.delayPendingArrivals ?? [];
-    delay.delayPendingArrivals = [];
-    for (const p of pending) {
-      const N = getDelayIntervalTicks(delay);
-      if (delay.queue) {
-        const slots = delay.delaySlots ?? [];
-        if (slots.length === 0) {
-          delay.delaySlots = [
-            {
-              ticksRemaining: N,
-              amount: p.amount,
-              color: p.color,
-              skipDecrementOnce: true,
-            },
-          ];
-        } else {
-          if (!delay.delayWaitQueue) delay.delayWaitQueue = [];
-          delay.delayWaitQueue.push(p);
-        }
-      } else {
-        if (!delay.delaySlots) delay.delaySlots = [];
-        delay.delaySlots.push({
-          ticksRemaining: N,
-          amount: p.amount,
-          color: p.color,
-          skipDecrementOnce: true,
-        });
+  /** Queue mode (UI checkbox may persist as string "true"/"false"). */
+  const isDelayQueueMode = (delay: GraphElement): boolean => {
+    const q = delay.queue as boolean | string | undefined;
+    return q === true || q === 'true';
+  };
+
+  const isDelayAllReleaseLabel = (label?: string) =>
+    (label ?? '').trim().toLowerCase() === 'all';
+
+  const enqueueDelayArrival = (
+    delay: GraphElement,
+    amount: number,
+    color: string
+  ) => {
+    if (!delay.delayPendingArrivals) delay.delayPendingArrivals = [];
+    delay.delayPendingArrivals.push({
+      amount,
+      color,
+      awaitingPipeline: true,
+    });
+    if (delay.activation === 'passive') {
+      delay.triggerCount = (delay.triggerCount ?? 0) + 1;
+    }
+  };
+
+  /**
+   * Pull from upstream pools into the retarder when the source pool is not in push mode.
+   * (Push-mode pools already send via the pool PUSH pass; avoids double intake.)
+   */
+  const intakeDelayFromPools = (delay: GraphElement) => {
+    const inputConns = nextElements.filter(
+      c =>
+        isResourceLikeConnection(c) &&
+        c.connectedToEnd === delay.id &&
+        !c.inhibited
+    );
+    for (const conn of inputConns) {
+      const startEl = elementMap.get(conn.connectedToStart!);
+      if (!startEl || startEl.type !== 'Pool') continue;
+      const pull = startEl.pullMode ?? 'pull any';
+      if (pull === 'push any' || pull === 'push all') continue;
+
+      const color = normalizeColor(conn.color);
+      const labelValue = parseConnectionLabel(conn.text);
+      const units = handleDecimalResourceDispatch(
+        conn,
+        labelValue,
+        fractionalDispatch,
+        currentTick
+      );
+      if (units <= 0 || !canTakeUnits(startEl, units, color)) continue;
+
+      const taken = takeUnits(startEl, units, color);
+      if (taken > 0) {
+        enqueueDelayArrival(delay, taken, color);
+        recordTransfer(transfers, conn, taken, startEl);
       }
     }
   };
 
-  const releaseDelaySlot = (delay: GraphElement, slot: DelaySlot) => {
+  const getDelayOutputCap = (conn: GraphElement): number => {
+    const raw = (conn.text ?? '').trim();
+    if (isDelayAllReleaseLabel(raw)) return Infinity;
+    const n = parseConnectionLabel(conn.text);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 1;
+  };
+
+  const promoteDelayBatchToSlot = (
+    delay: GraphElement,
+    batch: DelayPendingBatch
+  ) => {
+    const N = getDelayIntervalTicks(delay);
+    const slot: DelaySlot = {
+      ticksRemaining: N,
+      amount: batch.amount,
+      color: batch.color,
+      holdPausedThisTick: true,
+    };
+    if (isDelayQueueMode(delay)) {
+      const slots = delay.delaySlots ?? [];
+      if (slots.length === 0) {
+        delay.delaySlots = [slot];
+      } else {
+        if (!delay.delayWaitQueue) delay.delayWaitQueue = [];
+        delay.delayWaitQueue.push({
+          amount: batch.amount,
+          color: batch.color,
+        });
+      }
+    } else {
+      if (!delay.delaySlots) delay.delaySlots = [];
+      delay.delaySlots.push(slot);
+    }
+  };
+
+  const flushDelayPendingToSlots = (delay: GraphElement) => {
+    const pending = delay.delayPendingArrivals ?? [];
+    const stillPending: DelayPendingBatch[] = [];
+    for (const p of pending) {
+      if (p.awaitingPipeline) {
+        stillPending.push({
+          amount: p.amount,
+          color: p.color,
+          awaitingPipeline: false,
+        });
+      } else {
+        promoteDelayBatchToSlot(delay, p);
+      }
+    }
+    delay.delayPendingArrivals = stillPending;
+  };
+
+  /** Release one tranche from a matured slot; returns amount still held in the slot. */
+  const releaseDelaySlotTranche = (
+    delay: GraphElement,
+    slot: DelaySlot,
+    maxUnits?: number
+  ): number => {
     const outputConns = nextElements.filter(
       c =>
         c.connectedToStart === delay.id &&
@@ -754,17 +839,16 @@ export function simulateTick(
           (isResourceLikeConnection(c) && !c.inhibited))
     );
     const resourceOuts = outputConns.filter(isResourceLikeConnection);
-    if (resourceOuts.length > 0) {
+    if (resourceOuts.length > 0 && slot.amount > 0) {
       const conn = resourceOuts[0];
-      const labelValue = parseConnectionLabel(conn.text);
-      const flow = handleDecimalResourceDispatch(
-        conn,
-        labelValue,
-        fractionalDispatch,
-        currentTick
-      );
-      const toSend = slot.amount * flow;
+      const cap = getDelayOutputCap(conn);
+      const limit = maxUnits != null ? Math.min(cap, maxUnits) : cap;
+      const toSend =
+        limit === Infinity
+          ? slot.amount
+          : Math.min(slot.amount, Math.max(0, Math.floor(limit)));
       if (toSend > 0) deliverUnits(conn, toSend, delay);
+      return slot.amount - toSend;
     }
     for (const sc of outputConns) {
       if (sc.type !== 'State Connection') continue;
@@ -773,6 +857,7 @@ export function simulateTick(
         deliverUnits(sc, 1, delay);
       }
     }
+    return slot.amount;
   };
 
   // ==========================================================================
@@ -1056,14 +1141,8 @@ export function simulateTick(
               modResCount(pool, o.color, -o.units);
               if (o.endEl!.type === 'Pool')
                 modResCount(o.endEl!, o.color, o.units);
-              else if (o.endEl!.type === 'Delay') {
-                if (!o.endEl!.delayPendingArrivals)
-                  o.endEl!.delayPendingArrivals = [];
-                o.endEl!.delayPendingArrivals.push({
-                  amount: o.units,
-                  color: o.color,
-                });
-              }
+              else if (o.endEl!.type === 'Delay')
+                enqueueDelayArrival(o.endEl!, o.units, o.color);
               recordTransfer(transfers, o.conn, o.units, pool);
             }
           });
@@ -1081,14 +1160,8 @@ export function simulateTick(
               modResCount(pool, o.color, -o.units);
               if (o.endEl!.type === 'Pool')
                 modResCount(o.endEl!, o.color, o.units);
-              else if (o.endEl!.type === 'Delay') {
-                if (!o.endEl!.delayPendingArrivals)
-                  o.endEl!.delayPendingArrivals = [];
-                o.endEl!.delayPendingArrivals.push({
-                  amount: o.units,
-                  color: o.color,
-                });
-              }
+              else if (o.endEl!.type === 'Delay')
+                enqueueDelayArrival(o.endEl!, o.units, o.color);
               recordTransfer(transfers, o.conn, o.units, pool);
             }
           }
@@ -1606,9 +1679,8 @@ export function simulateTick(
     let active = isForced;
     if (!active) {
       if (activationType === 'automatic') {
-        if (delay.activation === 'automatic') active = true;
-        else if (delay.activation === 'passive' && consumePassiveTrigger(delay))
-          active = true;
+        // Retarder hold/release always advances each automatic tick.
+        active = true;
       } else if (activationType === 'interactive') {
         if (
           delay.activation === 'interactive' &&
@@ -1621,42 +1693,62 @@ export function simulateTick(
     }
     if (!active) continue;
 
+    intakeDelayFromPools(delay);
     flushDelayPendingToSlots(delay);
 
     const kept: DelaySlot[] = [];
-    const released: DelaySlot[] = [];
+    const matured: DelaySlot[] = [];
     for (const slot of delay.delaySlots ?? []) {
-      if (slot.skipDecrementOnce) {
-        slot.skipDecrementOnce = false;
+      if (slot.holdPausedThisTick) {
+        slot.holdPausedThisTick = false;
         kept.push(slot);
         continue;
       }
       if (slot.ticksRemaining > 0) slot.ticksRemaining--;
-      if (slot.ticksRemaining <= 0) released.push(slot);
+      if (slot.ticksRemaining <= 0) matured.push(slot);
       else kept.push(slot);
     }
-    delay.delaySlots = kept;
 
-    for (const slot of released) {
-      releaseDelaySlot(delay, slot);
+    const outputConn = nextElements.find(
+      c =>
+        isResourceLikeConnection(c) &&
+        c.connectedToStart === delay.id &&
+        !c.inhibited
+    );
+    const perTickOutCap = outputConn ? getDelayOutputCap(outputConn) : 1;
+    let releasedOutThisTick = 0;
+
+    for (const slot of matured) {
+      if (releasedOutThisTick >= perTickOutCap && perTickOutCap !== Infinity) {
+        kept.push({
+          ticksRemaining: 0,
+          amount: slot.amount,
+          color: slot.color,
+        });
+        continue;
+      }
+      const budget =
+        perTickOutCap === Infinity
+          ? undefined
+          : perTickOutCap - releasedOutThisTick;
+      const before = slot.amount;
+      const remaining = releaseDelaySlotTranche(delay, slot, budget);
+      releasedOutThisTick += before - remaining;
+      if (remaining > 0) {
+        kept.push({ ticksRemaining: 0, amount: remaining, color: slot.color });
+      }
       delay.triggerCount = (delay.triggerCount ?? 0) + 1;
     }
 
-    if (delay.queue) {
+    delay.delaySlots = kept;
+
+    if (isDelayQueueMode(delay)) {
       while (
         (delay.delaySlots?.length ?? 0) === 0 &&
         (delay.delayWaitQueue?.length ?? 0) > 0
       ) {
         const next = delay.delayWaitQueue!.shift()!;
-        const N = getDelayIntervalTicks(delay);
-        delay.delaySlots = [
-          {
-            ticksRemaining: N,
-            amount: next.amount,
-            color: next.color,
-            skipDecrementOnce: true,
-          },
-        ];
+        promoteDelayBatchToSlot(delay, next);
       }
     }
 

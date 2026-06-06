@@ -470,6 +470,14 @@ function buildNode(
     el.height = numAttrAny(rawNode, ['height']) ?? 150;
   }
 
+  if (type === 'Delay') {
+    const queueRaw = attrAny(rawNode, ['queue']);
+    if (queueRaw != null) {
+      el.queue = queueRaw.trim().toLowerCase() === 'true';
+    }
+    if (!el.activation) el.activation = 'automatic';
+  }
+
   return el;
 }
 

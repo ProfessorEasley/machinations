@@ -3,13 +3,15 @@ export interface DelaySlot {
   ticksRemaining: number;
   amount: number;
   color: string;
-  /** Skip the next per-tick decrement (batch entered the pipeline this same tick) */
-  skipDecrementOnce: boolean;
+  /** First tick in the hold pipeline does not count toward the interval timer */
+  holdPausedThisTick?: boolean;
 }
 
 export interface DelayPendingBatch {
   amount: number;
   color: string;
+  /** Wait one tick after arrival before entering the hold pipeline */
+  awaitingPipeline?: boolean;
 }
 
 export type GraphElementType =
