@@ -53,6 +53,11 @@ button.selected {
   cursor: pointer;
 }
 
+.tool-buttons .reset-button {
+  flex: 1 0 100%;
+  margin-top: 2px;
+}
+
 .properties-panel {
   display: flex;
   flex-direction: column;

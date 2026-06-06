@@ -89,6 +89,8 @@ interface ToolSideBarProps {
   runType?: 'quick' | 'multiple' | null;
   onMultipleRunClick?: () => void;
   onReset?: () => void;
+  /** Show Reset below run buttons after Quick/Multiple run completes (canvas frozen). */
+  showRunReset?: boolean;
   toolProperties?: {
     textLabel: { text: string; color: string };
     group: { text: string; color: string };
@@ -313,6 +315,7 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
   onRunClick,
   onMultipleRunClick,
   onReset,
+  showRunReset = false,
 }) => {
   const [activeTab, setActiveTab] = useState<'Graph' | 'Edit' | 'File' | 'Run'>(
     'Graph'
@@ -698,7 +701,12 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
                 <button onClick={onMultipleRunClick}>Multiple Runs</button>
               </>
             )}
-            {!isRunning && (
+            {showRunReset && (
+              <button onClick={onReset} className="reset-button">
+                Reset
+              </button>
+            )}
+            {!isRunning && !showRunReset && (
               <>
                 <label>
                   Runs{' '}

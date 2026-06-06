@@ -6,6 +6,7 @@ import './Playground.css';
 import Canvas, { type QuickRunCompletePayload } from '../components/Canvas';
 import QuickRunResultDialog from '../components/QuickRunResultDialog';
 import { useHistory } from '../hooks/useHistory';
+import { resetElements } from '../engine/reset';
 
 type GraphElementType =
   | 'Text Label'
@@ -199,6 +200,7 @@ const Playground: React.FC = () => {
     durationSeconds: number;
     endConditionMessage: string;
   } | null>(null);
+  const [boardResetKey, setBoardResetKey] = useState(0);
 
   const [selectedTool, setSelectedTool] = useState<string>('Select');
   const [selectedElementIds, setSelectedElementIds] = useState<number[]>([]);
@@ -420,21 +422,20 @@ const Playground: React.FC = () => {
     setRunType(null);
     setGameEnded(false);
     setQuickRunResult(null);
-    // Canvas Block C owns the full board reset when isRunning flips to false
+    setElements(resetElements(elements));
+    setBoardResetKey(k => k + 1);
   };
 
   // Called by Canvas when a Quick Run or Multiple Runs finishes.
   const handleSimulationComplete = (result?: QuickRunCompletePayload) => {
     setIsRunning(false);
     setRunType(null);
-    if (result?.endConditionMessage) {
-      setGameEnded(true);
+    setGameEnded(true);
+    if (result) {
       setQuickRunResult({
         durationSeconds: result.durationSeconds,
         endConditionMessage: result.endConditionMessage,
       });
-    } else {
-      setGameEnded(false);
     }
   };
 
@@ -512,6 +513,7 @@ const Playground: React.FC = () => {
               runType={runType}
               numRuns={numRuns}
               visibleRuns={visibleRuns}
+              boardResetKey={boardResetKey}
               onSimulationComplete={handleSimulationComplete}
               selectedTool={selectedTool}
               elements={elements}
@@ -543,6 +545,7 @@ const Playground: React.FC = () => {
             onRunClick={handleQuickRunClick}
             onMultipleRunClick={handleMultipleRunClick}
             onReset={handleReset}
+            showRunReset={gameEnded && !isRunning}
             onElementUpdate={handleElementUpdate}
             toolProperties={toolProperties}
             onToolPropertiesChange={handleToolPropertiesChange}

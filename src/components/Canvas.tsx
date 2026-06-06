@@ -170,11 +170,13 @@ interface CanvasProps {
   numRuns?: number;
   visibleRuns?: number;
   onSimulationComplete?: (result?: QuickRunCompletePayload) => void;
+  /** Increment to reset frozen sim state after Quick Run (Playground Reset). */
+  boardResetKey?: number;
 }
 
 export interface QuickRunCompletePayload {
   durationSeconds: number;
-  endConditionMessage?: string;
+  endConditionMessage: string;
 }
 
 const QUICK_RUN_MAX_TICKS = 1000;
@@ -1220,6 +1222,7 @@ const Canvas: React.FC<CanvasProps> = ({
   numRuns,
   visibleRuns,
   onSimulationComplete,
+  boardResetKey = 0,
   selectedTool,
   elements: externalElements,
   selectedElementIds: externalSelectedIds,
@@ -1845,6 +1848,15 @@ const Canvas: React.FC<CanvasProps> = ({
     onSimulationCompleteRef.current = onSimulationComplete;
   }, [onSimulationComplete]);
 
+  useEffect(() => {
+    if (boardResetKey === 0) return;
+    applyGameEnded(false);
+    setHasSimulationStarted(false);
+    setMovingTokens([]);
+    fractionalDispatchRef.current.clear();
+    currentTickRef.current = 0;
+  }, [boardResetKey, applyGameEnded]);
+
   // Helper function to collect resources for Pull Any mode
   // const collectResourcesForPullAny = (
   //   trader: GraphElement,
@@ -1957,7 +1969,7 @@ const Canvas: React.FC<CanvasProps> = ({
           if (multipleRunsAbortRef.current) return;
           if (currentRunRef.current >= (numRunsRef.current ?? 100)) {
             setElementsRef.current(runEls); // commit all accumulated chart data once
-            gameEndedRef.current = true;
+            applyGameEnded(true);
             onSimulationCompleteRef.current?.();
             return;
           }
@@ -2047,35 +2059,23 @@ const Canvas: React.FC<CanvasProps> = ({
       } else {
         // 1. FORCE RESET ELEMENTS (Clean slate before starting)
         if (runTypeRef.current === 'quick') {
-          const totalRuns = Math.max(1, numRunsRef.current ?? 1);
           const baseSnapshot = resetElements(elementsRef.current);
           const startedAt = performance.now();
-          let finalElements = baseSnapshot;
-          let lastEndMessage: string | undefined;
-          let hadGameEnd = false;
-
-          for (let run = 0; run < totalRuns; run++) {
-            fractionalDispatchRef.current.clear();
-            const dispatch = fractionalDispatchRef.current;
-            const result = runOneQuickSimulation(baseSnapshot, dispatch);
-            finalElements = result.finalElements;
-            if (result.gameEnded) {
-              hadGameEnd = true;
-              lastEndMessage = result.endMessage;
-            }
-          }
+          fractionalDispatchRef.current.clear();
+          const dispatch = fractionalDispatchRef.current;
+          const result = runOneQuickSimulation(baseSnapshot, dispatch);
+          const finalElements = result.finalElements;
+          const endConditionMessage = result.gameEnded
+            ? (result.endMessage ?? 'Victory!')
+            : `Stopped after ${QUICK_RUN_TICK_CAP_WITHOUT_END} ticks`;
 
           const durationSeconds = (performance.now() - startedAt) / 1000;
           setElementsRef.current(finalElements);
-          applyGameEnded(hadGameEnd);
-          setTimeout(
-            () =>
-              onSimulationCompleteRef.current?.({
-                durationSeconds,
-                endConditionMessage: hadGameEnd ? lastEndMessage : undefined,
-              }),
-            0
-          );
+          applyGameEnded(true);
+          onSimulationCompleteRef.current?.({
+            durationSeconds,
+            endConditionMessage,
+          });
         } else {
           setElementsRef.current(prev => {
             const cleanElements = resetElements(prev);
