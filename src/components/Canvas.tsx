@@ -179,56 +179,16 @@ export interface QuickRunCompletePayload {
   endConditionMessage: string;
 }
 
+/** Max automatic ticks when quick run has no end condition. */
+const QUICK_RUN_TICK_CAP_WITHOUT_END = 2000;
+
+/** Internal simulation steps per visible frame during Quick Run. */
+const QUICK_RUN_BATCH_SIZE = 100;
+
+/** Simulated time step per internal tick (seconds). */
+const QUICK_RUN_TIME_INCREMENT = 0.1;
+
 const QUICK_RUN_MAX_TICKS = 1000;
-
-/** Automatic tick cap when quick run has no end condition (avoids infinite loop). */
-const QUICK_RUN_TICK_CAP_WITHOUT_END = 1000;
-
-/** One headless simulation: onstart + automatic ticks until game_end or tick cap. */
-function runOneQuickSimulation(
-  baseElements: GraphElement[],
-  fractionalDispatch: Map<number, FractionalDispatchState>
-): {
-  finalElements: GraphElement[];
-  gameEnded: boolean;
-  endMessage?: string;
-} {
-  let els = resetElements(baseElements);
-  let currentTick = 0;
-  let gameEnded = false;
-  let endMessage: string | undefined;
-
-  const runTick = (mode: 'onstart' | 'automatic'): boolean => {
-    const result = simulateTick(els, mode, {
-      mode,
-      currentTick,
-      fractionalDispatch,
-    });
-    currentTick += 1;
-    els = result.nextElements;
-    const gameEndEvent = result.events.find(e => e.type === 'game_end');
-    if (gameEndEvent) {
-      gameEnded = true;
-      endMessage =
-        (gameEndEvent.payload as { message?: string } | undefined)?.message ??
-        'Victory!';
-      return true;
-    }
-    return false;
-  };
-
-  if (runTick('onstart')) {
-    return { finalElements: els, gameEnded, endMessage };
-  }
-
-  let automaticTicks = 0;
-  while (!gameEnded && automaticTicks < QUICK_RUN_TICK_CAP_WITHOUT_END) {
-    automaticTicks += 1;
-    if (runTick('automatic')) break;
-  }
-
-  return { finalElements: els, gameEnded, endMessage };
-}
 
 interface CustomWindow extends Window {
   __GAME_ENDED__?: boolean;
@@ -1236,8 +1196,12 @@ const Canvas: React.FC<CanvasProps> = ({
 }) => {
   const [internalElements, setInternalElements] = useState<GraphElement[]>([]);
   const [internalSelectedIds, setInternalSelectedIds] = useState<number[]>([]);
+  /** Live board state during Quick Run animation (avoids corrupting undo history). */
+  const [quickRunLiveElements, setQuickRunLiveElements] = useState<
+    GraphElement[] | null
+  >(null);
 
-  const elements = externalElements ?? internalElements;
+  const elements = quickRunLiveElements ?? externalElements ?? internalElements;
   const selectedId = externalSelectedIds ?? internalSelectedIds;
 
   const setSelectedId = useCallback(
@@ -1819,6 +1783,13 @@ const Canvas: React.FC<CanvasProps> = ({
   const onSimulationCompleteRef = useRef(onSimulationComplete);
   const currentRunRef = useRef(0);
   const multipleRunsAbortRef = useRef(false);
+  const quickRunAbortRef = useRef(false);
+  const quickRunElsRef = useRef<GraphElement[]>([]);
+  const quickRunStartedAtRef = useRef(0);
+  const quickRunAutomaticTicksRef = useRef(0);
+  const quickRunEndMessageRef = useRef<string | undefined>(undefined);
+  const quickRunFinishedRef = useRef(false);
+  const quickRunRafActiveRef = useRef(false);
 
   useEffect(() => {
     setElementsRef.current = setElements;
@@ -1850,11 +1821,15 @@ const Canvas: React.FC<CanvasProps> = ({
 
   useEffect(() => {
     if (boardResetKey === 0) return;
+    quickRunAbortRef.current = true;
+    quickRunRafActiveRef.current = false;
+    setQuickRunLiveElements(null);
     applyGameEnded(false);
     setHasSimulationStarted(false);
     setMovingTokens([]);
     fractionalDispatchRef.current.clear();
     currentTickRef.current = 0;
+    quickRunFinishedRef.current = false;
   }, [boardResetKey, applyGameEnded]);
 
   // Helper function to collect resources for Pull Any mode
@@ -1932,6 +1907,34 @@ const Canvas: React.FC<CanvasProps> = ({
     let simulationLoopHandle:
       | ReturnType<typeof startSimulationLoop>
       | undefined;
+    let quickRunRafId: number | undefined;
+
+    const isGameEndedFlag = () =>
+      Boolean(
+        gameEndedRef.current ||
+          (typeof window !== 'undefined' &&
+            (window as unknown as CustomWindow).__GAME_ENDED__)
+      );
+
+    const finishQuickRun = (endedByCondition: boolean) => {
+      if (quickRunFinishedRef.current || quickRunAbortRef.current) return;
+      quickRunFinishedRef.current = true;
+      quickRunRafActiveRef.current = false;
+
+      const durationSeconds =
+        (performance.now() - quickRunStartedAtRef.current) / 1000;
+      const endConditionMessage = endedByCondition
+        ? (quickRunEndMessageRef.current ?? 'Victory!')
+        : `Stopped after ${QUICK_RUN_TICK_CAP_WITHOUT_END} ticks`;
+
+      setQuickRunLiveElements(null);
+      setElementsRef.current(quickRunElsRef.current);
+      applyGameEnded(true);
+      onSimulationCompleteRef.current?.({
+        durationSeconds,
+        endConditionMessage,
+      });
+    };
 
     if (typeof window !== 'undefined') {
       (window as unknown as CustomWindow).__GAME_ENDED__ = false;
@@ -2059,23 +2062,25 @@ const Canvas: React.FC<CanvasProps> = ({
       } else {
         // 1. FORCE RESET ELEMENTS (Clean slate before starting)
         if (runTypeRef.current === 'quick') {
-          const baseSnapshot = resetElements(elementsRef.current);
-          const startedAt = performance.now();
-          fractionalDispatchRef.current.clear();
-          const dispatch = fractionalDispatchRef.current;
-          const result = runOneQuickSimulation(baseSnapshot, dispatch);
-          const finalElements = result.finalElements;
-          const endConditionMessage = result.gameEnded
-            ? (result.endMessage ?? 'Victory!')
-            : `Stopped after ${QUICK_RUN_TICK_CAP_WITHOUT_END} ticks`;
+          quickRunAbortRef.current = false;
+          quickRunFinishedRef.current = false;
+          quickRunEndMessageRef.current = undefined;
+          quickRunAutomaticTicksRef.current = 0;
+          quickRunStartedAtRef.current = performance.now();
 
-          const durationSeconds = (performance.now() - startedAt) / 1000;
-          setElementsRef.current(finalElements);
-          applyGameEnded(true);
-          onSimulationCompleteRef.current?.({
-            durationSeconds,
-            endConditionMessage,
-          });
+          const cleanElements = resetElements(elementsRef.current);
+          const { nextElements: afterOnstart, transfers: onstartTransfers } =
+            runSimulationRef.current(cleanElements, 'onstart');
+
+          quickRunElsRef.current = afterOnstart;
+          setQuickRunLiveElements(afterOnstart);
+          if (onstartTransfers.length) {
+            spawnMovingTokensRef.current(onstartTransfers, afterOnstart);
+          }
+
+          if (isGameEndedFlag()) {
+            finishQuickRun(true);
+          }
         } else {
           setElementsRef.current(prev => {
             const cleanElements = resetElements(prev);
@@ -2093,8 +2098,79 @@ const Canvas: React.FC<CanvasProps> = ({
       }
     }
 
-    // B. While the simulation is running (animated play mode only):
-    if (
+    // B. While the simulation is running
+    if (isRunning && hasSimulationStarted && runTypeRef.current === 'quick') {
+      // Quick Run: batch up to 100 automatic ticks per animation frame, then redraw.
+      // Each internal tick advances simulated time by QUICK_RUN_TIME_INCREMENT (0.1s).
+      // Updates use quickRunLiveElements only — history is committed once at finish.
+      void QUICK_RUN_TIME_INCREMENT;
+      if (
+        !quickRunFinishedRef.current &&
+        !isGameEndedFlag() &&
+        !quickRunRafActiveRef.current
+      ) {
+        quickRunRafActiveRef.current = true;
+
+        const runQuickRunBatch = () => {
+          if (quickRunAbortRef.current || quickRunFinishedRef.current) {
+            quickRunRafActiveRef.current = false;
+            return;
+          }
+
+          let els = quickRunElsRef.current;
+          let lastTickTransfers: ResourceTransfer[] = [];
+
+          for (let i = 0; i < QUICK_RUN_BATCH_SIZE; i++) {
+            if (quickRunAbortRef.current) {
+              quickRunRafActiveRef.current = false;
+              return;
+            }
+            if (isGameEndedFlag()) break;
+            if (
+              quickRunAutomaticTicksRef.current >=
+              QUICK_RUN_TICK_CAP_WITHOUT_END
+            ) {
+              break;
+            }
+
+            const { nextElements, transfers } = runSimulationRef.current(
+              els,
+              'automatic'
+            );
+            els = nextElements;
+            lastTickTransfers = transfers;
+            quickRunAutomaticTicksRef.current += 1;
+          }
+
+          quickRunElsRef.current = els;
+          setQuickRunLiveElements(els);
+          if (lastTickTransfers.length) {
+            spawnMovingTokensRef.current(lastTickTransfers, els);
+          }
+
+          const endedByCondition = isGameEndedFlag();
+          const hitTickCap =
+            quickRunAutomaticTicksRef.current >= QUICK_RUN_TICK_CAP_WITHOUT_END;
+
+          if (endedByCondition) {
+            finishQuickRun(true);
+            return;
+          }
+          if (hitTickCap) {
+            finishQuickRun(false);
+            return;
+          }
+          if (quickRunAbortRef.current) {
+            quickRunRafActiveRef.current = false;
+            return;
+          }
+
+          quickRunRafId = requestAnimationFrame(runQuickRunBatch);
+        };
+
+        quickRunRafId = requestAnimationFrame(runQuickRunBatch);
+      }
+    } else if (
       isRunning &&
       runTypeRef.current !== 'quick' &&
       runTypeRef.current !== 'multiple'
@@ -2132,6 +2208,9 @@ const Canvas: React.FC<CanvasProps> = ({
       console.log('--- Stopped ---');
       setHasSimulationStarted(false);
       multipleRunsAbortRef.current = true;
+      quickRunAbortRef.current = true;
+      quickRunRafActiveRef.current = false;
+      setQuickRunLiveElements(null);
 
       // ✅ VITAL FIX:
       // If the game ended due to Victory, DO NOT RESET the board.
@@ -2157,6 +2236,10 @@ const Canvas: React.FC<CanvasProps> = ({
     // D. Cleanup:
     return () => {
       simulationLoopHandle?.stop();
+      if (quickRunRafId != null) {
+        cancelAnimationFrame(quickRunRafId);
+      }
+      quickRunRafActiveRef.current = false;
     };
     // Ensure ALL dependencies used inside are listed.
     // If setIsRunning comes from props/context, add it too.
@@ -2354,14 +2437,18 @@ const Canvas: React.FC<CanvasProps> = ({
   ]);
 
   useEffect(() => {
-    const handleGameEnd = () => {
+    const handleGameEnd = (event: Event) => {
+      const detail = (event as CustomEvent<{ message?: string }>).detail;
+      if (runTypeRef.current === 'quick') {
+        quickRunEndMessageRef.current = detail?.message ?? 'Victory!';
+      }
       applyGameEnded(true);
     };
 
-    document.addEventListener('game-end', handleGameEnd);
+    document.addEventListener('game-end', handleGameEnd as EventListener);
 
     return () => {
-      document.removeEventListener('game-end', handleGameEnd);
+      document.removeEventListener('game-end', handleGameEnd as EventListener);
     };
   }, [applyGameEnded]);
 
