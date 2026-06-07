@@ -199,3 +199,59 @@ button.selected {
   filter: grayscale(100%);
   cursor: not-allowed;
 }
+
+/* Multiple Runs progress + results */
+.runs-progress {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #555;
+  text-align: center;
+}
+
+.multiple-runs-results {
+  margin-top: 12px;
+  background: #fff;
+  border: 1px solid #c9b8ee;
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.runs-results-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #3a2060;
+}
+
+.runs-results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.runs-results-table th,
+.runs-results-table td {
+  padding: 4px 6px;
+  text-align: left;
+}
+
+.runs-results-table th {
+  background: #ede0ff;
+  font-weight: 600;
+  color: #3a2060;
+}
+
+.runs-results-table th:nth-child(2),
+.runs-results-table td:nth-child(2),
+.runs-results-table th:nth-child(3),
+.runs-results-table td:nth-child(3) {
+  text-align: right;
+}
+
+.runs-results-table tbody tr:nth-child(even) {
+  background: #f7f0ff;
+}
+
+.runs-results-table tbody tr:hover {
+  background: #ede0ff;
+}

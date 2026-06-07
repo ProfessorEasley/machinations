@@ -1,0 +1,72 @@
+<graph version="v4.04" name="Diablo 3" author="VidarT" interval="1" timeMode="asynchronous" distributionMode="fixed speed" speed="100" actions="1" dice="D6" skill="" strategy="" multiplayer="" width="600" height="560" numberOfRuns="100" visibleRuns="25" colorCoding="0">
+  <connection type="Resource Connection" start="21" end="22" label="" position="0.5" color="Black" thickness="2"/>
+  <connection type="State Connection" start="24" end="19" label="==0" position="0.5" color="Black" thickness="2"/>
+  <connection type="Resource Connection" start="27" end="9" label="125" position="0.5" color="Black" thickness="2"/>
+  <connection type="Resource Connection" start="28" end="10" label="6" position="0.5" color="Black" thickness="2"/>
+  <connection type="Resource Connection" start="9" end="23" label="10" position="0.5" color="Black" thickness="2"/>
+  <node symbol="Source" x="28" y="115" color="Black" caption="" thickness="2" captionPos="0.25" activationMode="automatic" pullMode="pull any" actions="1" resourceColor="Black"/>
+  <connection type="State Connection" start="24" end="5" label="==0" position="0.5" color="Black" thickness="2">
+    <point x="80" y="80"/>
+  </connection>
+  <connection type="Resource Connection" start="5" end="24" label="250" position="0.4" color="Black" thickness="2">
+    <point x="80" y="160"/>
+  </connection>
+  <node symbol="Pool" x="440" y="479" color="Black" caption="Stats" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1" resourceColor="Black" startingResources="1" capacity="-1" displayCapacity="0"/>
+  <node symbol="Pool" x="280" y="480" color="Black" caption="Hit Points" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1" resourceColor="Red" startingResources="250" capacity="250" displayCapacity="0"/>
+  <node symbol="Pool" x="120" y="481" color="Black" caption="Spirit" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1" resourceColor="Blue" startingResources="150" capacity="150" displayCapacity="0"/>
+  <connection type="Resource Connection" start="24" end="29" label="100" position="-0.5" color="Black" thickness="2"/>
+  <connection type="State Connection" start="22" end="11" label="-5" position="0.41000000000000003" color="Black" thickness="2">
+    <point x="388" y="189"/>
+  </connection>
+  <connection type="State Connection" start="22" end="18" label="-0,5" position="-0.35000000000000003" color="Black" thickness="2">
+    <point x="404" y="213"/>
+  </connection>
+  <connection type="State Connection" start="22" end="4" label="+2" position="0.56" color="Black" thickness="2">
+    <point x="440" y="240"/>
+  </connection>
+  <connection type="State Connection" start="8" end="11" label="+5" position="0.39" color="Black" thickness="2">
+    <point x="452" y="287"/>
+  </connection>
+  <connection type="State Connection" start="8" end="4" label="-2" position="0.66" color="Black" thickness="2">
+    <point x="386" y="339"/>
+  </connection>
+  <connection type="State Connection" start="8" end="18" label="+0,5" position="0.33" color="Black" thickness="2">
+    <point x="398" y="296"/>
+  </connection>
+  <connection type="Resource Connection" start="24" end="28" label="10" position="-0.5" color="Black" thickness="2"/>
+  <node symbol="Source" x="186" y="35" color="Black" caption="Items and XP" thickness="2" captionPos="0.5" activationMode="automatic" pullMode="pull any" actions="1" resourceColor="Black"/>
+  <node symbol="GroupBox" x="82" y="69" color="Green" caption="Monster" width="415.04703369140634" height="109.70270996093748" captionPos="15"/>
+  <node symbol="Source" x="528" y="119" color="Black" caption="Increase Dificulty" thickness="2" captionPos="0.75" activationMode="interactive" pullMode="pull any" actions="1" resourceColor="Black"/>
+  <node symbol="Pool" x="440" y="120" color="Black" caption="Dificulty" thickness="2" captionPos="0.5" activationMode="passive" pullMode="pull any" actions="1" resourceColor="Black" startingResources="1" capacity="-1" displayCapacity="0"/>
+  <node symbol="Drain" x="280" y="120" color="Black" caption="Attack" thickness="2" captionPos="0.75" activationMode="automatic" pullMode="pull any" actions="1"/>
+  <node symbol="Pool" x="130" y="120" color="Black" caption="Hit Points" thickness="2" captionPos="0.17" activationMode="passive" pullMode="pull any" actions="1" resourceColor="Red" startingResources="250" capacity="-1" displayCapacity="0"/>
+  <node symbol="EndCondition" x="364" y="480" color="Black" caption="Dead" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1"/>
+  <connection type="State Connection" start="9" end="25" label="==0" position="0.5" color="Black" thickness="2"/>
+  <node symbol="Converter" x="211" y="338" color="Black" caption="Breath of Heaven" thickness="2" captionPos="0.05" activationMode="interactive" pullMode="pull any" actions="1" resourceColor="Red"/>
+  <node symbol="Converter" x="81" y="339" color="Black" caption="Deadly Reach" thickness="2" captionPos="0.25" activationMode="interactive" pullMode="pull any" actions="1" resourceColor="Blue"/>
+  <node symbol="Converter" x="159" y="296" color="Black" caption="Wave of Light" thickness="2" captionPos="0.89" activationMode="interactive" pullMode="pull any" actions="1" resourceColor="Black"/>
+  <node symbol="GroupBox" x="89" y="430" color="Brown" caption="Player" width="418.1504821777344" height="98.51350097656244" captionPos="6"/>
+  <node symbol="GroupBox" x="24" y="253" color="Brown" caption="Skills" width="351.2350952148438" height="134.91892089843748" captionPos="15"/>
+  <connection type="Resource Connection" start="19" end="8" label="1" position="0.64" color="Black" thickness="2">
+    <point x="571" y="37"/>
+    <point x="574" y="481"/>
+  </connection>
+  <connection type="State Connection" start="8" end="32" label="-0,2" position="0.81" color="Black" thickness="2">
+    <point x="481" y="272"/>
+  </connection>
+  <connection type="State Connection" start="22" end="32" label="+0,2" position="-0.72" color="Black" thickness="2">
+    <point x="480" y="240"/>
+  </connection>
+  <connection type="Resource Connection" start="10" end="29" label="75" position="-0.34" color="Black" thickness="2"/>
+  <connection type="Resource Connection" start="10" end="27" label="25" position="0.5" color="Black" thickness="2">
+    <point x="214" y="482"/>
+  </connection>
+  <connection type="State Connection" start="10" end="27" label=">24" position="0.3" color="Black" thickness="2">
+    <point x="168" y="466"/>
+    <point x="201" y="420"/>
+  </connection>
+  <connection type="State Connection" start="10" end="29" label=">74" position="0.4" color="Black" thickness="2">
+    <point x="152" y="431"/>
+    <point x="169" y="368"/>
+  </connection>
+</graph>

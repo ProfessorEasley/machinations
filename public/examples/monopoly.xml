@@ -1,0 +1,50 @@
+<graph version="v4.03" name="Monopoly" author="Joris Dormans" interval="1" timeMode="asynchronous" distributionMode="fixed speed" speed="100" actions="1" dice="" skill="" strategy="" multiplayer="" width="600" height="560" numberOfRuns="100" visibleRuns="25" colorCoding="0">
+  <connection type="Resource Connection" start="16" end="9" label="" position="0.5" color="OrangeRed" thickness="2"/>
+  <connection type="State Connection" start="9" end="24" label="*" position="0.5" color="OrangeRed" thickness="2"/>
+  <connection type="Resource Connection" start="11" end="24" label="" position="0.5" color="Brown" thickness="2"/>
+  <connection type="Resource Connection" start="15" end="16" label="15%" position="-0.25" color="OrangeRed" thickness="2"/>
+  <connection type="Resource Connection" start="11" end="10" label="" position="0.5" color="Brown" thickness="2"/>
+  <connection type="State Connection" start="12" end="10" label="*" position="0.5" color="Blue" thickness="2"/>
+  <connection type="Resource Connection" start="17" end="12" label="" position="0.5" color="Blue" thickness="2"/>
+  <connection type="Resource Connection" start="32" end="16" label="" position="0.5" color="OrangeRed" thickness="2"/>
+  <connection type="Resource Connection" start="31" end="17" label="" position="0.5" color="Blue" thickness="2"/>
+  <node symbol="Converter" x="80" y="200" color="OrangeRed" caption="Buy" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1" resourceColor="OrangeRed"/>
+  <node symbol="Pool" x="400" y="200" color="Blue" caption="Property" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1" resourceColor="Blue" startingResources="0" maxResources="-1"/>
+  <node symbol="Pool" x="281" y="219" color="Black" caption="Bank" thickness="2" captionPos="0.25" activationMode="passive" pullMode="push any" actions="1" resourceColor="Brown" startingResources="20" maxResources="-1"/>
+  <node symbol="Converter" x="480" y="200" color="Blue" caption="Buy" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1" resourceColor="Blue"/>
+  <connection type="Resource Connection" start="14" end="17" label="15%" position="0.25" color="Blue" thickness="2"/>
+  <node symbol="Source" x="480" y="37" color="Blue" caption="'Go'" thickness="2" captionPos="0" activationMode="automatic" pullMode="pull any" actions="1" resourceColor="Green"/>
+  <node symbol="Source" x="80" y="40" color="OrangeRed" caption="'Go'" thickness="2" captionPos="0.5" activationMode="automatic" pullMode="pull any" actions="1" resourceColor="Green"/>
+  <node symbol="Pool" x="80" y="120" color="OrangeRed" caption="Money" thickness="2" captionPos="0.5" activationMode="passive" pullMode="pull any" actions="1" resourceColor="Green" startingResources="15" maxResources="-1"/>
+  <node symbol="Pool" x="480" y="120" color="Blue" caption="Money" thickness="2" captionPos="0" activationMode="passive" pullMode="pull any" actions="1" resourceColor="Green" startingResources="15" maxResources="-1"/>
+  <connection type="State Connection" start="16" end="22" label="&lt;1" position="0.35000000000000003" color="OrangeRed" thickness="2"/>
+  <node symbol="EndCondition" x="369" y="28" color="OrangeRed" caption="Orange wins" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1"/>
+  <connection type="Resource Connection" start="16" end="31" label="0%" position="0.88" color="OrangeRed" thickness="2"/>
+  <connection type="State Connection" start="17" end="19" label="&lt;1" position="-0.25" color="Blue" thickness="2"/>
+  <node symbol="EndCondition" x="204" y="25" color="Blue" caption="Blue wins" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1"/>
+  <connection type="State Connection" start="16" end="35" label="" position="0.5" color="OrangeRed" thickness="3">
+    <point x="202" y="176"/>
+  </connection>
+  <node symbol="Pool" x="167" y="200" color="OrangeRed" caption="Property" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1" resourceColor="OrangeRed" startingResources="0" maxResources="-1"/>
+  <connection type="State Connection" start="17" end="35" label="" position="0.5" color="Blue" thickness="3">
+    <point x="376" y="161"/>
+  </connection>
+  <connection type="State Connection" start="10" end="35" label="2.5" position="0.75" color="Blue" thickness="1">
+    <point x="352" y="225"/>
+  </connection>
+  <connection type="State Connection" start="24" end="35" label="2.5" position="0.75" color="OrangeRed" thickness="1">
+    <point x="207" y="226"/>
+  </connection>
+  <connection type="State Connection" start="24" end="29" label="+5%" position="-0.41000000000000003" color="OrangeRed" thickness="2">
+    <point x="229" y="108"/>
+  </connection>
+  <connection type="Resource Connection" start="17" end="32" label="0%" position="-0.8200000000000001" color="Blue" thickness="2"/>
+  <connection type="State Connection" start="10" end="20" label="+5%" position="0.44" color="Blue" thickness="2">
+    <point x="262" y="186"/>
+  </connection>
+  <node symbol="Gate" x="280" y="159" color="OrangeRed" caption="Pay Rent" thickness="2" captionPos="0.75" activationMode="automatic" pullMode="pull any" actions="1" gateType="deterministic"/>
+  <node symbol="Gate" x="280" y="79" color="Blue" caption="Pay Rent" thickness="2" captionPos="0.75" activationMode="automatic" pullMode="pull any" actions="1" gateType="deterministic"/>
+  <node symbol="ArtificialPlayer" x="520" y="200" color="Blue" caption="" thickness="2" captionPos="0.25" activationMode="automatic" pullMode="pull any" actions="0" actionsPerTurn="1">if(Money&gt;3 &amp;&amp; random()*100&lt;Bank*4) fire(Buy)</node>
+  <node symbol="ArtificialPlayer" x="40" y="200" color="OrangeRed" caption="" thickness="2" captionPos="0.25" activationMode="automatic" pullMode="pull any" actions="0" actionsPerTurn="1">if(Money&gt;3 &amp;&amp; random()*100&lt;Bank*2) fire(Buy)</node>
+  <node symbol="Chart" x="40" y="280" color="Black" caption="Money and Property" width="480" height="120" captionPos="4" scaleX="0" scaleY="60"/>
+</graph>

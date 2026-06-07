@@ -1,0 +1,49 @@
+<graph version="v4.03" name="Risk" author="Joris Dormans" interval="1" timeMode="turn-based" distributionMode="fixed speed" speed="100" actions="1" dice="" skill="" strategy="" multiplayer="D6" width="600" height="560" numberOfRuns="100" visibleRuns="25" colorCoding="0">
+  <node symbol="Converter" x="280" y="200" color="Green" caption="" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1" resourceColor="Gold"/>
+  <node symbol="Source" x="80" y="46" color="Green" caption="Bonus" thickness="2" captionPos="0.75" activationMode="automatic" pullMode="pull any" actions="1" resourceColor="Green"/>
+  <node symbol="Pool" x="360" y="80" color="Green" caption="Continents" thickness="2" captionPos="0.75" activationMode="passive" pullMode="push any" actions="1" resourceColor="0x008800" startingResources="0" maxResources="-1"/>
+  <node symbol="Drain" x="80" y="400" color="Green" caption="Loss" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1"/>
+  <node symbol="Drain" x="480" y="200" color="Green" caption="" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1"/>
+  <connection type="Resource Connection" start="15" end="0" label="50%" position="-0.25" color="Green" thickness="2"/>
+  <connection type="Resource Connection" start="0" end="17" label="" position="0.5" color="Green" thickness="2"/>
+  <connection type="State Connection" start="17" end="2" label="1/5" position="-0.25" color="Green" thickness="2"/>
+  <connection type="State Connection" start="2" end="18" label="3" position="0.75" color="Green" thickness="2"/>
+  <connection type="State Connection" start="17" end="18" label="" position="0.5" color="Green" thickness="2"/>
+  <connection type="State Connection" start="18" end="19" label="+1" position="0.75" color="Green" thickness="2">
+    <point x="560" y="160"/>
+    <point x="560" y="320"/>
+  </connection>
+  <connection type="Resource Connection" start="17" end="4" label="D3-1" position="-0.75" color="Green" thickness="2"/>
+  <connection type="Resource Connection" start="22" end="3" label="D3" position="0.75" color="Green" thickness="2">
+    <point x="80" y="240"/>
+  </connection>
+  <connection type="Resource Connection" start="22" end="15" label="" position="0.5" color="Green" thickness="2"/>
+  <connection type="Resource Connection" start="24" end="32" label="3" position="0.38" color="Green" thickness="2"/>
+  <node symbol="Gate" x="200" y="200" color="Black" caption="Attack" thickness="3" captionPos="0.25" activationMode="interactive" pullMode="pull any" actions="0" gateType="dice"/>
+  <connection type="State Connection" start="17" end="28" label="+1/3" position="0.5" color="Green" thickness="2">
+    <point x="280" y="280"/>
+  </connection>
+  <node symbol="Pool" x="360" y="200" color="Green" caption="Lands" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1" resourceColor="Gold" startingResources="12" maxResources="-1"/>
+  <node symbol="Pool" x="480" y="80" color="Green" caption="Strength" thickness="2" captionPos="0.75" activationMode="passive" pullMode="push any" actions="1" resourceColor="Green" startingResources="0" maxResources="-1" tokenLimit="-1"/>
+  <node symbol="Gate" x="480" y="400" color="Blue" caption="Opposition" thickness="2" captionPos="0.25" activationMode="automatic" pullMode="pull any" actions="1" gateType="multiplayer"/>
+  <connection type="State Connection" start="19" end="3" label=">6" position="0.5" color="Blue" thickness="2"/>
+  <connection type="State Connection" start="19" end="4" label=">10" position="0.5" color="Blue" thickness="2"/>
+  <node symbol="Pool" x="120" y="200" color="Green" caption="Armies" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1" resourceColor="Green" startingResources="12" maxResources="-1"/>
+  <node symbol="Source" x="200" y="328" color="Black" caption="Build" thickness="3" captionPos="0.25" activationMode="interactive" pullMode="pull any" actions="1" resourceColor="Green"/>
+  <node symbol="Pool" x="208" y="120" color="Green" caption="Cards" thickness="2" captionPos="0.75" activationMode="passive" pullMode="pull any" actions="1" resourceColor="Green" startingResources="0" maxResources="-1"/>
+  <connection type="Resource Connection" start="0" end="27" label="1" position="-0.35000000000000003" color="Green" thickness="2"/>
+  <connection type="Resource Connection" start="27" end="24" label="&lt;2" position="0.5" color="Green" thickness="2"/>
+  <node symbol="Gate" x="280" y="119" color="Green" caption="" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1" gateType="deterministic"/>
+  <connection type="Resource Connection" start="23" end="22" label="3" position="0.21" color="Green" thickness="2" min="3.00">
+    <point x="200" y="280"/>
+  </connection>
+  <connection type="Resource Connection" start="32" end="22" label="D3+2" position="-0.5" color="Green" thickness="2"/>
+  <connection type="Resource Connection" start="1" end="22" label="0" position="-0.09" color="Green" thickness="2">
+    <point x="80" y="160"/>
+  </connection>
+  <connection type="State Connection" start="2" end="30" label="+1" position="0.64" color="Green" thickness="2">
+    <point x="320" y="40"/>
+    <point x="139" y="41"/>
+  </connection>
+  <node symbol="Converter" x="120" y="120" color="Black" caption="Trade" thickness="3" captionPos="0.75" activationMode="interactive" pullMode="pull all" actions="0" resourceColor="Green"/>
+</graph>

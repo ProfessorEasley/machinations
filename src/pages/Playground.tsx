@@ -3,7 +3,10 @@ import { useState, useCallback, useEffect } from 'react';
 import TopBar from '../components/TopBar';
 import ToolSideBar from '../components/ToolSideBar';
 import './Playground.css';
-import Canvas, { type QuickRunCompletePayload } from '../components/Canvas';
+import Canvas, {
+  type QuickRunCompletePayload,
+  type MultipleRunsCompletePayload,
+} from '../components/Canvas';
 import QuickRunResultDialog from '../components/QuickRunResultDialog';
 import { useHistory } from '../hooks/useHistory';
 import { resetElements } from '../engine/reset';
@@ -201,6 +204,12 @@ const Playground: React.FC = () => {
     durationSeconds: number;
     endConditionMessage: string;
   } | null>(null);
+  const [multipleRunsResult, setMultipleRunsResult] =
+    useState<MultipleRunsCompletePayload | null>(null);
+  const [runProgress, setRunProgress] = useState<{
+    current: number;
+    total: number;
+  } | null>(null);
   const [boardResetKey, setBoardResetKey] = useState(0);
 
   const [selectedTool, setSelectedTool] = useState<string>('Select');
@@ -386,6 +395,23 @@ const Playground: React.FC = () => {
     };
   }, [runType]);
 
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ current: number; total: number }>)
+        .detail;
+      setRunProgress(detail);
+    };
+    document.addEventListener(
+      'multiple-runs-progress',
+      handler as EventListener
+    );
+    return () =>
+      document.removeEventListener(
+        'multiple-runs-progress',
+        handler as EventListener
+      );
+  }, []);
+
   /** Top bar ▶ Run — step-by-step simulation with UI / token flows */
   const handleNormalRunClick = () => {
     if (!isRunning) {
@@ -411,7 +437,8 @@ const Playground: React.FC = () => {
 
   const handleMultipleRunClick = () => {
     if (!isRunning) {
-      // Starting multiple run
+      setMultipleRunsResult(null);
+      setRunProgress(null);
       setRunType('multiple');
       setIsRunning(true);
       setGameEnded(false);
@@ -423,11 +450,18 @@ const Playground: React.FC = () => {
     setRunType(null);
     setGameEnded(false);
     setQuickRunResult(null);
+    setMultipleRunsResult(null);
+    setRunProgress(null);
     setElements(resetElements(elements));
     setBoardResetKey(k => k + 1);
   };
 
-  // Called by Canvas when a Quick Run or Multiple Runs finishes.
+  const handleMultipleRunsComplete = (result: MultipleRunsCompletePayload) => {
+    setMultipleRunsResult(result);
+    setRunProgress(null);
+  };
+
+  // Called by Canvas when a Quick Run finishes.
   const handleSimulationComplete = (result?: QuickRunCompletePayload) => {
     setIsRunning(false);
     setRunType(null);
@@ -517,6 +551,7 @@ const Playground: React.FC = () => {
               seed={seed}
               boardResetKey={boardResetKey}
               onSimulationComplete={handleSimulationComplete}
+              onMultipleRunsComplete={handleMultipleRunsComplete}
               selectedTool={selectedTool}
               elements={elements}
               selectedElementIds={selectedElementIds}
@@ -550,6 +585,8 @@ const Playground: React.FC = () => {
             onMultipleRunClick={handleMultipleRunClick}
             onReset={handleReset}
             showRunReset={gameEnded && !isRunning}
+            multipleRunsResult={multipleRunsResult}
+            runProgress={runProgress}
             onElementUpdate={handleElementUpdate}
             toolProperties={toolProperties}
             onToolPropertiesChange={handleToolPropertiesChange}

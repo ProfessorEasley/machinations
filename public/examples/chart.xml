@@ -1,0 +1,41 @@
+<graph version="v4.0" name="Concepts: Charts" author="Joris Dormans" interval="1" timeMode="asynchronous" distributionMode="fixed speed" speed="100" actions="1" dice="D3" skill="" strategy="" multiplayer="" width="600" height="560" numberOfRuns="100" visibleRuns="25" colorCoding="1">
+  <node symbol="Pool" x="80" y="120" color="Green" caption="" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1" resourceColor="Green" startingResources="2" maxResources="-1"/>
+  <node symbol="Pool" x="280" y="40" color="Blue" caption="" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1" resourceColor="Blue" startingResources="0" maxResources="-1"/>
+  <node symbol="Pool" x="480" y="120" color="Red" caption="" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1" resourceColor="Red" startingResources="1" maxResources="-1"/>
+  <node symbol="Source" x="80" y="33" color="Green" caption="" thickness="2" captionPos="0.25" activationMode="automatic" pullMode="pull any" actions="1" resourceColor="Green"/>
+  <node symbol="Source" x="160" y="40" color="Blue" caption="" thickness="2" captionPos="0.25" activationMode="automatic" pullMode="pull any" actions="1" resourceColor="Blue"/>
+  <node symbol="Source" x="480" y="40" color="Red" caption="" thickness="2" captionPos="0.25" activationMode="automatic" pullMode="pull any" actions="1" resourceColor="Red"/>
+  <node symbol="Pool" x="320" y="160" color="Black" caption="" thickness="2" captionPos="0.25" activationMode="passive" pullMode="push any" actions="1" resourceColor="Black" startingResources="1" maxResources="-1"/>
+  <connection type="Resource Connection" start="3" end="0" label="D" position="0.25" color="Green" thickness="2"/>
+  <connection type="Resource Connection" start="5" end="2" label="D" position="-0.25" color="Red" thickness="2"/>
+  <connection type="State Connection" start="2" end="26" label="" position="0.5" color="Red" thickness="2">
+    <point x="400" y="160"/>
+  </connection>
+  <connection type="State Connection" start="1" end="26" label="" position="0.5" color="Blue" thickness="2">
+    <point x="240" y="120"/>
+  </connection>
+  <connection type="State Connection" start="0" end="26" label="" position="0.5" color="Green" thickness="2">
+    <point x="160" y="160"/>
+  </connection>
+  <connection type="State Connection" start="6" end="26" label="" position="0.5" color="Black" thickness="2">
+    <point x="320" y="200"/>
+  </connection>
+  <connection type="State Connection" start="0" end="6" label="+1" position="0.75" color="Green" thickness="2"/>
+  <connection type="Resource Connection" start="0" end="22" label="D" position="0.5" color="Green" thickness="2"/>
+  <connection type="Resource Connection" start="2" end="23" label="D" position="-0.58" color="Red" thickness="2"/>
+  <connection type="State Connection" start="2" end="15" label="+1/10" position="-0.29" color="Red" thickness="2">
+    <point x="520" y="120"/>
+  </connection>
+  <connection type="State Connection" start="0" end="24" label="+1" position="0.78" color="Green" thickness="2"/>
+  <connection type="State Connection" start="2" end="25" label="+1" position="-0.71" color="Red" thickness="2"/>
+  <connection type="State Connection" start="2" end="6" label="-1" position="-0.74" color="Red" thickness="2"/>
+  <connection type="State Connection" start="0" end="14" label="+1/10" position="0.3" color="Green" thickness="2">
+    <point x="40" y="120"/>
+  </connection>
+  <node symbol="Drain" x="400" y="40" color="Blue" caption="" thickness="2" captionPos="0.25" activationMode="automatic" pullMode="pull any" actions="1"/>
+  <node symbol="Drain" x="80" y="200" color="Green" caption="" thickness="2" captionPos="0.25" activationMode="automatic" pullMode="pull any" actions="1"/>
+  <node symbol="Drain" x="480" y="200" color="Red" caption="" thickness="2" captionPos="0.25" activationMode="automatic" pullMode="pull any" actions="1"/>
+  <connection type="Resource Connection" start="4" end="1" label="2" position="0.5" color="Blue" thickness="2"/>
+  <connection type="Resource Connection" start="1" end="21" label="1" position="0.5" color="Blue" thickness="2"/>
+  <node symbol="Chart" x="40" y="240" color="Black" caption="Values over time" width="520" height="200" captionPos="4" scaleX="0" scaleY="0"/>
+</graph>

@@ -1,0 +1,12 @@
+<graph version="v4.0" name="Concepts: End Conditions" author="Joris Dormans" interval="1" timeMode="asynchronous" distributionMode="fixed speed" speed="100" actions="1" dice="D6" skill="" strategy="" multiplayer="" width="600" height="560" numberOfRuns="100" visibleRuns="25" colorCoding="1">
+  <node symbol="Pool" x="80" y="40" color="Black" caption="Time" thickness="2" captionPos="0.75" activationMode="passive" pullMode="push any" actions="1" resourceColor="Black" startingResources="60" maxResources="-1"/>
+  <node symbol="Pool" x="360" y="59" color="Black" caption="" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1" resourceColor="Black" startingResources="0" maxResources="-1"/>
+  <node symbol="Source" x="280" y="59" color="Black" caption="Manual Stop" thickness="2" captionPos="0.25" activationMode="interactive" pullMode="pull any" actions="1" resourceColor="Black"/>
+  <node symbol="EndCondition" x="440" y="59" color="Black" caption="Stop" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1"/>
+  <connection type="Resource Connection" start="0" end="9" label="" position="0.5" color="Black" thickness="2"/>
+  <connection type="State Connection" start="0" end="8" label="==0" position="0.25" color="Black" thickness="2"/>
+  <connection type="State Connection" start="1" end="3" label=">4" position="0.5" color="Black" thickness="2"/>
+  <connection type="Resource Connection" start="2" end="1" label="D" position="-0.5" color="Black" thickness="2"/>
+  <node symbol="EndCondition" x="160" y="40" color="Black" caption="Stop" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1"/>
+  <node symbol="Drain" x="80" y="97" color="Black" caption="" thickness="2" captionPos="0.25" activationMode="automatic" pullMode="pull any" actions="1"/>
+</graph>
