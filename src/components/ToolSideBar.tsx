@@ -684,7 +684,19 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           </>
         );
 
-      case 'Run':
+      case 'Run': {
+        let runsResultRows: Array<[string, number]> = [];
+        let runsTotal = 0;
+        if (multipleRunsResult && !isRunning) {
+          const counts = new Map<string, number>();
+          for (const o of multipleRunsResult.outcomes) {
+            const key = o.endConditionName ?? '(No end condition)';
+            counts.set(key, (counts.get(key) ?? 0) + 1);
+          }
+          runsTotal = multipleRunsResult.totalRuns;
+          runsResultRows = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+        }
+
         return (
           <>
             {isRunning ? (
@@ -762,44 +774,34 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
                 Running {runProgress.current}/{runProgress.total}&hellip;
               </p>
             )}
-            {multipleRunsResult &&
-              !isRunning &&
-              (() => {
-                const counts = new Map<string, number>();
-                for (const outcome of multipleRunsResult.outcomes) {
-                  const key = outcome.endConditionName ?? '(No end condition)';
-                  counts.set(key, (counts.get(key) ?? 0) + 1);
-                }
-                const total = multipleRunsResult.totalRuns;
-                const rows = [...counts.entries()].sort((a, b) => b[1] - a[1]);
-                return (
-                  <div className="multiple-runs-results">
-                    <h4 className="runs-results-title">
-                      Results ({total} run{total !== 1 ? 's' : ''})
-                    </h4>
-                    <table className="runs-results-table">
-                      <thead>
-                        <tr>
-                          <th>End Condition</th>
-                          <th>Count</th>
-                          <th>%</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {rows.map(([name, count]) => (
-                          <tr key={name}>
-                            <td>{name}</td>
-                            <td>{count}</td>
-                            <td>{((count / total) * 100).toFixed(1)}%</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                );
-              })()}
+            {runsResultRows.length > 0 && (
+              <div className="multiple-runs-results">
+                <span className="runs-results-title">
+                  Results &mdash; {runsTotal} run{runsTotal !== 1 ? 's' : ''}
+                </span>
+                <table className="runs-results-table">
+                  <thead>
+                    <tr>
+                      <th>Outcome</th>
+                      <th>#</th>
+                      <th>%</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {runsResultRows.map(([name, count]) => (
+                      <tr key={name}>
+                        <td>{name}</td>
+                        <td>{count}</td>
+                        <td>{((count / runsTotal) * 100).toFixed(1)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </>
         );
+      }
     }
   };
 

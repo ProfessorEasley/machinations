@@ -203,30 +203,31 @@ button.selected {
 /* Multiple Runs progress + results */
 .runs-progress {
   margin: 8px 0 0;
-  font-size: 13px;
-  color: #555;
+  font-size: 12px;
+  color: #5a4080;
   text-align: center;
 }
 
 .multiple-runs-results {
-  margin-top: 12px;
-  background: #fff;
-  border: 1px solid #c9b8ee;
-  border-radius: 6px;
-  padding: 10px;
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .runs-results-title {
-  margin: 0 0 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #3a2060;
+  font-size: 12px;
+  font-weight: bold;
+  color: #4a3070;
 }
 
 .runs-results-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 12px;
+  border: 1px solid #9c8cc0;
+  border-radius: 4px;
+  overflow: hidden;
 }
 
 .runs-results-table th,
@@ -236,9 +237,9 @@ button.selected {
 }
 
 .runs-results-table th {
-  background: #ede0ff;
-  font-weight: 600;
-  color: #3a2060;
+  background-color: #b59de6;
+  color: white;
+  font-weight: bold;
 }
 
 .runs-results-table th:nth-child(2),
@@ -248,10 +249,10 @@ button.selected {
   text-align: right;
 }
 
-.runs-results-table tbody tr:nth-child(even) {
-  background: #f7f0ff;
+.runs-results-table tbody tr {
+  background-color: white;
 }
 
-.runs-results-table tbody tr:hover {
-  background: #ede0ff;
+.runs-results-table tbody tr:nth-child(even) {
+  background-color: #f0e8ff;
 }
