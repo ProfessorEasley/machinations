@@ -6,6 +6,7 @@ import './Playground.css';
 import Canvas, {
   type QuickRunCompletePayload,
   type MultipleRunsCompletePayload,
+  type RunOutcome,
 } from '../components/Canvas';
 import QuickRunResultDialog from '../components/QuickRunResultDialog';
 import { useHistory } from '../hooks/useHistory';
@@ -209,7 +210,9 @@ const Playground: React.FC = () => {
   const [runProgress, setRunProgress] = useState<{
     current: number;
     total: number;
+    outcomes?: RunOutcome[];
   } | null>(null);
+  const [isMultipleRunsPaused, setIsMultipleRunsPaused] = useState(false);
   const [boardResetKey, setBoardResetKey] = useState(0);
 
   const [selectedTool, setSelectedTool] = useState<string>('Select');
@@ -397,8 +400,13 @@ const Playground: React.FC = () => {
 
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ current: number; total: number }>)
-        .detail;
+      const detail = (
+        e as CustomEvent<{
+          current: number;
+          total: number;
+          outcomes?: RunOutcome[];
+        }>
+      ).detail;
       setRunProgress(detail);
     };
     document.addEventListener(
@@ -452,13 +460,18 @@ const Playground: React.FC = () => {
     setQuickRunResult(null);
     setMultipleRunsResult(null);
     setRunProgress(null);
+    setIsMultipleRunsPaused(false);
     setElements(resetElements(elements));
     setBoardResetKey(k => k + 1);
   };
 
+  const handlePauseMultipleRuns = () => setIsMultipleRunsPaused(true);
+  const handleResumeMultipleRuns = () => setIsMultipleRunsPaused(false);
+
   const handleMultipleRunsComplete = (result: MultipleRunsCompletePayload) => {
     setMultipleRunsResult(result);
     setRunProgress(null);
+    setIsMultipleRunsPaused(false);
   };
 
   // Called by Canvas when a Quick Run finishes.
@@ -549,6 +562,7 @@ const Playground: React.FC = () => {
               numRuns={numRuns}
               visibleRuns={visibleRuns}
               seed={seed}
+              isPaused={isMultipleRunsPaused}
               boardResetKey={boardResetKey}
               onSimulationComplete={handleSimulationComplete}
               onMultipleRunsComplete={handleMultipleRunsComplete}
@@ -584,6 +598,9 @@ const Playground: React.FC = () => {
             onRunClick={handleQuickRunClick}
             onMultipleRunClick={handleMultipleRunClick}
             onReset={handleReset}
+            isMultipleRunsPaused={isMultipleRunsPaused}
+            onPauseMultipleRuns={handlePauseMultipleRuns}
+            onResumeMultipleRuns={handleResumeMultipleRuns}
             showRunReset={gameEnded && !isRunning}
             multipleRunsResult={multipleRunsResult}
             runProgress={runProgress}

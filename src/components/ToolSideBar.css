@@ -203,9 +203,33 @@ button.selected {
 /* Multiple Runs progress + results */
 .runs-progress {
   margin: 8px 0 0;
+}
+
+.runs-progress-bar {
+  height: 10px;
+  border: 1px solid #9c8cc0;
+  border-radius: 4px;
+  background-color: #f0e8ff;
+  overflow: hidden;
+}
+
+.runs-progress-fill {
+  height: 100%;
+  background-color: #b59de6;
+  transition: width 0.1s linear;
+}
+
+.runs-progress-text {
+  margin: 4px 0 0;
   font-size: 12px;
   color: #5a4080;
   text-align: center;
+}
+
+.runs-results-avg {
+  margin: 0;
+  font-size: 12px;
+  color: #5a4080;
 }
 
 .multiple-runs-results {
