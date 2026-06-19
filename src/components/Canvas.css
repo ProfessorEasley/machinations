@@ -8,6 +8,13 @@
   overflow: auto;
 }
 
+/* While middle-mouse panning, show the grabbing cursor across the whole
+   surface (children included) so it reads as a single pan gesture. */
+.canvas-viewport.panning,
+.canvas-viewport.panning * {
+  cursor: grabbing !important;
+}
+
 /* Main Canvas Container.
    Grows to fit its content (big imports / large simulations) while always
    filling at least the visible viewport. Lives inside .canvas-viewport which
