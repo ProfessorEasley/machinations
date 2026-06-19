@@ -89,6 +89,9 @@ interface ToolSideBarProps {
   runType?: 'quick' | 'multiple' | null;
   onMultipleRunClick?: () => void;
   onReset?: () => void;
+  isMultipleRunsPaused?: boolean;
+  onPauseMultipleRuns?: () => void;
+  onResumeMultipleRuns?: () => void;
   /** Show Reset below run buttons after Quick/Multiple run completes (canvas frozen). */
   showRunReset?: boolean;
   toolProperties?: {
@@ -216,6 +219,15 @@ interface ToolSideBarProps {
     toolType: string,
     properties: Record<string, unknown>
   ) => void;
+  multipleRunsResult?: {
+    totalRuns: number;
+    outcomes: Array<{ endConditionName: string | null; ticksElapsed: number }>;
+  } | null;
+  runProgress?: {
+    current: number;
+    total: number;
+    outcomes?: Array<{ endConditionName: string | null; ticksElapsed: number }>;
+  } | null;
 }
 
 const graphTools = [
@@ -319,7 +331,12 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
   onRunClick,
   onMultipleRunClick,
   onReset,
+  isMultipleRunsPaused = false,
+  onPauseMultipleRuns,
+  onResumeMultipleRuns,
   showRunReset = false,
+  multipleRunsResult,
+  runProgress,
 }) => {
   const [activeTab, setActiveTab] = useState<'Graph' | 'Edit' | 'File' | 'Run'>(
     'Graph'
@@ -677,29 +694,58 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           </>
         );
 
-      case 'Run':
+      case 'Run': {
+        // Tally outcomes from the live progress feed while the batch is
+        // running and from the final payload afterwards — the original
+        // tool's RunReport updates after every completed run.
+        const isMultipleRunning = isRunning && runType === 'multiple';
+        const reportOutcomes = isMultipleRunning
+          ? (runProgress?.outcomes ?? [])
+          : !isRunning && multipleRunsResult
+            ? multipleRunsResult.outcomes
+            : [];
+        let runsResultRows: Array<[string, number]> = [];
+        let runsTotal = 0;
+        let runsAverageTime = 0;
+        if (reportOutcomes.length > 0) {
+          const counts = new Map<string, number>();
+          let totalTicks = 0;
+          for (const o of reportOutcomes) {
+            const key = o.endConditionName ?? 'Stopped before end';
+            counts.set(key, (counts.get(key) ?? 0) + 1);
+            totalTicks += o.ticksElapsed;
+          }
+          runsTotal = isMultipleRunning
+            ? reportOutcomes.length
+            : multipleRunsResult!.totalRuns;
+          runsAverageTime = totalTicks / reportOutcomes.length;
+          runsResultRows = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+        }
+
         return (
           <>
-            {isRunning ? (
-              // When running, show Reset button in place of the button that was clicked
+            {isRunning && runType === 'multiple' ? (
+              // Multiple runs in progress: show Pause/Resume + Cancel
               <>
-                {runType === 'quick' ? (
-                  <button onClick={onReset} className="reset-button">
-                    Reset
-                  </button>
+                {isMultipleRunsPaused ? (
+                  <button onClick={onResumeMultipleRuns}>Resume</button>
                 ) : (
-                  <button onClick={onRunClick}>Quick Run</button>
+                  <button onClick={onPauseMultipleRuns}>Pause</button>
                 )}
-                {runType === 'multiple' ? (
-                  <button onClick={onReset} className="reset-button">
-                    Reset
-                  </button>
-                ) : (
-                  <button onClick={onMultipleRunClick}>Multiple Runs</button>
-                )}
+                <button onClick={onReset} className="reset-button">
+                  Cancel
+                </button>
+              </>
+            ) : isRunning ? (
+              // Quick run in progress: show Reset
+              <>
+                <button onClick={onReset} className="reset-button">
+                  Reset
+                </button>
+                <button onClick={onMultipleRunClick}>Multiple Runs</button>
               </>
             ) : (
-              // When not running, show normal buttons
+              // Idle: show normal buttons
               <>
                 <button onClick={onRunClick}>Quick Run</button>
                 <button onClick={onMultipleRunClick}>Multiple Runs</button>
@@ -750,8 +796,62 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
                 </label>
               </>
             )}
+            {runType === 'multiple' && isRunning && runProgress && (
+              <div className="runs-progress">
+                <div
+                  className="runs-progress-bar"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={runProgress.total}
+                  aria-valuenow={runProgress.current}
+                >
+                  <div
+                    className="runs-progress-fill"
+                    style={{
+                      width: `${(runProgress.current / runProgress.total) * 100}%`,
+                    }}
+                  />
+                </div>
+                <p className="runs-progress-text">
+                  {isMultipleRunsPaused
+                    ? `Paused at ${runProgress.current}/${runProgress.total}`
+                    : `Running ${runProgress.current}/${runProgress.total}…`}
+                </p>
+              </div>
+            )}
+            {runsResultRows.length > 0 && (
+              <div className="multiple-runs-results">
+                <span className="runs-results-title">
+                  {isMultipleRunning
+                    ? `Runs: ${runsTotal}`
+                    : `Results — ${runsTotal} run${runsTotal !== 1 ? 's' : ''}`}
+                </span>
+                <p className="runs-results-avg">
+                  Average time: {runsAverageTime.toFixed(2)} steps
+                </p>
+                <table className="runs-results-table">
+                  <thead>
+                    <tr>
+                      <th>Outcome</th>
+                      <th>#</th>
+                      <th>%</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {runsResultRows.map(([name, count]) => (
+                      <tr key={name}>
+                        <td>{name}</td>
+                        <td>{count}</td>
+                        <td>{((count / runsTotal) * 100).toFixed(1)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </>
         );
+      }
     }
   };
 

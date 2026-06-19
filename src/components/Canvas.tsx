@@ -173,13 +173,26 @@ interface CanvasProps {
   visibleRuns?: number;
   seed?: number;
   onSimulationComplete?: (result?: QuickRunCompletePayload) => void;
+  onMultipleRunsComplete?: (result: MultipleRunsCompletePayload) => void;
   /** Increment to reset frozen sim state after Quick Run (Playground Reset). */
   boardResetKey?: number;
+  /** When true, pause between runs in a multiple-runs batch. */
+  isPaused?: boolean;
 }
 
 export interface QuickRunCompletePayload {
   durationSeconds: number;
   endConditionMessage: string;
+}
+
+export interface RunOutcome {
+  endConditionName: string | null;
+  ticksElapsed: number;
+}
+
+export interface MultipleRunsCompletePayload {
+  totalRuns: number;
+  outcomes: RunOutcome[];
 }
 
 /** Max automatic ticks when quick run has no end condition. */
@@ -324,7 +337,9 @@ const Canvas: React.FC<CanvasProps> = ({
   numRuns,
   visibleRuns,
   seed,
+  isPaused = false,
   onSimulationComplete,
+  onMultipleRunsComplete,
   boardResetKey = 0,
   selectedTool,
   elements: externalElements,
@@ -936,8 +951,11 @@ const Canvas: React.FC<CanvasProps> = ({
   const numRunsRef = useRef(numRuns);
   const seedRef = useRef(seed);
   const onSimulationCompleteRef = useRef(onSimulationComplete);
+  const onMultipleRunsCompleteRef = useRef(onMultipleRunsComplete);
   const currentRunRef = useRef(0);
   const multipleRunsAbortRef = useRef(false);
+  const multipleRunsPausedRef = useRef(false);
+  const pausedRunNextRef = useRef<(() => void) | null>(null);
   const quickRunAbortRef = useRef(false);
   const quickRunElsRef = useRef<GraphElement[]>([]);
   const quickRunStartedAtRef = useRef(0);
@@ -983,8 +1001,15 @@ const Canvas: React.FC<CanvasProps> = ({
   }, [onSimulationComplete]);
 
   useEffect(() => {
+    onMultipleRunsCompleteRef.current = onMultipleRunsComplete;
+  }, [onMultipleRunsComplete]);
+
+  useEffect(() => {
     if (boardResetKey === 0) return;
     quickRunAbortRef.current = true;
+    multipleRunsAbortRef.current = true;
+    multipleRunsPausedRef.current = false;
+    pausedRunNextRef.current = null;
     quickRunRafActiveRef.current = false;
     setQuickRunLiveElements(null);
     applyGameEnded(false);
@@ -994,6 +1019,19 @@ const Canvas: React.FC<CanvasProps> = ({
     currentTickRef.current = 0;
     quickRunFinishedRef.current = false;
   }, [boardResetKey, applyGameEnded, clearMovingTokens]);
+
+  useEffect(() => {
+    if (isPaused) {
+      multipleRunsPausedRef.current = true;
+    } else {
+      multipleRunsPausedRef.current = false;
+      if (pausedRunNextRef.current) {
+        const fn = pausedRunNextRef.current;
+        pausedRunNextRef.current = null;
+        setTimeout(fn, 0);
+      }
+    }
+  }, [isPaused]);
 
   // Helper function to collect resources for Pull Any mode
   // const collectResourcesForPullAny = (
@@ -1136,12 +1174,18 @@ const Canvas: React.FC<CanvasProps> = ({
 
         // elementsRef.current is always fresh (synced via useEffect at line 2184)
         let runEls = elementsRef.current.map(el => ({ ...el }));
+        const runOutcomes: RunOutcome[] = [];
 
         const runNext = () => {
           if (multipleRunsAbortRef.current) return;
           if (currentRunRef.current >= (numRunsRef.current ?? 100)) {
             setElementsRef.current(runEls); // commit all accumulated chart data once
+            setQuickRunLiveElements(null);
             applyGameEnded(true);
+            onMultipleRunsCompleteRef.current?.({
+              totalRuns: currentRunRef.current,
+              outcomes: runOutcomes,
+            });
             onSimulationCompleteRef.current?.();
             return;
           }
@@ -1210,8 +1254,10 @@ const Canvas: React.FC<CanvasProps> = ({
           );
           runEls = afterOnstart;
 
+          let ticksElapsed = 0;
           for (let tick = 0; tick < QUICK_RUN_MAX_TICKS; tick++) {
             if (
+              multipleRunsAbortRef.current ||
               gameEndedRef.current ||
               (window as unknown as CustomWindow).__GAME_ENDED__
             )
@@ -1221,9 +1267,37 @@ const Canvas: React.FC<CanvasProps> = ({
               'automatic'
             );
             runEls = nextElements;
+            ticksElapsed++;
           }
 
+          const triggeredEndCond = runEls.find(
+            el => el.type === 'End Condition' && el.isBlinking
+          );
+          runOutcomes.push({
+            endConditionName: triggeredEndCond
+              ? triggeredEndCond.text || 'Victory!'
+              : null,
+            ticksElapsed,
+          });
+
           currentRunRef.current += 1;
+          // Refresh the canvas so chart lines accumulate visibly between runs,
+          // mirroring the original tool's per-run view refresh.
+          setQuickRunLiveElements(runEls);
+          document.dispatchEvent(
+            new CustomEvent('multiple-runs-progress', {
+              detail: {
+                current: currentRunRef.current,
+                total: numRunsRef.current ?? 100,
+                outcomes: [...runOutcomes],
+              },
+            })
+          );
+
+          if (multipleRunsPausedRef.current) {
+            pausedRunNextRef.current = runNext;
+            return;
+          }
           setTimeout(runNext, 0);
         };
 
@@ -1377,6 +1451,8 @@ const Canvas: React.FC<CanvasProps> = ({
       console.log('--- Stopped ---');
       setHasSimulationStarted(false);
       multipleRunsAbortRef.current = true;
+      multipleRunsPausedRef.current = false;
+      pausedRunNextRef.current = null;
       quickRunAbortRef.current = true;
       quickRunRafActiveRef.current = false;
       setQuickRunLiveElements(null);

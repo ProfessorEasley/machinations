@@ -199,3 +199,84 @@ button.selected {
   filter: grayscale(100%);
   cursor: not-allowed;
 }
+
+/* Multiple Runs progress + results */
+.runs-progress {
+  margin: 8px 0 0;
+}
+
+.runs-progress-bar {
+  height: 10px;
+  border: 1px solid #9c8cc0;
+  border-radius: 4px;
+  background-color: #f0e8ff;
+  overflow: hidden;
+}
+
+.runs-progress-fill {
+  height: 100%;
+  background-color: #b59de6;
+  transition: width 0.1s linear;
+}
+
+.runs-progress-text {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #5a4080;
+  text-align: center;
+}
+
+.runs-results-avg {
+  margin: 0;
+  font-size: 12px;
+  color: #5a4080;
+}
+
+.multiple-runs-results {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.runs-results-title {
+  font-size: 12px;
+  font-weight: bold;
+  color: #4a3070;
+}
+
+.runs-results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  border: 1px solid #9c8cc0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.runs-results-table th,
+.runs-results-table td {
+  padding: 4px 6px;
+  text-align: left;
+}
+
+.runs-results-table th {
+  background-color: #b59de6;
+  color: white;
+  font-weight: bold;
+}
+
+.runs-results-table th:nth-child(2),
+.runs-results-table td:nth-child(2),
+.runs-results-table th:nth-child(3),
+.runs-results-table td:nth-child(3) {
+  text-align: right;
+}
+
+.runs-results-table tbody tr {
+  background-color: white;
+}
+
+.runs-results-table tbody tr:nth-child(even) {
+  background-color: #f0e8ff;
+}
