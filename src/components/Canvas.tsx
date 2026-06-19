@@ -482,6 +482,8 @@ const Canvas: React.FC<CanvasProps> = ({
   }, [selectedTool]);
 
   const canvasRef = useRef<HTMLDivElement>(null);
+  // The scrollable viewport wrapping the (possibly larger-than-screen) canvas.
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // ---------- Moving Tokens (for Resource Connections) ----------
   const TOKEN_TRAVEL_TIME = 600; // ms
@@ -1615,8 +1617,9 @@ const Canvas: React.FC<CanvasProps> = ({
         },
         { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }
       );
-      const canvasWidth = canvasRef.current?.clientWidth || 800;
-      const canvasHeight = canvasRef.current?.clientHeight || 600;
+      const viewport = scrollContainerRef.current ?? canvasRef.current;
+      const canvasWidth = viewport?.clientWidth || 800;
+      const canvasHeight = viewport?.clientHeight || 600;
       const contentWidth = bounds.maxX - bounds.minX;
       const contentHeight = bounds.maxY - bounds.minY;
 
@@ -4365,38 +4368,78 @@ const Canvas: React.FC<CanvasProps> = ({
     });
   }, [draggedElements, elements]);
 
+  // Size the canvas so it always extends far enough to reveal every element
+  // (e.g. after importing a large XML file or building a big simulation).
+  // CSS keeps it at least as big as the viewport via min-width/min-height.
+  const contentSize = React.useMemo(() => {
+    const PADDING = 400; // breathing room past the furthest element
+    let maxX = 0;
+    let maxY = 0;
+
+    for (const el of displayElements) {
+      const xs: number[] = [el.x ?? 0];
+      const ys: number[] = [el.y ?? 0];
+      if (typeof el.startX === 'number') xs.push(el.startX);
+      if (typeof el.endX === 'number') xs.push(el.endX);
+      if (typeof el.startY === 'number') ys.push(el.startY);
+      if (typeof el.endY === 'number') ys.push(el.endY);
+
+      let w = 80;
+      let h = 80;
+      if (el.type === 'Group') {
+        w = el.width || 200;
+        h = el.height || 150;
+      } else if (el.type === 'Chart') {
+        w = el.chartWidth || 200;
+        h = el.chartHeight || 150;
+      }
+
+      maxX = Math.max(maxX, ...xs.map(v => v + w));
+      maxY = Math.max(maxY, ...ys.map(v => v + h));
+    }
+
+    return {
+      width: Math.ceil(maxX + PADDING),
+      height: Math.ceil(maxY + PADDING),
+    };
+  }, [displayElements]);
+
   return (
-    <div
-      ref={canvasRef}
-      className={`canvas ${isRunning ? 'is-running' : ''} ${gameEnded ? 'game-ended' : ''}`}
-      onDrop={handleDrop}
-      onDragOver={handleDragOver}
-      onClick={handleCanvasClick}
-      onDoubleClick={handleCanvasDoubleClick}
-      onMouseMove={handleMouseMove}
-      onMouseDown={handleCanvasMouseDown}
-      onMouseUp={handleMouseUp}
-    >
-      {displayElements.map(renderElement)}
-      {renderConnectionPreview()}
-      {renderSelectionBox()}
-      {movingTokens.map(token => (
-        <div
-          key={token.id}
-          className="moving-token"
-          style={{
-            position: 'absolute',
-            // small radius: center the 8×8 dot on the point
-            left: token.currentX - 4,
-            top: token.currentY - 4,
-            width: 10,
-            height: 10,
-            borderRadius: '50%',
-            backgroundColor: token.color || '#000000',
-            pointerEvents: 'none',
-          }}
-        />
-      ))}
+    <div ref={scrollContainerRef} className="canvas-viewport">
+      <div
+        ref={canvasRef}
+        className={`canvas ${isRunning ? 'is-running' : ''} ${gameEnded ? 'game-ended' : ''}`}
+        style={{ width: contentSize.width, height: contentSize.height }}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onClick={handleCanvasClick}
+        onDoubleClick={handleCanvasDoubleClick}
+        onMouseMove={handleMouseMove}
+        onMouseDown={handleCanvasMouseDown}
+        onMouseUp={handleMouseUp}
+      >
+        {displayElements.map(renderElement)}
+        {renderConnectionPreview()}
+        {renderSelectionBox()}
+        {movingTokens.map(token => (
+          <div
+            key={token.id}
+            className="moving-token"
+            style={{
+              position: 'absolute',
+              // small radius: center the 8×8 dot on the point
+              left: token.currentX - 4,
+              top: token.currentY - 4,
+              width: 10,
+              height: 10,
+              borderRadius: '50%',
+              backgroundColor: token.color || '#000000',
+              pointerEvents: 'none',
+            }}
+          />
+        ))}
+      </div>
+
       <input
         ref={xmlFileInputRef}
         type="file"
