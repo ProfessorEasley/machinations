@@ -30,6 +30,7 @@ import {
   getBaseInputAmountFromMultiplyLabel,
 } from './helpers';
 import { random } from './rng';
+import { snapshotValues, buildTraceEntry } from './trace';
 
 // ---------------------------------------------------------------------------
 // Pure helpers used only inside tick
@@ -528,6 +529,12 @@ export function simulateTick(
   const nextElements = JSON.parse(
     JSON.stringify(elementsToUpdate)
   ) as GraphElement[];
+
+  // Snapshot the pre-tick numeric state so we can diff it for the trace diary.
+  // Only taken when tracing is armed, since it allocates per tick.
+  const traceBefore = options.trace
+    ? snapshotValues(elementsToUpdate)
+    : undefined;
   const elementMap = new Map<number, GraphElement>(
     nextElements.map(el => [el.id, el])
   );
@@ -1915,5 +1922,16 @@ export function simulateTick(
     }
   }
 
-  return { nextElements, transfers, events };
+  const trace = traceBefore
+    ? buildTraceEntry(
+        currentTick,
+        activationType,
+        traceBefore,
+        nextElements,
+        transfers,
+        events
+      )
+    : undefined;
+
+  return { nextElements, transfers, events, trace };
 }
