@@ -7,15 +7,10 @@ import type { GraphElement } from '../types';
 
 const FIXTURE_DIR = resolve(__dirname, 'fixtures');
 const RPG_FIXTURE = resolve(FIXTURE_DIR, 'legacy-rpg-mini.xml');
-const OFFICIAL_DIR = resolve(
-  __dirname,
-  '..',
-  '..',
-  '..',
-  'machinations_examples',
-  'official examples',
-  'games'
-);
+// Tracked copies of the official Machinations examples. The originals under
+// `machinations_examples/` are gitignored, so tests must not depend on them —
+// otherwise they fail with ENOENT on every fresh clone and in CI.
+const OFFICIAL_DIR = resolve(__dirname, '..', '..', '..', 'public', 'examples');
 
 function byId(elements: GraphElement[]) {
   return new Map(elements.map(e => [e.id, e]));
