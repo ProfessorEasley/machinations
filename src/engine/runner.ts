@@ -2,6 +2,7 @@ import type {
   GraphElement,
   FractionalDispatchState,
   TickResult,
+  TickTraceEntry,
 } from './types';
 import { resetElements } from './reset';
 import { simulateTick } from './tick';
@@ -20,6 +21,20 @@ export interface RunSimulationOptions {
    * non-deterministic `Math.random()`.
    */
   seed?: number;
+  /**
+   * Arm tick tracing for this run. When true, every tick records a
+   * human-readable diary of its resource/value changes into `traceLog`.
+   *
+   * This is a verbose debug mode that produces a LOT of data, so it is off by
+   * default and read exactly once at the start of the run — it cannot be toggled
+   * mid-run. Pair with `maxTraceTicks` to bound memory on long runs.
+   */
+  trace?: boolean;
+  /**
+   * Optional safety cap: stop appending to `traceLog` after this many traced
+   * ticks (the simulation itself keeps running). Ignored unless `trace` is true.
+   */
+  maxTraceTicks?: number;
 }
 
 export interface RunSimulationResult {
@@ -27,6 +42,8 @@ export interface RunSimulationResult {
   finalState: GraphElement[];
   /** Tick-by-tick results (only populated when collectLog is true). */
   tickLog: TickResult[];
+  /** Tick-by-tick verbose diary (only populated when trace is true). */
+  traceLog: TickTraceEntry[];
   /** Number of ticks actually executed. */
   ticksRun: number;
   /** True if a game-end event triggered early stop. */
@@ -45,7 +62,16 @@ export function runSimulation(
   elements: GraphElement[],
   options: RunSimulationOptions = {}
 ): RunSimulationResult {
-  const { maxTicks = 1000, collectLog = false, seed } = options;
+  const { maxTicks = 1000, collectLog = false, seed, trace = false } = options;
+  const maxTraceTicks = options.maxTraceTicks ?? Infinity;
+
+  const traceLog: TickTraceEntry[] = [];
+  // Record a tick's diary entry, respecting the optional safety cap.
+  const recordTrace = (result: TickResult): void => {
+    if (result.trace && traceLog.length < maxTraceTicks) {
+      traceLog.push(result.trace);
+    }
+  };
 
   // Seed (or clear) the PRNG before resetting so the run starts from a clean,
   // reproducible random stream. Passing `undefined` restores Math.random().
@@ -61,6 +87,7 @@ export function runSimulation(
     mode: 'onstart',
     currentTick,
     fractionalDispatch,
+    trace,
   });
   currentTick += 1;
   currentElements = onStartResult.nextElements;
@@ -69,10 +96,18 @@ export function runSimulation(
   let ticksRun = 0;
   let gameEnded = false;
 
+  if (collectLog) tickLog.push(onStartResult);
+  recordTrace(onStartResult);
+
   if (onStartResult.events.some(e => e.type === 'game_end')) {
     gameEnded = true;
-    if (collectLog) tickLog.push(onStartResult);
-    return { finalState: currentElements, tickLog, ticksRun, gameEnded };
+    return {
+      finalState: currentElements,
+      tickLog,
+      traceLog,
+      ticksRun,
+      gameEnded,
+    };
   }
 
   for (let i = 0; i < maxTicks; i++) {
@@ -80,11 +115,13 @@ export function runSimulation(
       mode: 'automatic',
       currentTick,
       fractionalDispatch,
+      trace,
     });
     currentTick += 1;
     ticksRun += 1;
     currentElements = result.nextElements;
     if (collectLog) tickLog.push(result);
+    recordTrace(result);
 
     if (result.events.some(e => e.type === 'game_end')) {
       gameEnded = true;
@@ -92,5 +129,11 @@ export function runSimulation(
     }
   }
 
-  return { finalState: currentElements, tickLog, ticksRun, gameEnded };
+  return {
+    finalState: currentElements,
+    tickLog,
+    traceLog,
+    ticksRun,
+    gameEnded,
+  };
 }
