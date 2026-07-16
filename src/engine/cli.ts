@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve as resolvePath } from 'node:path';
 import { loadGraphFromFile } from './io';
 import { runSimulation } from './runner';
+import { renderTrace } from './trace';
 import type { GraphElement } from './types';
 
 /**
@@ -24,6 +25,8 @@ interface ParsedArgs {
   filePath?: string;
   maxTicks: number;
   collectLog: boolean;
+  trace: boolean;
+  maxTraceTicks?: number;
   format: 'json' | 'summary';
   seed?: number;
   showHelp: boolean;
@@ -39,6 +42,11 @@ Options:
   --max-ticks N        Maximum number of ticks to run (default 1000).
   --seed N             Seed the PRNG for a deterministic, reproducible run.
   --collect-log        Include per-tick TickResult entries in JSON output.
+  --trace              Arm the verbose tick trace (a per-tick diary of every
+                       resource/value change). Off by default — produces a LOT
+                       of data on long runs. Printed in summary, included as
+                       "traceLog" in JSON.
+  --max-trace-ticks N  Cap the trace at N ticks (safety bound for long runs).
   --format json        Print full RunSimulationResult as JSON to stdout.
   --format summary     Print a human-readable summary (default).
   -h, --help           Show this help text.
@@ -73,6 +81,11 @@ function npmConfigArgv(): string[] {
   if (format === 'json' || format === 'summary') extra.push('--format', format);
   const collectLog = read('collect-log');
   if (collectLog === 'true' || collectLog === '') extra.push('--collect-log');
+  const trace = read('trace');
+  if (trace === 'true' || trace === '') extra.push('--trace');
+  const maxTraceTicks = read('max-trace-ticks');
+  if (maxTraceTicks !== undefined && Number.isFinite(Number(maxTraceTicks)))
+    extra.push('--max-trace-ticks', maxTraceTicks);
   return extra;
 }
 
@@ -80,6 +93,7 @@ function parseArgs(rawArgv: string[]): ParsedArgs {
   const out: ParsedArgs = {
     maxTicks: 1000,
     collectLog: false,
+    trace: false,
     format: 'summary',
     showHelp: false,
   };
@@ -94,6 +108,20 @@ function parseArgs(rawArgv: string[]): ParsedArgs {
     }
     if (a === '--collect-log') {
       out.collectLog = true;
+      continue;
+    }
+    if (a === '--trace') {
+      out.trace = true;
+      continue;
+    }
+    if (a === '--max-trace-ticks') {
+      const v = argv[++i];
+      const n = Number(v);
+      if (!Number.isFinite(n) || n <= 0) {
+        out.unknownFlag = `--max-trace-ticks expects a positive number, got "${v}"`;
+        return out;
+      }
+      out.maxTraceTicks = Math.floor(n);
       continue;
     }
     if (a === '--max-ticks') {
@@ -231,6 +259,8 @@ export function runCli(argv: string[]): CliOutcome {
     maxTicks: args.maxTicks,
     collectLog: args.collectLog,
     seed: args.seed,
+    trace: args.trace,
+    maxTraceTicks: args.maxTraceTicks,
   });
 
   if (args.format === 'json') {
@@ -241,6 +271,7 @@ export function runCli(argv: string[]): CliOutcome {
       warnings: loaded.warnings,
       finalState: result.finalState,
       ...(args.collectLog ? { tickLog: result.tickLog } : {}),
+      ...(args.trace ? { traceLog: result.traceLog } : {}),
     };
     return {
       exitCode: 0,
@@ -249,17 +280,22 @@ export function runCli(argv: string[]): CliOutcome {
     };
   }
 
-  return {
-    exitCode: 0,
-    stdout: summarize(
-      result.finalState,
-      result.ticksRun,
-      result.gameEnded,
-      loaded.warnings,
-      args.seed
-    ),
-    stderr: '',
-  };
+  let stdout = summarize(
+    result.finalState,
+    result.ticksRun,
+    result.gameEnded,
+    loaded.warnings,
+    args.seed
+  );
+
+  if (args.trace) {
+    const body = renderTrace(result.traceLog);
+    stdout += `\nTick trace (${result.traceLog.length} tick${
+      result.traceLog.length === 1 ? '' : 's'
+    }):\n${body ? body + '\n' : '  (no changes recorded)\n'}`;
+  }
+
+  return { exitCode: 0, stdout, stderr: '' };
 }
 
 function isMain(): boolean {

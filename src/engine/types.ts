@@ -161,6 +161,55 @@ export interface TickOptions {
   mode: ActivationType | 'all';
   currentTick: number;
   fractionalDispatch: Map<number, FractionalDispatchState>;
+  /**
+   * When true, `simulateTick` records a human-readable "diary" of what changed
+   * this tick (resource/value deltas, transfers, events) into `TickResult.trace`.
+   * Off by default — tracing is a verbose debug mode that produces a LOT of data,
+   * so it must be armed deliberately and is read once at the start of a run.
+   */
+  trace?: boolean;
+}
+
+/** A single resource/value change attributed to one element during a tick. */
+export interface TickTraceChange {
+  elementId: number;
+  /** Element `text` if present, else `Type#id` (e.g. `coins`, `Pool#2`). */
+  label: string;
+  type: GraphElementType;
+  /** `resource` = a coloured resource count; `value` = a Register's value. */
+  field: 'resource' | 'value';
+  /** Resource colour key — present only when `field === 'resource'`. */
+  color?: string;
+  before: number;
+  after: number;
+  delta: number;
+}
+
+/**
+ * A resource transfer attributed to the nodes it moved resources between — the
+ * "why" behind a change. Resolved from a raw {@link ResourceTransfer} plus the
+ * connection's endpoints, so the diary can read like actions ("Multiplier → XP")
+ * rather than bare connection ids.
+ */
+export interface TickTraceFlow {
+  connectionId: number;
+  /** Source node label (`text` or `Type#id`). */
+  from: string;
+  /** Target node label (`text` or `Type#id`). */
+  to: string;
+  units: number;
+  color: string;
+}
+
+/** The verbose diary for one simulated tick. */
+export interface TickTraceEntry {
+  /** 1-based tick number (the onstart tick is tick 1). */
+  tick: number;
+  activation: 'automatic' | 'onstart' | 'interactive';
+  changes: TickTraceChange[];
+  /** Attributed resource transfers (what moved, and between which nodes). */
+  flows: TickTraceFlow[];
+  events: SimulationEvent[];
 }
 
 export interface SimulationEvent {
@@ -172,4 +221,6 @@ export interface TickResult {
   nextElements: GraphElement[];
   transfers: ResourceTransfer[];
   events: SimulationEvent[];
+  /** Populated only when `TickOptions.trace` is true. */
+  trace?: TickTraceEntry;
 }
