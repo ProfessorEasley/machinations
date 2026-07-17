@@ -1,7 +1,8 @@
 import { fileURLToPath } from 'node:url';
 import { resolve as resolvePath } from 'node:path';
 import { loadGraphFromFile } from './io';
-import { runSimulation } from './runner';
+import { runSimulation, runMultiple } from './runner';
+import type { MultipleRunResult } from './runner';
 import { renderTrace } from './trace';
 import type { GraphElement } from './types';
 
@@ -24,6 +25,7 @@ export interface CliOutcome {
 interface ParsedArgs {
   filePath?: string;
   maxTicks: number;
+  runs: number;
   collectLog: boolean;
   trace: boolean;
   maxTraceTicks?: number;
@@ -40,7 +42,13 @@ Usage:
 
 Options:
   --max-ticks N        Maximum number of ticks to run (default 1000).
+  --runs N             Run the model N times (default 1). With N=1 this is a
+                       single "quick run" that also reports the triggered end
+                       condition. With N>1 it runs a "multiple runs" batch and
+                       prints an aggregated outcome report. --collect-log and
+                       --trace are ignored when N>1.
   --seed N             Seed the PRNG for a deterministic, reproducible run.
+                       For --runs N>1 each run uses seed+i (reproducible batch).
   --collect-log        Include per-tick TickResult entries in JSON output.
   --trace              Arm the verbose tick trace (a per-tick diary of every
                        resource/value change). Off by default — produces a LOT
@@ -77,6 +85,9 @@ function npmConfigArgv(): string[] {
   const maxTicks = read('max-ticks');
   if (maxTicks !== undefined && Number.isFinite(Number(maxTicks)))
     extra.push('--max-ticks', maxTicks);
+  const runs = read('runs');
+  if (runs !== undefined && Number.isFinite(Number(runs)))
+    extra.push('--runs', runs);
   const format = read('format');
   if (format === 'json' || format === 'summary') extra.push('--format', format);
   const collectLog = read('collect-log');
@@ -92,6 +103,7 @@ function npmConfigArgv(): string[] {
 function parseArgs(rawArgv: string[]): ParsedArgs {
   const out: ParsedArgs = {
     maxTicks: 1000,
+    runs: 1,
     collectLog: false,
     trace: false,
     format: 'summary',
@@ -134,6 +146,16 @@ function parseArgs(rawArgv: string[]): ParsedArgs {
       out.maxTicks = Math.floor(n);
       continue;
     }
+    if (a === '--runs') {
+      const v = argv[++i];
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < 1) {
+        out.unknownFlag = `--runs expects a number >= 1, got "${v}"`;
+        return out;
+      }
+      out.runs = Math.floor(n);
+      continue;
+    }
     if (a === '--seed') {
       const v = argv[++i];
       const n = Number(v);
@@ -173,6 +195,7 @@ function summarize(
   ticksRun: number,
   gameEnded: boolean,
   warnings: string[],
+  endConditionName: string | null,
   seed?: number
 ): string {
   const lines: string[] = [];
@@ -180,6 +203,7 @@ function summarize(
     `Simulation finished: ticksRun=${ticksRun} gameEnded=${gameEnded}` +
       (seed !== undefined ? ` seed=${seed}` : '')
   );
+  lines.push(`Outcome: ${endConditionName ?? '(no end condition)'}`);
 
   if (warnings.length) {
     lines.push('');
@@ -220,6 +244,72 @@ function summarize(
   return lines.join('\n') + '\n';
 }
 
+interface AggregateRow {
+  name: string;
+  count: number;
+  pct: number;
+}
+
+/**
+ * Tally a batch of run outcomes into a sorted outcome distribution plus the
+ * average number of steps, mirroring the UI's Multiple Runs report
+ * (ToolSideBar `runsResultRows` / `runsAverageTime`).
+ */
+function aggregateRuns(result: MultipleRunResult): {
+  aggregate: AggregateRow[];
+  averageSteps: number;
+} {
+  const counts = new Map<string, number>();
+  let totalTicks = 0;
+  for (const o of result.outcomes) {
+    const key = o.endConditionName ?? 'Stopped before end';
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+    totalTicks += o.ticksElapsed;
+  }
+  const total = result.outcomes.length;
+  const aggregate: AggregateRow[] = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, count]) => ({
+      name,
+      count,
+      pct: total ? (count / total) * 100 : 0,
+    }));
+  const averageSteps = total ? totalTicks / total : 0;
+  return { aggregate, averageSteps };
+}
+
+function summarizeMultiple(
+  result: MultipleRunResult,
+  warnings: string[],
+  seed?: number
+): string {
+  const { aggregate, averageSteps } = aggregateRuns(result);
+  const lines: string[] = [];
+  lines.push(
+    `Multiple runs: ${result.totalRuns}` +
+      (seed !== undefined ? ` seed=${seed}` : '')
+  );
+  lines.push(`Average steps: ${averageSteps.toFixed(2)}`);
+
+  if (warnings.length) {
+    lines.push('');
+    lines.push('Warnings:');
+    for (const w of warnings) lines.push(`  - ${w}`);
+  }
+
+  lines.push('');
+  lines.push('Outcomes:');
+  lines.push('  Outcome                          #        %');
+  for (const row of aggregate) {
+    const name = row.name.padEnd(32).slice(0, 32);
+    const count = String(row.count).padStart(5);
+    const pct = `${row.pct.toFixed(1)}`.padStart(7);
+    lines.push(`  ${name} ${count}  ${pct}`);
+  }
+
+  return lines.join('\n') + '\n';
+}
+
 export function runCli(argv: string[]): CliOutcome {
   const args = parseArgs(argv);
 
@@ -255,6 +345,39 @@ export function runCli(argv: string[]): CliOutcome {
     };
   }
 
+  // Multiple runs: run the batch and print an aggregated outcome report.
+  // --collect-log / --trace are per-single-run only and ignored here.
+  if (args.runs > 1) {
+    const batch = runMultiple(loaded.elements, {
+      runs: args.runs,
+      maxTicks: args.maxTicks,
+      seed: args.seed,
+    });
+
+    if (args.format === 'json') {
+      const { aggregate, averageSteps } = aggregateRuns(batch);
+      const payload = {
+        totalRuns: batch.totalRuns,
+        averageSteps,
+        seed: args.seed,
+        warnings: loaded.warnings,
+        aggregate,
+        outcomes: batch.outcomes,
+      };
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify(payload, null, 2) + '\n',
+        stderr: '',
+      };
+    }
+
+    return {
+      exitCode: 0,
+      stdout: summarizeMultiple(batch, loaded.warnings, args.seed),
+      stderr: '',
+    };
+  }
+
   const result = runSimulation(loaded.elements, {
     maxTicks: args.maxTicks,
     collectLog: args.collectLog,
@@ -267,6 +390,7 @@ export function runCli(argv: string[]): CliOutcome {
     const payload = {
       ticksRun: result.ticksRun,
       gameEnded: result.gameEnded,
+      endConditionName: result.endConditionName,
       seed: args.seed,
       warnings: loaded.warnings,
       finalState: result.finalState,
@@ -285,6 +409,7 @@ export function runCli(argv: string[]): CliOutcome {
     result.ticksRun,
     result.gameEnded,
     loaded.warnings,
+    result.endConditionName,
     args.seed
   );
 

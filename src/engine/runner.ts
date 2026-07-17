@@ -48,6 +48,45 @@ export interface RunSimulationResult {
   ticksRun: number;
   /** True if a game-end event triggered early stop. */
   gameEnded: boolean;
+  /**
+   * Name of the End Condition that triggered the game end, or `null` if the run
+   * ended without one (hit `maxTicks`). Derived the same way the Canvas does:
+   * the triggered End Condition is the one left `isBlinking` in `finalState`.
+   */
+  endConditionName: string | null;
+}
+
+export interface RunOutcome {
+  /** Triggered End Condition name, or `null` if none triggered. */
+  endConditionName: string | null;
+  /** Number of ticks this run executed before ending. */
+  ticksElapsed: number;
+}
+
+export interface MultipleRunResult {
+  /** Number of runs executed. */
+  totalRuns: number;
+  /** Per-run outcomes, in run order. */
+  outcomes: RunOutcome[];
+}
+
+/**
+ * Derive the triggered End Condition name from a finished run's final state.
+ *
+ * When an End Condition triggers it is left `isBlinking`, and its display name
+ * is `text || 'Victory!'`. Returns `null` when no End Condition triggered.
+ *
+ * Shared by both the headless runner and the Canvas so single/quick/multiple
+ * runs all name outcomes identically.
+ */
+export function getTriggeredEndConditionName(
+  elements: GraphElement[]
+): string | null {
+  const triggered = elements.find(
+    e => e.type === 'End Condition' && e.isBlinking
+  );
+  if (!triggered) return null;
+  return triggered.text || 'Victory!';
 }
 
 /**
@@ -107,6 +146,7 @@ export function runSimulation(
       traceLog,
       ticksRun,
       gameEnded,
+      endConditionName: getTriggeredEndConditionName(currentElements),
     };
   }
 
@@ -135,5 +175,39 @@ export function runSimulation(
     traceLog,
     ticksRun,
     gameEnded,
+    endConditionName: getTriggeredEndConditionName(currentElements),
   };
+}
+
+/**
+ * Run the same model `runs` times back-to-back and collect the per-run
+ * outcome (which End Condition triggered, and how many ticks it took).
+ *
+ * This is the headless equivalent of the Canvas "Multiple Runs" feature and
+ * reuses {@link runSimulation} so the tick/reset/end-condition logic stays in
+ * one place.
+ *
+ * Seeding: when a `seed` is supplied each run uses `seed + i`, so the whole
+ * batch is reproducible while individual runs still vary. When omitted, every
+ * run draws from `Math.random()`.
+ */
+export function runMultiple(
+  elements: GraphElement[],
+  options: { runs: number; maxTicks?: number; seed?: number }
+): MultipleRunResult {
+  const { runs, maxTicks, seed } = options;
+  const outcomes: RunOutcome[] = [];
+
+  for (let i = 0; i < runs; i++) {
+    const result = runSimulation(elements, {
+      maxTicks,
+      seed: seed === undefined ? undefined : seed + i,
+    });
+    outcomes.push({
+      endConditionName: result.endConditionName,
+      ticksElapsed: result.ticksRun,
+    });
+  }
+
+  return { totalRuns: runs, outcomes };
 }
