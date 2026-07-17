@@ -11,7 +11,6 @@ import type {
   FractionalDispatchState,
 } from '../engine/types';
 import {
-  normalizeColor,
   getElementValue,
   delayGlyphStrokeForFill,
   applyDynamicResourceLabels,
@@ -20,6 +19,7 @@ import {
   parseCond,
 } from '../engine/helpers';
 import { resetElements } from '../engine/reset';
+import { getTriggeredEndConditionName } from '../engine/runner';
 import { simulateTick } from '../engine/tick';
 import { startSimulationLoop } from '../engine/simulationLoop';
 import { setSeed } from '../engine/rng';
@@ -1204,56 +1204,11 @@ const Canvas: React.FC<CanvasProps> = ({
             (window as unknown as CustomWindow).__GAME_ENDED__ = false;
           }
 
-          // Soft reset: restore element initial values, preserve Chart chartState
-          runEls = runEls.map(el => {
-            const baseReset = {
-              ...el,
-              hasStarted: false,
-              triggerCount: 0,
-              hasUnsatisfiedCondition: false,
-              conditionSatisfied: undefined,
-              dynamicLabelLastDelta: 0,
-              lastStartValue: undefined,
-              multiplicandLastSourceValue: undefined,
-            };
-
-            if (el.type === 'Pool') {
-              const startVal =
-                typeof el.number === 'string'
-                  ? parseInt(el.number) || 0
-                  : el.number || 0;
-              const c = normalizeColor(el.color);
-              const initialResources = startVal > 0 ? { [c]: startVal } : {};
-              return {
-                ...baseReset,
-                currentPoints: startVal,
-                resourcesByColor: initialResources,
-              };
-            }
-            if (el.type === 'Register')
-              return { ...baseReset, currentValue: el.startingValue || 0 };
-            if (el.type === 'End Condition')
-              return { ...baseReset, inhibited: true, isBlinking: false };
-            if (el.type === 'Convertor')
-              return { ...baseReset, inputResources: {}, outputResources: {} };
-            if (el.type === 'Trader')
-              return { ...baseReset, traderInputs: {}, traderOutputs: {} };
-            if (
-              el.type === 'Resource Connection' &&
-              (el.dynamicLabelBase !== undefined ||
-                el.dynamicLabelFractionDen !== undefined)
-            ) {
-              const base = el.dynamicLabelBase ?? 0;
-              const den = el.dynamicLabelFractionDen;
-              if (den != null && Number.isFinite(den) && den !== 0)
-                return {
-                  ...baseReset,
-                  text: `${Math.round(base * den)}/${den}`,
-                };
-              return { ...baseReset, text: String(base) };
-            }
-            return baseReset;
-          });
+          // Soft reset: restore element initial values while preserving each
+          // Chart's chartState so lines accumulate across runs. Uses the shared
+          // engine resetElements (which also clears Delay state, unlike the old
+          // inline reset) so single/quick/multiple runs stay consistent.
+          runEls = resetElements(runEls);
 
           const { nextElements: afterOnstart } = runSimulationRef.current(
             runEls,
@@ -1277,13 +1232,8 @@ const Canvas: React.FC<CanvasProps> = ({
             ticksElapsed++;
           }
 
-          const triggeredEndCond = runEls.find(
-            el => el.type === 'End Condition' && el.isBlinking
-          );
           runOutcomes.push({
-            endConditionName: triggeredEndCond
-              ? triggeredEndCond.text || 'Victory!'
-              : null,
+            endConditionName: getTriggeredEndConditionName(runEls),
             ticksElapsed,
           });
 

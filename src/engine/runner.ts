@@ -73,11 +73,15 @@ export interface MultipleRunResult {
 /**
  * Derive the triggered End Condition name from a finished run's final state.
  *
- * Mirrors the Canvas: when an End Condition triggers it is left `isBlinking`,
- * and its display name is `text || 'Victory!'`. Returns `null` when no End
- * Condition triggered.
+ * When an End Condition triggers it is left `isBlinking`, and its display name
+ * is `text || 'Victory!'`. Returns `null` when no End Condition triggered.
+ *
+ * Shared by both the headless runner and the Canvas so single/quick/multiple
+ * runs all name outcomes identically.
  */
-function findEndConditionName(elements: GraphElement[]): string | null {
+export function getTriggeredEndConditionName(
+  elements: GraphElement[]
+): string | null {
   const triggered = elements.find(
     e => e.type === 'End Condition' && e.isBlinking
   );
@@ -142,7 +146,7 @@ export function runSimulation(
       traceLog,
       ticksRun,
       gameEnded,
-      endConditionName: findEndConditionName(currentElements),
+      endConditionName: getTriggeredEndConditionName(currentElements),
     };
   }
 
@@ -171,7 +175,7 @@ export function runSimulation(
     traceLog,
     ticksRun,
     gameEnded,
-    endConditionName: findEndConditionName(currentElements),
+    endConditionName: getTriggeredEndConditionName(currentElements),
   };
 }
 
