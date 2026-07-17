@@ -15,6 +15,27 @@ npx tsx src/engine/cli.ts src/engine/__tests__/fixtures/source-pool.xml --max-ti
 npx tsx src/engine/cli.ts src/engine/__tests__/fixtures/source-pool.xml --max-ticks 5 --format json --collect-log
 ```
 
+## Quick / Multiple Runs
+
+```bash
+# Quick run (single run) — reports the triggered end condition
+npx tsx src/engine/cli.ts src/engine/__tests__/fixtures/demo-win-condition.xml
+
+# Quick run as JSON — includes "endConditionName" (null if none triggered)
+npx tsx src/engine/cli.ts src/engine/__tests__/fixtures/demo-win-condition.xml --format json
+
+# Multiple runs — a 50/50 gate races "Heads Win" vs "Tails Win"; the tally
+# shows a real outcome distribution across the batch
+npx tsx src/engine/cli.ts src/engine/__tests__/fixtures/probabilistic-race.xml --runs 100 --seed 42
+
+# Multiple runs as JSON (totalRuns, averageSteps, aggregate[], outcomes[])
+npx tsx src/engine/cli.ts src/engine/__tests__/fixtures/probabilistic-race.xml --runs 100 --seed 42 --format json
+
+# Reproducible batch: --seed makes each run use seed+i, so the same seed always
+# yields the same distribution; change the seed to explore a different batch
+npx tsx src/engine/cli.ts src/engine/__tests__/fixtures/probabilistic-race.xml --runs 100 --seed 7
+```
+
 ## Test Different Scenarios
 
 ```bash

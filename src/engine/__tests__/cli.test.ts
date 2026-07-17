@@ -308,3 +308,119 @@ describe('engine/io + cli — multi-branch scenario', () => {
     expect(parsed.tickLog.length).toBeGreaterThan(0);
   });
 });
+
+describe('engine/io + cli — quick run (single run outcome reporting)', () => {
+  const winPath = resolve(__dirname, 'fixtures', 'demo-win-condition.xml');
+
+  it('runCli --runs 1 --format json reports the triggered endConditionName', () => {
+    const outcome = runCli([winPath, '--format', 'json']);
+
+    expect(outcome.exitCode).toBe(0);
+    const parsed = JSON.parse(outcome.stdout);
+    expect(parsed.gameEnded).toBe(true);
+    expect(parsed.endConditionName).toBe('Victory');
+  });
+
+  it('runCli summary includes an Outcome line', () => {
+    const outcome = runCli([winPath]);
+
+    expect(outcome.exitCode).toBe(0);
+    expect(outcome.stdout).toMatch(/Outcome: Victory/);
+  });
+
+  it('runCli reports "(no end condition)" when maxTicks is hit first', () => {
+    const outcome = runCli([
+      FIXTURE_PATH,
+      '--max-ticks',
+      '3',
+      '--format',
+      'json',
+    ]);
+
+    expect(outcome.exitCode).toBe(0);
+    const parsed = JSON.parse(outcome.stdout);
+    expect(parsed.gameEnded).toBe(false);
+    expect(parsed.endConditionName).toBeNull();
+  });
+});
+
+describe('engine/io + cli — multiple runs (aggregated report)', () => {
+  // A 50/50 gate races two pools ("Heads Win" vs "Tails Win") to a threshold,
+  // so outcomes genuinely vary across runs while staying reproducible per seed.
+  const racePath = resolve(__dirname, 'fixtures', 'probabilistic-race.xml');
+
+  it('runCli --runs 100 --format json aggregates a probabilistic distribution', () => {
+    const outcome = runCli([
+      racePath,
+      '--runs',
+      '100',
+      '--seed',
+      '42',
+      '--format',
+      'json',
+    ]);
+
+    expect(outcome.exitCode).toBe(0);
+    const parsed = JSON.parse(outcome.stdout);
+    expect(parsed.totalRuns).toBe(100);
+    expect(typeof parsed.averageSteps).toBe('number');
+    expect(Array.isArray(parsed.aggregate)).toBe(true);
+    expect(parsed.outcomes).toHaveLength(100);
+
+    const counts = parsed.aggregate.reduce(
+      (sum: number, row: { count: number }) => sum + row.count,
+      0
+    );
+    expect(counts).toBe(100);
+
+    // Both outcomes must actually occur — this is what makes the multi-run
+    // report meaningful (a deterministic model would only ever show one row).
+    const names = parsed.aggregate.map((r: { name: string }) => r.name).sort();
+    expect(names).toEqual(['Heads Win', 'Tails Win']);
+    for (const row of parsed.aggregate) {
+      expect(row.count).toBeGreaterThan(0);
+      expect(row.pct).toBeCloseTo((row.count / 100) * 100, 5);
+    }
+  });
+
+  it('same seed produces identical results (reproducible batch)', () => {
+    const args = [racePath, '--runs', '50', '--seed', '42', '--format', 'json'];
+    const a = runCli([...args]);
+    const b = runCli([...args]);
+
+    expect(a.exitCode).toBe(0);
+    expect(b.exitCode).toBe(0);
+    // Byte-for-byte identical output: same seed => same per-run outcomes.
+    expect(a.stdout).toBe(b.stdout);
+
+    // A different seed should explore a different (but also reproducible) batch.
+    const c = runCli([
+      racePath,
+      '--runs',
+      '50',
+      '--seed',
+      '7',
+      '--format',
+      'json',
+    ]);
+    const outcomesA = JSON.parse(a.stdout).outcomes;
+    const outcomesC = JSON.parse(c.stdout).outcomes;
+    expect(outcomesC).not.toEqual(outcomesA);
+  });
+
+  it('runCli --runs 100 summary prints the outcome tally', () => {
+    const outcome = runCli([racePath, '--runs', '100', '--seed', '42']);
+
+    expect(outcome.exitCode).toBe(0);
+    expect(outcome.stdout).toMatch(/Multiple runs: 100/);
+    expect(outcome.stdout).toMatch(/Average steps:/);
+    expect(outcome.stdout).toMatch(/Heads Win/);
+    expect(outcome.stdout).toMatch(/Tails Win/);
+  });
+
+  it('runCli rejects --runs 0 with exit code 2', () => {
+    const outcome = runCli([racePath, '--runs', '0']);
+    expect(outcome.exitCode).toBe(2);
+    expect(outcome.stderr).toMatch(/--runs/);
+  });
+});
