@@ -51,6 +51,25 @@ jobs:
       - name: Run TypeScript type check
         run: npx tsc --noEmit
 
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npx vitest run
+
   build:
     name: Build Application
     runs-on: ubuntu-latest
