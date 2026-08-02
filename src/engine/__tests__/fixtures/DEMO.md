@@ -60,20 +60,19 @@ $ ... --max-ticks 10
 [Materials] --10/tick-> [Build Queue (delay=3)] --all-> [Inventory]
 ```
 
-The Delay holds each arriving batch for 3 ticks before releasing it. Early in the run, **Inventory stays at 0** while batches accumulate inside the queue. Once the first batch matures, Inventory starts climbing.
+The Delay holds each arriving batch for 3 ticks before releasing it. Early in the run, **Inventory stays at 0** while batches accumulate inside the queue. The first batch lands on tick 5, after which Inventory climbs a steady +10/tick.
 
 **Verified headless output**
 
 ```
-$ npx tsx src/engine/cli.ts src/engine/__tests__/fixtures/demo-production-line.xml --max-ticks 1 --format summary
-$ ... --max-ticks 2
+$ npx tsx src/engine/cli.ts src/engine/__tests__/fixtures/demo-production-line.xml --max-ticks 4 --format summary
   Pool#3 "Inventory" = 0          # batches still in the queue
 
-$ ... --max-ticks 4
+$ ... --max-ticks 5
   Pool#3 "Inventory" = 10         # first batch released
 
 $ ... --max-ticks 8
-  Pool#3 "Inventory" = 50         # steady-state release
+  Pool#3 "Inventory" = 40         # steady-state release, +10/tick
 ```
 
 **Talking point:** “Notice Inventory is empty for the first few ticks, then jumps. That delay is exactly what production lines, build orders, or research timers look like in real systems.”
@@ -107,7 +106,7 @@ Even though we asked for `--max-ticks 50`, the run stopped at tick 10 because th
 ## Demo flow (suggested)
 
 1. **Open `demo-resource-engine.xml` in the UI** — show the live counter, then run the same file headlessly to prove the numbers match.
-2. **Open `demo-production-line.xml`** — point out the Delay pattern, then show the headless tick-by-tick progression (0 → 10 → 50).
+2. **Open `demo-production-line.xml`** — point out the Delay pattern, then show the headless tick-by-tick progression (0 at t=4 → 10 at t=5 → 40 at t=8).
 3. **Open `demo-win-condition.xml`** — let the run finish on its own; show the headless `gameEnded=true` and `ticksRun=10`.
 
 The whole story: _one XML, two execution paths, identical results — UI for stakeholders, CLI for automation._
