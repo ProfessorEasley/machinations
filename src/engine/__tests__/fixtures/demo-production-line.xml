@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<diagram>
+  <source id="1" x="120" y="160" color="#1E90FF" activation="automatic" text="Materials"/>
+  <delay id="2" x="380" y="160" actions="3" activation="automatic" text="Build Queue"/>
+  <pool id="3" x="640" y="160" color="#1E90FF" number="0" max="500" text="Inventory"/>
+
+  <resourceConnection id="4" from="1" to="2"
+    startX="120" startY="160" endX="380" endY="160"
+    text="10" color="#1E90FF" labelPosition="0.5"/>
+  <resourceConnection id="5" from="2" to="3"
+    startX="380" startY="160" endX="640" endY="160"
+    text="all" color="#1E90FF" labelPosition="0.5"/>
+</diagram>

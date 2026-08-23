@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<diagram>
+  <source id="1" x="0" y="0" color="#FF0000" activation="automatic"/>
+  <pool id="2" x="200" y="0" color="#FF0000" number="0" max="1000"/>
+  <resourceConnection id="3" from="1" to="2" startX="0" startY="0" endX="200" endY="0" text="5" color="#FF0000" labelPosition="0.5"/>
+</diagram>

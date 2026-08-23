@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<diagram>
+  <source id="1" x="120" y="160" color="#228B22" activation="automatic" text="Score Source"/>
+  <pool id="2" x="380" y="160" color="#228B22" number="0" max="200" text="Score"/>
+  <endCondition id="3" x="640" y="160" color="#000000" text="Victory"/>
+
+  <resourceConnection id="4" from="1" to="2"
+    startX="120" startY="160" endX="380" endY="160"
+    text="5" color="#228B22" labelPosition="0.5"/>
+  <stateConnection id="5" from="2" to="3"
+    startX="380" startY="160" endX="640" endY="160"
+    text="&gt;= 50" color="#000000" labelPosition="0.5"/>
+</diagram>

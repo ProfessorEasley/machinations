@@ -1,0 +1,2 @@
+# Markdown is UTF-8 text: keep LF endings and always diff as text, never binary.
+*.md text eol=lf diff

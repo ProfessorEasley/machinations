@@ -1,0 +1,88 @@
+.chart-element {
+  position: absolute;
+  cursor: pointer;
+  user-select: none;
+}
+
+.chart-element.selected {
+  z-index: 10;
+}
+
+.chart-element.selected svg {
+  box-shadow: 0 0 0 2px #0078d4;
+}
+
+.chart-element.selectable:hover svg {
+  box-shadow: 0 0 0 2px #f4d000;
+}
+
+.chart-element:hover svg {
+  box-shadow: 0 0 0 2px #f4d000;
+}
+
+.chart-element .resize-handle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background-color: #0078d4;
+  border: 1px solid white;
+  border-radius: 2px;
+}
+
+.chart-element .resize-handle.se {
+  right: -4px;
+  bottom: 26px;
+  cursor: se-resize;
+}
+
+.chart-element .resize-handle.sw {
+  left: -4px;
+  bottom: 26px;
+  cursor: sw-resize;
+}
+
+.chart-element .resize-handle.ne {
+  right: -4px;
+  top: -4px;
+  cursor: ne-resize;
+}
+
+.chart-element .resize-handle.nw {
+  left: -4px;
+  top: -4px;
+  cursor: nw-resize;
+}
+
+.chart-element .chart-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 0;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.chart-element .chart-controls span {
+  cursor: pointer;
+}
+
+.chart-element .chart-controls span:hover {
+  text-decoration: underline;
+}
+
+.chart-legend-arrows {
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+}
+
+.chart-legend-arrow {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 8px solid currentColor;
+}

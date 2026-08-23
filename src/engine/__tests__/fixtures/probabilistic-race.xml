@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Probabilistic race: a Source feeds a Feeder pool; an automatic "pull all"
+  Gate routes each unit 50/50 to the "Heads" or "Tails" pool. Whichever pool
+  reaches 5 first triggers its End Condition, so the winning outcome is random
+  per run yet fully reproducible for a given seed. Ideal for exercising the
+  Multiple Runs aggregate report (mix of "Heads Win" / "Tails Win").
+-->
+<diagram>
+  <source id="1" x="120" y="160" color="#3366CC" activation="automatic" text="Coin"/>
+  <pool id="2" x="300" y="160" color="#3366CC" number="0" max="100" text="Feeder"/>
+  <gate id="3" x="480" y="160" color="#3366CC" activation="automatic" pullMode="pull all" gateType="dice"/>
+
+  <pool id="6" x="680" y="80" color="#22AA55" number="0" max="100" text="Heads"/>
+  <pool id="7" x="680" y="240" color="#CC4444" number="0" max="100" text="Tails"/>
+
+  <endCondition id="8" x="900" y="80" color="#000000" text="Heads Win"/>
+  <endCondition id="9" x="900" y="240" color="#000000" text="Tails Win"/>
+
+  <resourceConnection id="10" from="1" to="2"
+    startX="120" startY="160" endX="300" endY="160"
+    text="1" color="#3366CC" labelPosition="0.5"/>
+  <resourceConnection id="11" from="2" to="3"
+    startX="300" startY="160" endX="480" endY="160"
+    text="all" color="#3366CC" labelPosition="0.5"/>
+
+  <resourceConnection id="12" from="3" to="6"
+    startX="480" startY="160" endX="680" endY="80"
+    text="50%" color="#22AA55" labelPosition="0.5"/>
+  <resourceConnection id="13" from="3" to="7"
+    startX="480" startY="160" endX="680" endY="240"
+    text="50%" color="#CC4444" labelPosition="0.5"/>
+
+  <stateConnection id="14" from="6" to="8"
+    startX="680" startY="80" endX="900" endY="80"
+    text="&gt;= 5" color="#000000" labelPosition="0.5"/>
+  <stateConnection id="15" from="7" to="9"
+    startX="680" startY="240" endX="900" endY="240"
+    text="&gt;= 5" color="#000000" labelPosition="0.5"/>
+</diagram>

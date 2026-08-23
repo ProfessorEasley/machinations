@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<diagram>
+  <!-- Single source -->
+  <source id="1" x="0" y="50" color="#FF0000" activation="automatic"/>
+  <!-- Three pools (branching paths) -->
+  <pool id="2" x="200" y="0" color="#FF0000" number="0" max="200"/>
+  <pool id="3" x="200" y="50" color="#FF0000" number="0" max="200"/>
+  <pool id="4" x="200" y="100" color="#FF0000" number="0" max="200"/>
+  <!-- Three drains (collecting from each path) -->
+  <drain id="5" x="400" y="0" color="#FF0000" activation="automatic"/>
+  <drain id="6" x="400" y="50" color="#FF0000" activation="automatic"/>
+  <drain id="7" x="400" y="100" color="#FF0000" activation="automatic"/>
+  <!-- Source to pools -->
+  <resourceConnection id="8" from="1" to="2" startX="0" startY="50" endX="200" endY="0" text="3" color="#FF0000" labelPosition="0.5"/>
+  <resourceConnection id="9" from="1" to="3" startX="0" startY="50" endX="200" endY="50" text="4" color="#FF0000" labelPosition="0.5"/>
+  <resourceConnection id="10" from="1" to="4" startX="0" startY="50" endX="200" endY="100" text="2" color="#FF0000" labelPosition="0.5"/>
+  <!-- Pools to drains -->
+  <resourceConnection id="11" from="2" to="5" startX="200" startY="0" endX="400" endY="0" text="all" color="#FF0000" labelPosition="0.5"/>
+  <resourceConnection id="12" from="3" to="6" startX="200" startY="50" endX="400" endY="50" text="all" color="#FF0000" labelPosition="0.5"/>
+  <resourceConnection id="13" from="4" to="7" startX="200" startY="100" endX="400" endY="100" text="all" color="#FF0000" labelPosition="0.5"/>
+</diagram>
