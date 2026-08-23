@@ -660,6 +660,29 @@ export function simulateTick(
     );
   };
 
+  /**
+   * Pick which coloured resource a connection actually moves out of a pool.
+   *
+   * Machinations treats a connection's colour as cosmetic decoration, while we
+   * use it to select a resource colour. Models drawn in the desktop tool
+   * routinely colour a connection to match its *target* (a red salary drain
+   * pulling from a green wallet), which under a strict reading moves nothing
+   * and leaves the model silently inert.
+   *
+   * So when the pool holds none of the connection's colour but does hold
+   * exactly one other colour, that colour is unambiguously what the connection
+   * means, and we pull it. Pools holding several colours stay strict — there is
+   * no safe way to guess which the author intended, and guessing would break
+   * genuine multi-colour models.
+   */
+  const resolvePullColor = (start: GraphElement, color: string): string => {
+    if (getResCount(start, color) > 0) return color;
+    const held = Object.entries(start.resourcesByColor ?? {}).filter(
+      ([, count]) => count > 0
+    );
+    return held.length === 1 ? held[0][0] : color;
+  };
+
   const canTakeUnits = (
     start: GraphElement,
     units: number,
@@ -667,7 +690,8 @@ export function simulateTick(
   ): boolean => {
     if (units <= 0) return false;
     if (start.type === 'Source') return true;
-    if (start.type === 'Pool') return getResCount(start, color) >= units;
+    if (start.type === 'Pool')
+      return getResCount(start, resolvePullColor(start, color)) >= units;
     return false;
   };
 
@@ -679,9 +703,10 @@ export function simulateTick(
     if (units <= 0) return 0;
     if (start.type === 'Source') return units;
     if (start.type === 'Pool') {
-      const have = getResCount(start, color);
+      const pullColor = resolvePullColor(start, color);
+      const have = getResCount(start, pullColor);
       const used = Math.min(have, units);
-      modResCount(start, color, -used);
+      modResCount(start, pullColor, -used);
       return used;
     }
     return 0;
