@@ -796,13 +796,30 @@ export function getDiceSides(
   return 6;
 }
 
+/**
+ * How many dice a `dice` gate rolls, from a label like `2D6`.
+ *
+ * Plain `D6` and an unlabelled gate roll one die. The count used to be parsed
+ * and then thrown away, so `2D6` rolled a single six-sided die: a flat 1-6
+ * instead of the 2-12 triangular distribution the label promises.
+ */
+export function getDiceCount(gate: GraphElement): number {
+  const t = (gate.text ?? '').trim().toLowerCase();
+  const m = t.match(/^(\d+)\s*d\s*\d+$/);
+  if (!m) return 1;
+  return Math.max(1, parseInt(m[1], 10));
+}
+
 export function generateGateValue(
   gate: GraphElement,
   outputs: GraphElement[]
 ): number {
   if (gate.gateType === 'dice') {
     const sides = getDiceSides(gate, outputs);
-    return randInt(1, sides);
+    const count = getDiceCount(gate);
+    let total = 0;
+    for (let i = 0; i < count; i++) total += randInt(1, sides);
+    return total;
   }
 
   const wrapMax = getIntervalWrapMax(outputs);

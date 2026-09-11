@@ -4457,6 +4457,12 @@ const Canvas: React.FC<CanvasProps> = ({
         onChange={handleXmlFileChosen}
       />
 
+      {isRunning && (
+        <div className="canvas-running-notice" role="status">
+          Simulation running. Stop it to move or edit elements.
+        </div>
+      )}
+
       {xmlImportError && (
         <div
           style={{

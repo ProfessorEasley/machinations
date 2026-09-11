@@ -304,6 +304,67 @@ interface ConnStub {
   rawIdAttr?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Colour normalisation
+// ---------------------------------------------------------------------------
+
+/**
+ * Colour names written by the legacy Machinations tool, mapped to hex.
+ *
+ * The rest of the app works in hex: the properties panel matches a colour to
+ * its dropdown entry by hex, and pools key their contents by colour, so a
+ * connection asking for `Green` never matches a pool holding `#008000`.
+ * Names are normalised once here, at the edge, so nothing downstream has to
+ * know that legacy files spell colours differently.
+ *
+ * Palette names resolve to the exact hex the properties panel offers; the
+ * rest resolve to their CSS value so they still render as the author meant.
+ */
+const LEGACY_COLOR_NAMES: Record<string, string> = {
+  // The nine colours the properties panel can display.
+  red: '#FF0000',
+  yellow: '#FFFF00',
+  blue: '#0000FF',
+  orange: '#FFA500',
+  green: '#008000',
+  purple: '#800080',
+  black: '#000000',
+  gray: '#808080',
+  pink: '#FFC0CB',
+  // Further names seen in legacy exports.
+  grey: '#808080',
+  white: '#FFFFFF',
+  brown: '#A52A2A',
+  orangered: '#FF4500',
+  gold: '#FFD700',
+  silver: '#C0C0C0',
+  navy: '#000080',
+  teal: '#008080',
+  olive: '#808000',
+  maroon: '#800000',
+  lime: '#00FF00',
+  aqua: '#00FFFF',
+  cyan: '#00FFFF',
+  magenta: '#FF00FF',
+  fuchsia: '#FF00FF',
+  violet: '#EE82EE',
+  indigo: '#4B0082',
+  darkgreen: '#006400',
+  darkblue: '#00008B',
+  darkred: '#8B0000',
+  lightblue: '#ADD8E6',
+  lightgreen: '#90EE90',
+};
+
+/** Map a legacy colour name to hex; pass hex and unknown values through. */
+function normalizeColorAttr(raw: string | undefined): string | undefined {
+  if (raw == null) return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.startsWith('#')) return trimmed;
+  return LEGACY_COLOR_NAMES[trimmed.toLowerCase()] ?? trimmed;
+}
+
 function buildNode(
   type: GraphElementType,
   assignedId: number,
@@ -318,12 +379,9 @@ function buildNode(
     numAttrAny(rawNode, ['py', 'screenY']) ??
     100;
 
-  const color = attrAny(rawNode, [
-    'color',
-    'resourceColor',
-    'stroke',
-    'borderColor',
-  ]);
+  const color = normalizeColorAttr(
+    attrAny(rawNode, ['color', 'resourceColor', 'stroke', 'borderColor'])
+  );
   const thickness = numAttrAny(rawNode, [
     'thickness',
     'strokeWidth',
@@ -496,7 +554,7 @@ function buildConnectionStub(
   ]);
   const toRaw = attrAny(rawNode, ['to', 'end', 'target', 'endId', 'toId', 'b']);
 
-  const color = attrAny(rawNode, ['color', 'stroke']);
+  const color = normalizeColorAttr(attrAny(rawNode, ['color', 'stroke']));
   const thickness = numAttrAny(rawNode, ['thickness', 'strokeWidth']);
   const text = attrAny(rawNode, ['text', 'label']) ?? readNodeText(rawNode);
 
