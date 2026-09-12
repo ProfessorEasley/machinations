@@ -509,8 +509,11 @@
 }
 
 /* Connection Line Styles */
+/* No `stroke` here: the element's own colour is set as an SVG presentation
+   attribute, which any CSS declaration would override, flattening every
+   connection to one colour. The .selected / :hover / .condition-pending
+   rules below are meant to win and keep their stroke. */
 .connection-line {
-  stroke: #333;
   stroke-width: 2;
 }
 
@@ -520,7 +523,6 @@
 }
 
 .state-connection-line {
-  stroke: #666;
   stroke-width: 2;
   stroke-dasharray: 5, 5;
 }
@@ -633,4 +635,57 @@
   z-index: 5;
   transform: translate(-50%, -50%);
   box-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
+}
+
+/* ==================== Running notice ==================== */
+
+/* The canvas is read-only while a simulation runs: mousedown routes to
+   interactive-node behaviour and never reaches the drag path. Without this,
+   a running diagram is indistinguishable from a frozen one. */
+.canvas-running-notice {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9998;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: calc(100% - 32px);
+  padding: 5px 12px;
+  border: 1px solid #b9aef0;
+  border-radius: 999px;
+  background: #f1edfe;
+  color: #3b2f7a;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  pointer-events: none;
+  box-shadow: 0 1px 3px rgba(28, 24, 48, 0.12);
+}
+
+.canvas-running-notice::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: #5b46d6;
+  animation: canvas-running-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes canvas-running-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-running-notice::before {
+    animation: none;
+  }
 }

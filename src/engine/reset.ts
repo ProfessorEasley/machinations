@@ -16,6 +16,9 @@ export function resetElements(elements: GraphElement[]): GraphElement[] {
       dynamicLabelLastDelta: 0,
       lastStartValue: undefined,
       multiplicandLastSourceValue: undefined,
+      // Deterministic gates count 1, 2, 3... from here. Leaving the previous
+      // run's counter in place made every run after the first start mid-cycle.
+      lastGateValue: undefined,
     };
 
     if (el.type === 'Pool') {

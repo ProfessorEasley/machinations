@@ -20,9 +20,11 @@ import {
   parseInterval,
   parseCond,
   getDiceSides,
+  getDiceCount,
   generateGateValue,
   chooseGateOutputs,
 } from '../helpers';
+import { setSeed } from '../rng';
 
 describe('engine/helpers', () => {
   afterEach(() => {
@@ -363,5 +365,46 @@ describe('engine/helpers', () => {
       expect(chosen).toHaveLength(1);
       expect(chosen[0].id).toBe(4);
     });
+  });
+});
+
+describe('engine/helpers — dice gate labels', () => {
+  const gate = (text?: string): GraphElement =>
+    ({
+      id: 1,
+      type: 'Gate',
+      x: 0,
+      y: 0,
+      gateType: 'dice',
+      text,
+    }) as GraphElement;
+
+  it('reads the dice count from a label like 2D6', () => {
+    expect(getDiceCount(gate('2D6'))).toBe(2);
+    expect(getDiceCount(gate('3d10'))).toBe(3);
+  });
+
+  it('rolls one die for a plain or missing label', () => {
+    expect(getDiceCount(gate('D6'))).toBe(1);
+    expect(getDiceCount(gate(undefined))).toBe(1);
+  });
+
+  it('sums every die, so 2D6 spans 2-12 rather than 1-6', () => {
+    setSeed(7);
+    const values = Array.from({ length: 400 }, () =>
+      generateGateValue(gate('2D6'), [])
+    );
+    expect(Math.min(...values)).toBeGreaterThanOrEqual(2);
+    expect(Math.max(...values)).toBeGreaterThan(6);
+    expect(Math.max(...values)).toBeLessThanOrEqual(12);
+  });
+
+  it('still rolls a flat 1-6 for D6', () => {
+    setSeed(7);
+    const values = Array.from({ length: 400 }, () =>
+      generateGateValue(gate('D6'), [])
+    );
+    expect(Math.min(...values)).toBeGreaterThanOrEqual(1);
+    expect(Math.max(...values)).toBeLessThanOrEqual(6);
   });
 });

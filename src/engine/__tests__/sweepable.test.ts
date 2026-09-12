@@ -175,6 +175,24 @@ const traderSwap = () => [
   { ...flow(7, 3, 2), color: 'Red' },
 ];
 
+/**
+ * The same trade with nothing on the Blue side.
+ *
+ * `pull all` refuses until every input can supply its full amount, so nothing
+ * moves; `pull any` takes what it can into the trader's own buffer and waits,
+ * draining Red. A fully stocked trade behaves identically either way, so the
+ * pull mode only shows up when an input is short.
+ */
+const starvedTrade = (pullMode: GraphElement['pullMode']) => [
+  pool(1, { color: 'Red', number: 20 }),
+  pool(2, { color: 'Blue', number: 0 }),
+  E({ id: 3, type: 'Trader', activation: 'automatic', pullMode }),
+  { ...flow(4, 1, 3), color: 'Red' },
+  { ...flow(5, 2, 3), color: 'Blue' },
+  { ...flow(6, 3, 1), color: 'Blue' },
+  { ...flow(7, 3, 2), color: 'Red' },
+];
+
 /** 1 Source -> 2 Delay -> 3 Pool. */
 const delayLine = () => [
   E({ id: 1, type: 'Source', activation: 'automatic' }),
@@ -336,7 +354,8 @@ const EVIDENCE: Record<string, Scenario> = {
     ticks: 5,
   },
   'Trader.pullMode': {
-    model: traderSwap,
+    // Needs a starved input: a fully stocked trade runs the same either way.
+    model: () => starvedTrade('pull any'),
     id: 3,
     a: 'pull any',
     b: 'pull all',

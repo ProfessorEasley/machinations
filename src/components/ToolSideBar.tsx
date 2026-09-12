@@ -274,6 +274,9 @@ const COLOR_MAP: Record<string, string> = {
 
 const COLOR_NAMES = Object.keys(COLOR_MAP);
 
+/** Sentinel for a colour the palette cannot name, e.g. an imported `#A52A2A`. */
+const CUSTOM_COLOR = '__custom__';
+
 // Helper function to get color name from hex value (for backwards compatibility)
 const getColorNameFromHex = (hex: string): string => {
   const normalizedHex = hex.toUpperCase();
@@ -282,8 +285,9 @@ const getColorNameFromHex = (hex: string): string => {
       return name;
     }
   }
-  // If not found, default to black
-  return 'black';
+  // Reporting an unknown colour as "black" told the user the wrong colour and
+  // made it easy to overwrite a real one by touching the dropdown.
+  return CUSTOM_COLOR;
 };
 
 // Helper function to render color dropdown
@@ -291,15 +295,22 @@ const renderColorDropdown = (
   value: string,
   onChange: (color: string) => void
 ) => {
-  const currentColorName = getColorNameFromHex(value || '#000000');
+  const currentValue = value || '#000000';
+  const currentColorName = getColorNameFromHex(currentValue);
 
   return (
     <select
       className="color-select"
       value={currentColorName}
-      onChange={e => onChange(COLOR_MAP[e.target.value])}
+      onChange={e => {
+        const next = COLOR_MAP[e.target.value];
+        if (next) onChange(next);
+      }}
       style={{ width: '100%', padding: '4px' }}
     >
+      {currentColorName === CUSTOM_COLOR && (
+        <option value={CUSTOM_COLOR}>{`Custom (${currentValue})`}</option>
+      )}
       {COLOR_NAMES.map(colorName => (
         <option key={colorName} value={colorName}>
           {colorName.charAt(0).toUpperCase() + colorName.slice(1)}
