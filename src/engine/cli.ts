@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { resolve as resolvePath } from 'node:path';
 import { loadGraphFromFile } from './io';
-import { runSimulation, runMultiple } from './runner';
+import { runSimulation, runMultiple, aggregateRuns } from './runner';
 import type { MultipleRunResult } from './runner';
 import { renderTrace } from './trace';
 import type { GraphElement } from './types';
@@ -242,40 +242,6 @@ function summarize(
   }
 
   return lines.join('\n') + '\n';
-}
-
-interface AggregateRow {
-  name: string;
-  count: number;
-  pct: number;
-}
-
-/**
- * Tally a batch of run outcomes into a sorted outcome distribution plus the
- * average number of steps, mirroring the UI's Multiple Runs report
- * (ToolSideBar `runsResultRows` / `runsAverageTime`).
- */
-function aggregateRuns(result: MultipleRunResult): {
-  aggregate: AggregateRow[];
-  averageSteps: number;
-} {
-  const counts = new Map<string, number>();
-  let totalTicks = 0;
-  for (const o of result.outcomes) {
-    const key = o.endConditionName ?? 'Stopped before end';
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-    totalTicks += o.ticksElapsed;
-  }
-  const total = result.outcomes.length;
-  const aggregate: AggregateRow[] = [...counts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([name, count]) => ({
-      name,
-      count,
-      pct: total ? (count / total) * 100 : 0,
-    }));
-  const averageSteps = total ? totalTicks / total : 0;
-  return { aggregate, averageSteps };
 }
 
 function summarizeMultiple(
