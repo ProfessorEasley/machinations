@@ -1,7 +1,8 @@
 import { fileURLToPath } from 'node:url';
 import { resolve as resolvePath } from 'node:path';
 import { loadGraphFromFile } from './io';
-import { runSimulation, runMultiple, aggregateRuns } from './runner';
+import { runSimulation, runMultiple } from './runner';
+import { buildBatchReport } from './batchReport';
 import type { MultipleRunResult } from './runner';
 import { renderTrace } from './trace';
 import type { GraphElement } from './types';
@@ -45,7 +46,11 @@ Options:
   --runs N             Run the model N times (default 1). With N=1 this is a
                        single "quick run" that also reports the triggered end
                        condition. With N>1 it runs a "multiple runs" batch and
-                       prints an aggregated outcome report. --collect-log and
+                       prints a statistical report: run length with a 95%
+                       confidence interval, outcome shares with intervals,
+                       final Pool/Register distributions, and any outlier runs.
+                       Runs stopped by --max-ticks are reported separately and
+                       excluded from the timing statistics. --collect-log and
                        --trace are ignored when N>1.
   --seed N             Seed the PRNG for a deterministic, reproducible run.
                        For --runs N>1 each run uses seed+i (reproducible batch).
@@ -244,18 +249,61 @@ function summarize(
   return lines.join('\n') + '\n';
 }
 
+/** Trim a number for a fixed-width column: integers bare, else 2dp. */
+function num(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+
 function summarizeMultiple(
   result: MultipleRunResult,
   warnings: string[],
   seed?: number
 ): string {
-  const { aggregate, averageSteps } = aggregateRuns(result);
+  const report = buildBatchReport(result);
   const lines: string[] = [];
   lines.push(
-    `Multiple runs: ${result.totalRuns}` +
+    `Multiple runs: ${report.totalRuns}` +
       (seed !== undefined ? ` seed=${seed}` : '')
   );
-  lines.push(`Average steps: ${averageSteps.toFixed(2)}`);
+
+  // Kept verbatim: this is the batch's long-standing headline number, and it
+  // averages every run including those the cap cut off. The run-length block
+  // below is the censoring-aware figure. On a batch with nothing censored the
+  // two agree; where they diverge, the note between them says why.
+  lines.push(`Average steps: ${report.averageSteps.toFixed(2)}`);
+
+  if (report.runLength && report.runLengthCI) {
+    const s = report.runLength;
+    const margin = (report.runLengthCI[1] - report.runLengthCI[0]) / 2;
+    lines.push(
+      `Run length (${report.completedRuns} completed run` +
+        `${report.completedRuns !== 1 ? 's' : ''}): ` +
+        `mean ${num(s.mean)} ±${num(margin)} steps (95% CI)`
+    );
+    lines.push(
+      `  sd ${num(s.stdDev)}  min ${num(s.min)}  p50 ${num(s.p50)}  ` +
+        `p90 ${num(s.p90)}  p95 ${num(s.p95)}  max ${num(s.max)}`
+    );
+  } else {
+    lines.push('Run length: no completed runs to measure.');
+  }
+
+  if (report.censoredRuns > 0) {
+    // Wrapped by hand: the rest of this report is laid out for a ~70 column
+    // terminal, and a single long paragraph soft-wraps raggedly against it.
+    lines.push('');
+    lines.push(
+      `Note: ${report.censoredRuns}/${report.totalRuns} run(s) hit the ` +
+        `${report.maxTicks}-tick cap without ending.`
+    );
+    lines.push(
+      '  Those are censored observations — a floor on their duration, not a'
+    );
+    lines.push(
+      '  measurement — so they are excluded from the run-length statistics'
+    );
+    lines.push('  above. Raise --max-ticks for an unbiased estimate.');
+  }
 
   if (warnings.length) {
     lines.push('');
@@ -265,12 +313,45 @@ function summarizeMultiple(
 
   lines.push('');
   lines.push('Outcomes:');
-  lines.push('  Outcome                          #        %');
-  for (const row of aggregate) {
+  lines.push('  Outcome                          #        %        95% CI');
+  for (const row of report.outcomes) {
     const name = row.name.padEnd(32).slice(0, 32);
     const count = String(row.count).padStart(5);
     const pct = `${row.pct.toFixed(1)}`.padStart(7);
-    lines.push(`  ${name} ${count}  ${pct}`);
+    const ci = `${row.ciLow.toFixed(1)}–${row.ciHigh.toFixed(1)}`.padStart(13);
+    lines.push(`  ${name} ${count}  ${pct}  ${ci}`);
+  }
+
+  if (report.metrics.length) {
+    lines.push('');
+    lines.push('Final values:');
+    lines.push('  Series                       mean      sd     p50     p95');
+    for (const m of report.metrics) {
+      const label = `${m.label} (${m.key})`.padEnd(28).slice(0, 28);
+      lines.push(
+        `  ${label} ${num(m.summary.mean).padStart(6)}  ` +
+          `${num(m.summary.stdDev).padStart(6)}  ` +
+          `${num(m.summary.p50).padStart(6)}  ` +
+          `${num(m.summary.p95).padStart(6)}`
+      );
+    }
+  }
+
+  if (report.runLengthOutliers.length) {
+    lines.push('');
+    lines.push(`Unusual runs (${report.runLengthOutliers.length}):`);
+    for (const o of report.runLengthOutliers.slice(0, 5)) {
+      const via = o.seed === null ? '' : ` (seed ${o.seed})`;
+      lines.push(`  run #${o.run}${via} — ${o.ticksElapsed} steps`);
+    }
+    if (report.runLengthOutliers.length > 5) {
+      lines.push(`  +${report.runLengthOutliers.length - 5} more`);
+    }
+    // The payoff of recording a seed per run: an odd sample is investigable.
+    const first = report.runLengthOutliers[0];
+    if (first.seed !== null) {
+      lines.push(`  replay with: --seed ${first.seed} --trace`);
+    }
   }
 
   return lines.join('\n') + '\n';
@@ -321,13 +402,26 @@ export function runCli(argv: string[]): CliOutcome {
     });
 
     if (args.format === 'json') {
-      const { aggregate, averageSteps } = aggregateRuns(batch);
+      const report = buildBatchReport(batch);
+      // Mapped key by key rather than spread: `BatchReport.outcomes` holds the
+      // aggregated shares, while this payload's `outcomes` has always held the
+      // per-run records. Spreading would silently redefine an existing key.
       const payload = {
-        totalRuns: batch.totalRuns,
-        averageSteps,
-        seed: args.seed,
+        totalRuns: report.totalRuns,
+        averageSteps: report.averageSteps,
+        seed: batch.seed,
+        maxTicks: report.maxTicks,
+        completedRuns: report.completedRuns,
+        censoredRuns: report.censoredRuns,
+        runLength: report.runLength,
+        runLengthCI: report.runLengthCI,
+        runLengthOutliers: report.runLengthOutliers,
+        metrics: report.metrics,
+        metricLabels: batch.metricLabels,
         warnings: loaded.warnings,
-        aggregate,
+        // Outcome shares; rows now additionally carry ciLow/ciHigh.
+        aggregate: report.outcomes,
+        // Per-run records, unchanged in meaning.
         outcomes: batch.outcomes,
       };
       return {

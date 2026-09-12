@@ -2,6 +2,10 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './ToolSideBar.css';
 import type { ChartState } from '../utils/ChartUtils';
 import { aggregateRuns } from '../engine/runner';
+import type { MultipleRunResult, AggregateRow } from '../engine/runner';
+import { buildBatchReport } from '../engine/batchReport';
+import type { BatchReport } from '../engine/batchReport';
+import type { MultipleRunsProgressPayload } from './Canvas';
 
 type GraphElementType =
   | 'Text Label'
@@ -220,15 +224,10 @@ interface ToolSideBarProps {
     toolType: string,
     properties: Record<string, unknown>
   ) => void;
-  multipleRunsResult?: {
-    totalRuns: number;
-    outcomes: Array<{ endConditionName: string | null; ticksElapsed: number }>;
-  } | null;
-  runProgress?: {
-    current: number;
-    total: number;
-    outcomes?: Array<{ endConditionName: string | null; ticksElapsed: number }>;
-  } | null;
+  /** The finished batch, or `null` while none has completed this session. */
+  multipleRunsResult?: MultipleRunResult | null;
+  /** Live progress while a batch is running, carrying the partial batch. */
+  runProgress?: MultipleRunsProgressPayload | null;
 }
 
 const graphTools = [
@@ -320,6 +319,112 @@ const renderColorDropdown = (
   );
 };
 
+/** Trim a number for the narrow sidebar: integers bare, everything else to 2dp. */
+const stat = (n: number): string =>
+  Number.isInteger(n) ? String(n) : n.toFixed(2);
+
+/**
+ * The expanded statistics detail for a finished Multiple Runs batch.
+ *
+ * Every block is omitted when it has nothing to say, so a simple batch stays
+ * short. Laid out for a 300px sidebar: the full mean/sd/p50/p95 tables and the
+ * per-outcome interval columns live in the CLI report, and what survives here
+ * is the subset that stays readable at this width.
+ */
+const renderRunStats = (report: BatchReport): React.ReactNode => (
+  <>
+    <div className="runs-stats-block">
+      <span className="runs-stats-heading">Run length</span>
+      {report.runLength && report.runLengthCI ? (
+        <>
+          <p className="runs-stats-line">
+            {stat(report.runLength.mean)} ±
+            {stat((report.runLengthCI[1] - report.runLengthCI[0]) / 2)} steps
+            <span className="runs-stats-note"> (95% CI)</span>
+          </p>
+          <p className="runs-stats-sub">
+            sd {stat(report.runLength.stdDev)} · p50{' '}
+            {stat(report.runLength.p50)} · p90 {stat(report.runLength.p90)} ·
+            p95 {stat(report.runLength.p95)}
+          </p>
+          <p className="runs-stats-note">
+            over {report.completedRuns} completed run
+            {report.completedRuns !== 1 ? 's' : ''}
+          </p>
+        </>
+      ) : (
+        <p className="runs-stats-line">No completed runs to measure.</p>
+      )}
+    </div>
+
+    <div className="runs-stats-block">
+      <span className="runs-stats-heading">Outcome share</span>
+      {/* Kept out of the table above: a fourth column does not fit at 300px. */}
+      {report.outcomes.map(row => (
+        <p className="runs-stats-sub" key={row.name}>
+          {row.name} — {row.pct.toFixed(1)}%
+          <span className="runs-stats-note">
+            {' '}
+            ({row.ciLow.toFixed(1)}–{row.ciHigh.toFixed(1)})
+          </span>
+        </p>
+      ))}
+      <p className="runs-stats-note">
+        Overlapping ranges mean the batch cannot separate those outcomes — widen
+        Runs to narrow them.
+      </p>
+    </div>
+
+    {report.metrics.length > 0 && (
+      <div className="runs-stats-block">
+        <span className="runs-stats-heading">Final values</span>
+        <table className="runs-results-table">
+          <thead>
+            <tr>
+              <th>Series</th>
+              <th>mean</th>
+              <th>p50</th>
+            </tr>
+          </thead>
+          <tbody>
+            {report.metrics.map(m => (
+              <tr key={m.key}>
+                <td>{m.label}</td>
+                <td>{stat(m.summary.mean)}</td>
+                <td>{stat(m.summary.p50)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+
+    {report.runLengthOutliers.length > 0 && (
+      <div className="runs-stats-block">
+        <span className="runs-stats-heading">
+          Unusual runs ({report.runLengthOutliers.length})
+        </span>
+        {report.runLengthOutliers.slice(0, 5).map(o => (
+          <p className="runs-stats-sub" key={o.run}>
+            run #{o.run} — {o.ticksElapsed} steps
+            {o.seed !== null && (
+              <span className="runs-stats-note"> (seed {o.seed})</span>
+            )}
+          </p>
+        ))}
+        {report.runLengthOutliers.length > 5 && (
+          <p className="runs-stats-note">
+            +{report.runLengthOutliers.length - 5} more
+          </p>
+        )}
+        <p className="runs-stats-note">
+          Replay one headless with: --seed &lt;seed&gt; --trace
+        </p>
+      </div>
+    )}
+  </>
+);
+
 const ToolSideBar: React.FC<ToolSideBarProps> = ({
   selectedTool,
   setSelectedTool,
@@ -355,6 +460,15 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
   );
 
   const [clipboard, setClipboard] = useState<GraphElement[]>([]);
+
+  /**
+   * Whether the Multiple Runs statistics detail is expanded.
+   *
+   * Lives at component level rather than in the Run tab's render branch so the
+   * choice survives the results block unmounting between batches — and so the
+   * expensive report is only built when someone is actually looking at it.
+   */
+  const [showRunStats, setShowRunStats] = useState(false);
 
   const canCopy = selectedElements.length > 0;
   const canPaste = clipboard.length > 0;
@@ -707,28 +821,11 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
         );
 
       case 'Run': {
-        // Tally outcomes from the live progress feed while the batch is
-        // running and from the final payload afterwards — the original
-        // tool's RunReport updates after every completed run.
-        const isMultipleRunning = isRunning && runType === 'multiple';
-        const reportOutcomes = isMultipleRunning
-          ? (runProgress?.outcomes ?? [])
-          : !isRunning && multipleRunsResult
-            ? multipleRunsResult.outcomes
-            : [];
-        // Tallied by the engine's shared aggregator so this panel and the CLI
-        // report can never disagree about the same batch.
-        const { aggregate: runsResultRows, averageSteps: runsAverageTime } =
-          aggregateRuns({
-            totalRuns: reportOutcomes.length,
-            outcomes: reportOutcomes,
-          });
-        // Headline count: a live batch reports the runs finished so far, a
-        // completed one reports the count the Canvas actually executed.
-        const runsTotal = isMultipleRunning
-          ? reportOutcomes.length
-          : (multipleRunsResult?.totalRuns ?? 0);
-
+        // The Multiple Runs report is rendered by renderRunReport() outside
+        // this container: `.tool-buttons` is a wrapping flex row sized for
+        // buttons, and a wide block placed in it is sized by its own content
+        // rather than by the sidebar, so it overflows instead of pushing the
+        // panels below it down.
         return (
           <>
             {isRunning && runType === 'multiple' ? (
@@ -826,40 +923,128 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
                 </p>
               </div>
             )}
-            {runsResultRows.length > 0 && (
-              <div className="multiple-runs-results">
-                <span className="runs-results-title">
-                  {isMultipleRunning
-                    ? `Runs: ${runsTotal}`
-                    : `Results — ${runsTotal} run${runsTotal !== 1 ? 's' : ''}`}
-                </span>
-                <p className="runs-results-avg">
-                  Average time: {runsAverageTime.toFixed(2)} steps
-                </p>
-                <table className="runs-results-table">
-                  <thead>
-                    <tr>
-                      <th>Outcome</th>
-                      <th>#</th>
-                      <th>%</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {runsResultRows.map(({ name, count, pct }) => (
-                      <tr key={name}>
-                        <td>{name}</td>
-                        <td>{count}</td>
-                        <td>{pct.toFixed(1)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
           </>
         );
       }
     }
+  };
+
+  /**
+   * The Multiple Runs report.
+   *
+   * Rendered as a sibling of `.tool-buttons` rather than inside it. That row is
+   * `display: flex; flex-wrap: wrap` and sized for buttons: a block placed in
+   * it becomes a flex item whose width comes from its own content and which
+   * refuses to shrink below it, so long labels push past the 300px sidebar and
+   * spill instead of extending its height. As a plain block in the sidebar's
+   * column flow it stretches to the available width and pushes what follows
+   * down, which is what this panel needs.
+   */
+  const renderRunReport = () => {
+    if (activeTab !== 'Run') return null;
+
+    const isMultipleRunning = isRunning && runType === 'multiple';
+    // A real batch from either source — live progress while running, the
+    // completed payload afterwards — rather than one assembled here. Both carry
+    // the full MultipleRunResult the engine produces, so this panel can be
+    // handed to the same reporting code as the CLI.
+    const reportBatch: MultipleRunResult | null = isMultipleRunning
+      ? (runProgress?.batch ?? null)
+      : !isRunning && multipleRunsResult
+        ? multipleRunsResult
+        : null;
+    // Tallied by the engine's shared aggregator so this panel and the CLI
+    // report can never disagree about the same batch.
+    const { aggregate: runsResultRows, averageSteps: runsAverageTime } =
+      reportBatch
+        ? aggregateRuns(reportBatch)
+        : { aggregate: [] as AggregateRow[], averageSteps: 0 };
+    if (runsResultRows.length === 0) return null;
+
+    // Headline count: a live batch reports the runs finished so far, a
+    // completed one reports the count the Canvas actually executed.
+    const runsTotal = isMultipleRunning
+      ? (reportBatch?.outcomes.length ?? 0)
+      : (multipleRunsResult?.totalRuns ?? 0);
+
+    // Runs the tick cap cut off. Counted inline rather than via
+    // buildBatchReport because this line is always visible: it is the only
+    // thing explaining why the average above can be misleading, so it must not
+    // cost a full report and must not hide behind the disclosure. Tracks the
+    // live feed, like the counts beside it.
+    const censoredRuns = reportBatch
+      ? reportBatch.outcomes.reduce((n, o) => (o.completed ? n : n + 1), 0)
+      : 0;
+
+    // Statistics describe a finished batch only — never the live feed. A
+    // partial batch is a valid sample, but showing percentiles that lurch
+    // around as runs land was judged more distracting than useful; live stats
+    // are deferred to their own change. Keeping the source in one named binding
+    // is what makes that a small change later.
+    const statsBatch: MultipleRunResult | null =
+      !isRunning && multipleRunsResult ? multipleRunsResult : null;
+    // Built only while expanded, so a collapsed panel costs exactly what it
+    // cost before this section existed.
+    const runStats =
+      showRunStats && statsBatch ? buildBatchReport(statsBatch) : null;
+
+    return (
+      <div className="multiple-runs-results">
+        <span className="runs-results-title">
+          {isMultipleRunning
+            ? `Runs: ${runsTotal}`
+            : `Results — ${runsTotal} run${runsTotal !== 1 ? 's' : ''}`}
+        </span>
+        <p className="runs-results-avg">
+          Average time: {runsAverageTime.toFixed(2)} steps
+        </p>
+        {censoredRuns > 0 && (
+          <p className="runs-results-censored">
+            {censoredRuns} of {runsTotal} run{runsTotal !== 1 ? 's' : ''} hit
+            the tick cap — those never finished, so the average above
+            understates the real time.
+          </p>
+        )}
+        <table className="runs-results-table">
+          <thead>
+            <tr>
+              <th>Outcome</th>
+              <th>#</th>
+              <th>%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {runsResultRows.map(({ name, count, pct }) => (
+              <tr key={name}>
+                <td>{name}</td>
+                <td>{count}</td>
+                <td>{pct.toFixed(1)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {/* Hidden mid-batch: statistics describe a finished batch, so offering
+            the control while one runs would reveal nothing. */}
+        {statsBatch && (
+          <>
+            <button
+              type="button"
+              className="runs-stats-toggle"
+              aria-expanded={showRunStats}
+              aria-controls="run-stats-detail"
+              onClick={() => setShowRunStats(v => !v)}
+            >
+              {showRunStats ? '▾ Hide statistics' : '▸ Show statistics'}
+            </button>
+            {showRunStats && runStats && (
+              <div id="run-stats-detail" className="runs-stats-detail">
+                {renderRunStats(runStats)}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
   };
 
   const renderPropertiesPanel = () => {
@@ -3718,6 +3903,7 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
       </div>
 
       <div className="tool-buttons">{renderToolButtons()}</div>
+      {renderRunReport()}
       {
         /* <div className="sidebar-divider"></div>*/
         <div className="section-divider"></div>

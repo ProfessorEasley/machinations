@@ -82,10 +82,34 @@ const buildAlwaysEndingModel = (): GraphElement[] => [
   } as GraphElement,
 ];
 
-/** Build a batch literal, so the tally can be tested without running a model. */
-const batchOf = (outcomes: RunOutcome[]): MultipleRunResult => ({
+/**
+ * The fields of a run outcome these tally tests actually care about. The rest
+ * are filled in by {@link batchOf}, so the fixtures below stay focused on the
+ * outcome name and length the aggregation is being tested against.
+ */
+type OutcomeFixture = Pick<RunOutcome, 'endConditionName' | 'ticksElapsed'> &
+  Partial<RunOutcome>;
+
+/**
+ * Build a batch literal, so the tally can be tested without running a model.
+ *
+ * Fills the per-run and per-batch fields the aggregation never reads, so a
+ * fixture only has to state what it is exercising. `completed` is derived from
+ * the end condition rather than defaulted to a constant: a fixture with a null
+ * `endConditionName` represents a run that never finished, and marking it
+ * completed would make the fixture contradict itself.
+ */
+const batchOf = (outcomes: OutcomeFixture[]): MultipleRunResult => ({
   totalRuns: outcomes.length,
-  outcomes,
+  outcomes: outcomes.map(o => ({
+    completed: o.endConditionName !== null,
+    seed: null,
+    metrics: {},
+    ...o,
+  })),
+  seed: null,
+  maxTicks: 1000,
+  metricLabels: {},
 });
 
 const rowFor = (
