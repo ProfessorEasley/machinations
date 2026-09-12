@@ -424,3 +424,244 @@ describe('engine/io + cli — multiple runs (aggregated report)', () => {
     expect(outcome.stderr).toMatch(/--runs/);
   });
 });
+
+describe('engine/io + cli — batch statistics report', () => {
+  const racePath = resolve(__dirname, 'fixtures', 'probabilistic-race.xml');
+  const skewedPath = resolve(__dirname, 'fixtures', 'skewed-run-length.xml');
+
+  const summaryOf = (args: string[]) => {
+    const outcome = runCli(args);
+    expect(outcome.exitCode).toBe(0);
+    return outcome.stdout;
+  };
+
+  const jsonOf = (args: string[]) =>
+    JSON.parse(summaryOf([...args, '--format', 'json']));
+
+  describe('summary output', () => {
+    it('reports run-length statistics for completed runs', () => {
+      const out = summaryOf([racePath, '--runs', '100', '--seed', '42']);
+
+      expect(out).toMatch(/Multiple runs: 100/);
+      expect(out).toMatch(/Run length \(100 completed runs\)/);
+      expect(out).toMatch(/mean [\d.]+ ±[\d.]+ steps \(95% CI\)/);
+      expect(out).toMatch(/sd [\d.]+ {2}min \d+ {2}p50 [\d.]+/);
+    });
+
+    it('keeps the legacy Average steps line', () => {
+      // Existing readers and scripts depend on this exact label.
+      expect(summaryOf([racePath, '--runs', '20', '--seed', '42'])).toMatch(
+        /Average steps: [\d.]+/
+      );
+    });
+
+    it('notes censored runs and names the cap they hit', () => {
+      const out = summaryOf([
+        racePath,
+        '--runs',
+        '50',
+        '--max-ticks',
+        '7',
+        '--seed',
+        '42',
+      ]);
+
+      expect(out).toMatch(/run\(s\) hit the 7-tick cap without ending/);
+      expect(out).toMatch(/censored observations/);
+      expect(out).toMatch(/Raise --max-ticks/);
+    });
+
+    it('omits the censoring note when every run finished', () => {
+      const out = summaryOf([racePath, '--runs', '20', '--seed', '42']);
+      expect(out).not.toMatch(/tick cap without ending/);
+    });
+
+    it('declines to report a mean when every run was censored', () => {
+      const out = summaryOf([
+        racePath,
+        '--runs',
+        '30',
+        '--max-ticks',
+        '2',
+        '--seed',
+        '42',
+      ]);
+
+      expect(out).toMatch(/Run length: no completed runs to measure\./);
+      expect(out).toMatch(/30\/30 run\(s\) hit the 2-tick cap/);
+    });
+
+    it('gives every outcome row a confidence interval', () => {
+      const out = summaryOf([racePath, '--runs', '100', '--seed', '42']);
+
+      expect(out).toMatch(/Outcome {26}# {8}% {8}95% CI/);
+      // e.g. "Heads Win  93  46.5  39.7–53.4"
+      expect(out).toMatch(/Heads Win\s+\d+\s+[\d.]+\s+[\d.]+–[\d.]+/);
+    });
+
+    it('reports final Pool and Register distributions', () => {
+      const out = summaryOf([racePath, '--runs', '40', '--seed', '42']);
+
+      expect(out).toMatch(/Final values:/);
+      expect(out).toMatch(/Series {23}mean {6}sd {5}p50 {5}p95/);
+      expect(out).toMatch(/Heads \(Pool#6\)\s+[\d.]+/);
+    });
+
+    it('lists outlier runs with the seed needed to replay them', () => {
+      const out = summaryOf([skewedPath, '--runs', '60', '--seed', '42']);
+
+      expect(out).toMatch(/Unusual runs \(\d+\):/);
+      expect(out).toMatch(/run #\d+ \(seed \d+\) — \d+ steps/);
+      expect(out).toMatch(/replay with: --seed \d+ --trace/);
+    });
+
+    it('omits the outlier block for a batch with none', () => {
+      const out = summaryOf([racePath, '--runs', '20', '--seed', '42']);
+      expect(out).not.toMatch(/Unusual runs/);
+    });
+
+    it('stays byte-identical for the same seed', () => {
+      const args = [skewedPath, '--runs', '30', '--seed', '11'];
+      expect(summaryOf([...args])).toBe(summaryOf([...args]));
+    });
+  });
+
+  describe('JSON payload', () => {
+    it('keeps aggregate and outcomes meaning different things', () => {
+      // `BatchReport.outcomes` holds aggregated shares, but this payload's
+      // `outcomes` has always held the per-run records. Spreading the report
+      // into the payload would silently redefine the existing key.
+      const json = jsonOf([racePath, '--runs', '40', '--seed', '42']);
+
+      expect(json.outcomes).toHaveLength(40);
+      expect(Object.keys(json.outcomes[0]).sort()).toEqual([
+        'completed',
+        'endConditionName',
+        'metrics',
+        'seed',
+        'ticksElapsed',
+      ]);
+
+      expect(Array.isArray(json.aggregate)).toBe(true);
+      expect(json.aggregate.length).toBeLessThan(json.outcomes.length);
+      expect(
+        json.aggregate.reduce(
+          (n: number, r: { count: number }) => n + r.count,
+          0
+        )
+      ).toBe(40);
+    });
+
+    it('adds Wilson bounds to the aggregate rows', () => {
+      const json = jsonOf([racePath, '--runs', '40', '--seed', '42']);
+
+      for (const row of json.aggregate) {
+        expect(typeof row.ciLow).toBe('number');
+        expect(typeof row.ciHigh).toBe('number');
+        expect(row.ciLow).toBeLessThanOrEqual(row.pct);
+        expect(row.ciHigh).toBeGreaterThanOrEqual(row.pct);
+      }
+    });
+
+    it('preserves the legacy averageSteps key', () => {
+      const json = jsonOf([racePath, '--runs', '40', '--seed', '42']);
+      expect(typeof json.averageSteps).toBe('number');
+    });
+
+    it('carries the new report fields', () => {
+      const json = jsonOf([racePath, '--runs', '40', '--seed', '42']);
+
+      expect(json.totalRuns).toBe(40);
+      expect(json.completedRuns + json.censoredRuns).toBe(40);
+      expect(json.maxTicks).toBe(1000);
+      expect(json.seed).toBe(42);
+      expect(typeof json.runLength.mean).toBe('number');
+      expect(json.runLengthCI).toHaveLength(2);
+      expect(Array.isArray(json.runLengthOutliers)).toBe(true);
+      expect(Array.isArray(json.metrics)).toBe(true);
+      expect(typeof json.metricLabels).toBe('object');
+    });
+
+    it('nulls the run-length fields when every run was censored', () => {
+      const json = jsonOf([
+        racePath,
+        '--runs',
+        '20',
+        '--max-ticks',
+        '2',
+        '--seed',
+        '42',
+      ]);
+
+      expect(json.completedRuns).toBe(0);
+      expect(json.censoredRuns).toBe(20);
+      expect(json.runLength).toBeNull();
+      expect(json.runLengthCI).toBeNull();
+    });
+
+    it('records a replayable seed on every run', () => {
+      const json = jsonOf([racePath, '--runs', '10', '--seed', '500']);
+
+      expect(json.outcomes.map((o: { seed: number }) => o.seed)).toEqual([
+        500, 501, 502, 503, 504, 505, 506, 507, 508, 509,
+      ]);
+    });
+
+    it('replays a recorded run as a single run with the same result', () => {
+      const batch = jsonOf([skewedPath, '--runs', '10', '--seed', '300']);
+      const target = batch.outcomes[6];
+
+      const replay = jsonOf([skewedPath, '--seed', String(target.seed)]);
+
+      expect(replay.ticksRun).toBe(target.ticksElapsed);
+      expect(replay.gameEnded).toBe(target.completed);
+      expect(replay.endConditionName).toBe(target.endConditionName);
+    });
+
+    it('reports outliers with a batch index and matching seed', () => {
+      const json = jsonOf([skewedPath, '--runs', '60', '--seed', '42']);
+
+      expect(json.runLengthOutliers.length).toBeGreaterThan(0);
+      for (const o of json.runLengthOutliers) {
+        expect(o.seed).toBe(42 + o.run);
+        expect(o.ticksElapsed).toBe(json.outcomes[o.run].ticksElapsed);
+      }
+    });
+  });
+
+  describe('one authoritative mean', () => {
+    it('agrees with the run-length mean when nothing was censored', () => {
+      // Both are the mean of the same numbers. Computing them two ways once
+      // produced 8.68 beside 8.67 for a value differing by ~5e-15.
+      const json = jsonOf([racePath, '--runs', '200', '--seed', '42']);
+
+      expect(json.censoredRuns).toBe(0);
+      expect(json.averageSteps).toBe(json.runLength.mean);
+    });
+
+    it('prints the same rounded figure on both summary lines', () => {
+      const out = summaryOf([racePath, '--runs', '200', '--seed', '42']);
+      const average = out.match(/Average steps: ([\d.]+)/)![1];
+      const runLength = out.match(/Run length \([^)]*\): mean ([\d.]+)/)![1];
+
+      expect(runLength).toBe(average);
+    });
+
+    it('still diverges when censored runs are present', () => {
+      // Not the same statistic then: one describes every run, the other only
+      // the measured ones. This is the case the censoring note explains.
+      const json = jsonOf([
+        racePath,
+        '--runs',
+        '50',
+        '--max-ticks',
+        '7',
+        '--seed',
+        '42',
+      ]);
+
+      expect(json.censoredRuns).toBeGreaterThan(0);
+      expect(json.averageSteps).toBeGreaterThan(json.runLength.mean);
+    });
+  });
+});

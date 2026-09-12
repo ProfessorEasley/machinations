@@ -30,6 +30,12 @@ src/engine/
 
 Canvas still owns rendering, token animation, and undo history. All tick math is in `tick.ts`.
 
+Canvas runs its own chunked batch loop rather than calling `runMultiple`, so it can
+animate, pause and cancel between runs. The two stay interchangeable where it counts:
+both reseed per run with `seed + i`, both record the same `RunOutcome` fields, and a
+finished canvas batch is a `MultipleRunResult` — so either can be handed to
+`buildBatchReport` and produce the same statistics.
+
 ## CLI
 
 ```bash

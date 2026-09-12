@@ -6,7 +6,7 @@ import './Playground.css';
 import Canvas, {
   type QuickRunCompletePayload,
   type MultipleRunsCompletePayload,
-  type RunOutcome,
+  type MultipleRunsProgressPayload,
 } from '../components/Canvas';
 import QuickRunResultDialog from '../components/QuickRunResultDialog';
 import { useHistory } from '../hooks/useHistory';
@@ -207,11 +207,8 @@ const Playground: React.FC = () => {
   } | null>(null);
   const [multipleRunsResult, setMultipleRunsResult] =
     useState<MultipleRunsCompletePayload | null>(null);
-  const [runProgress, setRunProgress] = useState<{
-    current: number;
-    total: number;
-    outcomes?: RunOutcome[];
-  } | null>(null);
+  const [runProgress, setRunProgress] =
+    useState<MultipleRunsProgressPayload | null>(null);
   const [isMultipleRunsPaused, setIsMultipleRunsPaused] = useState(false);
   const [boardResetKey, setBoardResetKey] = useState(0);
 
@@ -400,13 +397,7 @@ const Playground: React.FC = () => {
 
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (
-        e as CustomEvent<{
-          current: number;
-          total: number;
-          outcomes?: RunOutcome[];
-        }>
-      ).detail;
+      const detail = (e as CustomEvent<MultipleRunsProgressPayload>).detail;
       setRunProgress(detail);
     };
     document.addEventListener(

@@ -232,11 +232,103 @@ button.selected {
   color: #5a4080;
 }
 
+/* Runs the tick cap cut off. Deliberately outside the statistics disclosure:
+   it is what explains a misleading average, so hiding it would leave the
+   prominent number wrong with no signal. */
+.runs-results-censored {
+  margin: 0;
+  font-size: 11px;
+  font-style: italic;
+  color: #8a6a3a;
+}
+
+/* Quiet, text-like control — the statistics are opt-in, not a primary action.
+   Scoped to (0,2,0) so it outranks `.tool-buttons button` (0,1,1), and every
+   property that rule sets is reset explicitly. The report no longer lives in
+   that row, but the toggle should survive being moved back into it. */
+.multiple-runs-results .runs-stats-toggle {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  width: auto;
+  padding: 2px 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  font-size: 11px;
+  font-weight: normal;
+  color: #5a4080;
+  cursor: pointer;
+  text-align: left;
+}
+
+.multiple-runs-results .runs-stats-toggle:hover {
+  text-decoration: underline;
+  border-color: transparent;
+}
+
+/* The global `button:focus` ring in index.css is 4px and fires on mouse click
+   as well as keyboard, which swamps a text-sized control. Suppress it here and
+   give keyboard users a proportionate ring instead. */
+.multiple-runs-results .runs-stats-toggle:focus {
+  outline: none;
+}
+
+.multiple-runs-results .runs-stats-toggle:focus-visible {
+  outline: 2px solid #7c5fd1;
+  outline-offset: 2px;
+}
+
+.runs-stats-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 2px;
+  min-width: 0;
+}
+
+.runs-stats-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.runs-stats-heading {
+  font-size: 11px;
+  font-weight: bold;
+  color: #4a3070;
+}
+
+.runs-stats-line {
+  margin: 0;
+  font-size: 12px;
+  color: #5a4080;
+}
+
+.runs-stats-sub {
+  margin: 0;
+  font-size: 11px;
+  color: #7a6a95;
+}
+
+.runs-stats-note {
+  margin: 0;
+  font-size: 10px;
+  color: #9a8fb0;
+}
+
+/* A sibling of `.tool-buttons`, not a child: inside that wrapping flex row this
+   panel was sized by its own content and refused to shrink below it, so long
+   stat lines spilled past the 300px sidebar instead of pushing the panels below
+   it down. `min-width: 0` keeps it shrinkable now that it is a column item. */
 .multiple-runs-results {
   margin-top: 10px;
+  margin-bottom: 16px;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
+  overflow-wrap: break-word;
 }
 
 .runs-results-title {
