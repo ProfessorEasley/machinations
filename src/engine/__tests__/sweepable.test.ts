@@ -627,15 +627,12 @@ describe('sweepable allowlist — runtime state is never sweepable', () => {
     expect(end.isBlinking).toBe(false);
   });
 
-  it('reset does NOT clear lastGateValue, so an injected value corrupts every run', () => {
-    const [gate] = resetElements([
-      E({ id: 1, type: 'Gate', lastGateValue: 4 }),
-    ]);
-    expect(gate.lastGateValue).toBe(4);
-
-    const clean = outcome(gateWithIntervals()(), 1);
-    const injected = outcome(gateWithIntervals({ lastGateValue: 4 })(), 1);
-    expect(injected).not.toBe(clean);
+  it('never allowlists lastGateValue, whatever the reset does with it', () => {
+    // A deterministic gate's counter is runtime state. Left in the model it
+    // either carries into the next run or is discarded by the reset; neither
+    // makes it a parameter, so the allowlist must exclude it either way.
+    expect(RUNTIME_STATE_FIELDS).toContain('lastGateValue');
+    expect(isSweepable('Gate', 'lastGateValue')).toBe(false);
   });
 });
 

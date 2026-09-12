@@ -337,10 +337,10 @@ export const SWEEPABLE_PARAMETERS: Readonly<
 
 /**
  * Fields holding simulation state, never model input. Sweeping any of these
- * is rejected. Most are rebuilt by `resetElements` or recomputed every tick,
- * so a write is simply lost. `lastGateValue` is worse: the reset does not
- * clear it, so an injected value carries into every run of the batch and
- * shifts a deterministic gate's sequence.
+ * is rejected. They are rebuilt by `resetElements` or recomputed every tick,
+ * so a write is either discarded or, worse, carried into a later run. A
+ * deterministic gate's `lastGateValue` is the cautionary case: while the reset
+ * failed to clear it, an injected value shifted every run in a batch.
  */
 export const RUNTIME_STATE_FIELDS: readonly SweepableField[] = [
   // Explicitly called out: meaningless to sweep and state-corrupting.
