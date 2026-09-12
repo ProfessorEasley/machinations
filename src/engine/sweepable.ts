@@ -106,11 +106,12 @@ const ACTIONS: SweepableParameter = {
     'the parameter.',
 };
 
-const TRADER_WARNING =
-  'Treat Trader sweep results as unreliable for now. In every trade tested, ' +
-  'including a matched two-way colour swap, the trader consumed its inputs ' +
-  'and delivered nothing. That is either a modelling rule not yet ' +
-  'understood or an engine defect, and it needs investigating separately.';
+const TRADER_NOTE =
+  'A fully stocked trade runs the same under either pull mode, so the ' +
+  'difference only shows when an input is short: `pull all` refuses the ' +
+  'trade until every input can supply its full amount, while `pull any` ' +
+  "takes what it can into the trader's own buffer and waits, draining one " +
+  'side without delivering.';
 
 const CONNECTION_LABEL_WRITE_RULE =
   'Write rule: when writing a new label, also clear every field in ' +
@@ -201,10 +202,10 @@ export const SWEEPABLE_PARAMETERS: Readonly<
   Convertor: [ACTIONS, ACTIVATION, PULL_ANY_OR_ALL],
 
   Trader: [
-    { ...ACTIVATION, caveat: `${ACTIVATION.caveat} ${TRADER_WARNING}` },
+    { ...ACTIVATION, caveat: `${ACTIVATION.caveat} ${TRADER_NOTE}` },
     {
       ...PULL_ANY_OR_ALL,
-      caveat: `${PULL_ANY_OR_ALL.caveat} ${TRADER_WARNING}`,
+      caveat: `${PULL_ANY_OR_ALL.caveat} ${TRADER_NOTE}`,
     },
   ],
 
