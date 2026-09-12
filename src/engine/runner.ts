@@ -211,3 +211,53 @@ export function runMultiple(
 
   return { totalRuns: runs, outcomes };
 }
+
+/** One row of the multi-run outcome distribution. */
+export interface AggregateRow {
+  /** End Condition name, or `UNFINISHED_RUN_LABEL` for runs that never ended. */
+  name: string;
+  /** How many runs in the batch produced this outcome. */
+  count: number;
+  /** `count` as a percentage of the batch, 0 when the batch is empty. */
+  pct: number;
+}
+
+/**
+ * Label used for runs that hit `maxTicks` without triggering an End Condition.
+ *
+ * Exported because the CLI report and the UI's Multiple Runs panel must bucket
+ * unfinished runs under the identical name — otherwise the two reports
+ * disagree about the same batch.
+ */
+export const UNFINISHED_RUN_LABEL = 'Stopped before end';
+
+/**
+ * Tally a batch of run outcomes into a sorted outcome distribution plus the
+ * average number of steps.
+ *
+ * Rows are sorted by descending count; ties keep first-occurrence order, since
+ * `Array.prototype.sort` is stable. An empty batch yields no rows and an
+ * average of 0 rather than `NaN`.
+ */
+export function aggregateRuns(result: MultipleRunResult): {
+  aggregate: AggregateRow[];
+  averageSteps: number;
+} {
+  const counts = new Map<string, number>();
+  let totalTicks = 0;
+  for (const o of result.outcomes) {
+    const key = o.endConditionName ?? UNFINISHED_RUN_LABEL;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+    totalTicks += o.ticksElapsed;
+  }
+  const total = result.outcomes.length;
+  const aggregate: AggregateRow[] = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, count]) => ({
+      name,
+      count,
+      pct: total ? (count / total) * 100 : 0,
+    }));
+  const averageSteps = total ? totalTicks / total : 0;
+  return { aggregate, averageSteps };
+}

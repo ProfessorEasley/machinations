@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './ToolSideBar.css';
 import type { ChartState } from '../utils/ChartUtils';
+import { aggregateRuns } from '../engine/runner';
 
 type GraphElementType =
   | 'Text Label'
@@ -715,23 +716,18 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
           : !isRunning && multipleRunsResult
             ? multipleRunsResult.outcomes
             : [];
-        let runsResultRows: Array<[string, number]> = [];
-        let runsTotal = 0;
-        let runsAverageTime = 0;
-        if (reportOutcomes.length > 0) {
-          const counts = new Map<string, number>();
-          let totalTicks = 0;
-          for (const o of reportOutcomes) {
-            const key = o.endConditionName ?? 'Stopped before end';
-            counts.set(key, (counts.get(key) ?? 0) + 1);
-            totalTicks += o.ticksElapsed;
-          }
-          runsTotal = isMultipleRunning
-            ? reportOutcomes.length
-            : multipleRunsResult!.totalRuns;
-          runsAverageTime = totalTicks / reportOutcomes.length;
-          runsResultRows = [...counts.entries()].sort((a, b) => b[1] - a[1]);
-        }
+        // Tallied by the engine's shared aggregator so this panel and the CLI
+        // report can never disagree about the same batch.
+        const { aggregate: runsResultRows, averageSteps: runsAverageTime } =
+          aggregateRuns({
+            totalRuns: reportOutcomes.length,
+            outcomes: reportOutcomes,
+          });
+        // Headline count: a live batch reports the runs finished so far, a
+        // completed one reports the count the Canvas actually executed.
+        const runsTotal = isMultipleRunning
+          ? reportOutcomes.length
+          : (multipleRunsResult?.totalRuns ?? 0);
 
         return (
           <>
@@ -849,11 +845,11 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
                     </tr>
                   </thead>
                   <tbody>
-                    {runsResultRows.map(([name, count]) => (
+                    {runsResultRows.map(({ name, count, pct }) => (
                       <tr key={name}>
                         <td>{name}</td>
                         <td>{count}</td>
-                        <td>{((count / runsTotal) * 100).toFixed(1)}</td>
+                        <td>{pct.toFixed(1)}</td>
                       </tr>
                     ))}
                   </tbody>
