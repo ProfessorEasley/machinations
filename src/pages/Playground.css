@@ -32,15 +32,15 @@
   overflow: hidden;
 }
 
+/* No grid here. The grid is drawn by .canvas (Canvas.css) so that it scrolls
+   and pans with the diagram. A second, static grid on this wrapper lined up
+   with it at scroll offset zero and separated the moment the viewport moved,
+   doubling every line into a tartan pattern. */
 .grid-canvas {
   flex: 1;
   min-width: 0;
   height: 100%;
   width: 100%;
-  background-image:
-    linear-gradient(#aaaaaa 1px, transparent 1px),
-    linear-gradient(90deg, #aaaaaa 1px, transparent 1px);
-  background-size: 40px 40px;
   position: relative;
 }
 
