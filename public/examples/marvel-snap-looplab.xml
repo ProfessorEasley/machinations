@@ -1,0 +1,241 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<diagram>
+  <group id="1" x="9" y="72" color="#f59e0b" labelPosition="0" width="458.25" height="492.4"/>
+  <group id="2" x="1307" y="520" color="#dc2626" labelPosition="0" width="749" height="349"/>
+  <group id="3" x="760" y="25" color="#16a34a" labelPosition="0" width="535" height="1352"/>
+  <group id="4" x="22" y="931" color="#2563eb" labelPosition="0" width="452" height="428"/>
+  <group id="5" x="7" y="586" color="#9333ea" labelPosition="0" width="457.2" height="332.25"/>
+  <group id="6" x="1311" y="14" color="#111827" labelPosition="0" width="460" height="500"/>
+  <group id="7" x="1337" y="911" color="#92400e" labelPosition="0" width="470.35" height="464.6"/>
+  <source id="10" x="64" y="481" color="#000000" text="Start Session" labelPosition="0" activation="automatic"/>
+  <pool id="11" x="66" y="255" color="#000000" text="Sessions Played" labelPosition="0" number="0"/>
+  <source id="12" x="160" y="494" color="#000000" text="Daily Missions" labelPosition="0" activation="automatic"/>
+  <pool id="13" x="424" y="493" color="#000000" text="Credits" labelPosition="0" number="500"/>
+  <source id="14" x="215" y="126" color="#000000" text="Play Matches" labelPosition="0" activation="automatic"/>
+  <pool id="15" x="418" y="134" color="#000000" text="Boosters" labelPosition="0" number="0"/>
+  <endCondition id="16" x="206" y="257" color="#000000" text="End of Run" labelPosition="0"/>
+  <pool id="20" x="1367" y="569" color="#000000" text="Match Attempts" labelPosition="0" number="0"/>
+  <gate id="21" x="1628" y="578" color="#000000" text="Match Result" labelPosition="0" activation="automatic" pullMode="pull all" gateType="dice" actions="5"/>
+  <pool id="22" x="1356" y="637" color="#000000" text="Win Events" labelPosition="0" number="0"/>
+  <pool id="23" x="1843" y="568" color="#000000" text="Loss Events" labelPosition="0" number="0"/>
+  <convertor id="24" x="1355" y="843" color="#000000" text="Cube Reward" labelPosition="0" activation="automatic" pullMode="pull all" actions="5">
+    <walletData><![CDATA[{"inputResources":{},"outputResources":{},"conversionRate":{}}]]></walletData>
+  </convertor>
+  <convertor id="25" x="1845" y="720" color="#000000" text="Cube Loss" labelPosition="0" activation="automatic" pullMode="pull all" actions="5">
+    <walletData><![CDATA[{"inputResources":{},"outputResources":{},"conversionRate":{}}]]></walletData>
+  </convertor>
+  <pool id="26" x="1480" y="758" color="#000000" text="Wins" labelPosition="0" number="0"/>
+  <pool id="27" x="1981" y="711" color="#000000" text="Losses" labelPosition="0" number="0"/>
+  <pool id="28" x="1584" y="840" color="#000000" text="Cubes" labelPosition="0" number="0"/>
+  <pool id="29" x="1676" y="767" color="#000000" text="Cube Loss Requests" labelPosition="0" number="0"/>
+  <convertor id="30" x="1833" y="839" color="#000000" text="Apply Cube Loss" labelPosition="0" activation="automatic" pullMode="pull all" actions="5">
+    <walletData><![CDATA[{"inputResources":{},"outputResources":{},"conversionRate":{}}]]></walletData>
+  </convertor>
+  <pool id="31" x="1958" y="835" color="#000000" text="Cube Losses Applied" labelPosition="0" number="0"/>
+  <pool id="40" x="421" y="637" color="#000000" text="Wild Attempts" labelPosition="0" number="0"/>
+  <gate id="41" x="424" y="725" color="#000000" text="Wild Booster Roll" labelPosition="0.75" activation="automatic" pullMode="pull all" gateType="dice" actions="5"/>
+  <pool id="42" x="87" y="638" color="#000000" text="Wild Hit Events" labelPosition="0" number="0"/>
+  <pool id="43" x="423" y="853" color="#000000" text="No Wild Bonus" labelPosition="0.5" number="0"/>
+  <convertor id="44" x="85" y="789" color="#000000" text="Wild Booster Reward" labelPosition="0.75" activation="automatic" pullMode="pull all" actions="5">
+    <walletData><![CDATA[{"inputResources":{},"outputResources":{},"conversionRate":{}}]]></walletData>
+  </convertor>
+  <pool id="45" x="87" y="893" color="#000000" text="Wild Bonus Won" labelPosition="0.75" number="0"/>
+  <pool id="50" x="1043" y="81" color="#000000" text="Common Card" labelPosition="0" number="12"/>
+  <convertor id="51" x="867" y="82" color="#000000" text="Upgrade to Uncommon" labelPosition="0" activation="automatic" pullMode="pull all">
+    <walletData><![CDATA[{"inputResources":{},"outputResources":{},"conversionRate":{}}]]></walletData>
+  </convertor>
+  <pool id="52" x="868" y="234" color="#000000" text="Uncommon Card" labelPosition="0" number="0"/>
+  <convertor id="53" x="869" y="320" color="#000000" text="Upgrade to Rare" labelPosition="0" activation="automatic" pullMode="pull all">
+    <walletData><![CDATA[{"inputResources":{},"outputResources":{},"conversionRate":{}}]]></walletData>
+  </convertor>
+  <pool id="54" x="869" y="423" color="#000000" text="Rare Card" labelPosition="0" number="0"/>
+  <convertor id="55" x="871" y="539" color="#000000" text="Upgrade to Epic" labelPosition="0" activation="automatic" pullMode="pull all">
+    <walletData><![CDATA[{"inputResources":{},"outputResources":{},"conversionRate":{}}]]></walletData>
+  </convertor>
+  <pool id="56" x="875" y="629" color="#000000" text="Epic Card" labelPosition="0" number="0"/>
+  <convertor id="57" x="873" y="708" color="#000000" text="Upgrade to Legendary" labelPosition="0" activation="automatic" pullMode="pull all">
+    <walletData><![CDATA[{"inputResources":{},"outputResources":{},"conversionRate":{}}]]></walletData>
+  </convertor>
+  <pool id="58" x="875" y="817" color="#000000" text="Legendary Card" labelPosition="0" number="0"/>
+  <convertor id="59" x="882" y="946" color="#000000" text="Upgrade to Ultra" labelPosition="0" activation="automatic" pullMode="pull all">
+    <walletData><![CDATA[{"inputResources":{},"outputResources":{},"conversionRate":{}}]]></walletData>
+  </convertor>
+  <pool id="60" x="880" y="1073" color="#000000" text="Ultra Card" labelPosition="0" number="0"/>
+  <convertor id="61" x="898" y="1245" color="#000000" text="Upgrade to Infinity" labelPosition="0" activation="automatic" pullMode="pull all">
+    <walletData><![CDATA[{"inputResources":{},"outputResources":{},"conversionRate":{}}]]></walletData>
+  </convertor>
+  <pool id="62" x="901" y="1335" color="#000000" text="Infinity Card" labelPosition="0" number="0"/>
+  <convertor id="63" x="1013" y="1331" color="#000000" text="Complete Card" labelPosition="0" activation="automatic" pullMode="pull all">
+    <walletData><![CDATA[{"inputResources":{},"outputResources":{},"conversionRate":{}}]]></walletData>
+  </convertor>
+  <pool id="64" x="1127" y="1283" color="#000000" text="Cards Completed" labelPosition="0" number="0"/>
+  <pool id="65" x="1256" y="285" color="#000000" text="Collection Level" labelPosition="0" number="0"/>
+  <pool id="66" x="375" y="1017" color="#000000" text="CL Reward Progress" labelPosition="0.5" number="0"/>
+  <pool id="67" x="1240" y="622" color="#000000" text="Card Unlock Progress" labelPosition="0" number="0"/>
+  <convertor id="68" x="1236" y="854" color="#000000" text="Unlock New Card" labelPosition="0.75" activation="automatic" pullMode="pull all" actions="5">
+    <walletData><![CDATA[{"inputResources":{},"outputResources":{},"conversionRate":{}}]]></walletData>
+  </convertor>
+  <pool id="69" x="1236" y="1332" color="#000000" text="Cards Owned" labelPosition="0.25" number="12"/>
+  <convertor id="70" x="85" y="1094" color="#000000" text="Claim CL Reward" labelPosition="0" activation="automatic" pullMode="pull all" actions="5">
+    <walletData><![CDATA[{"inputResources":{},"outputResources":{},"conversionRate":{}}]]></walletData>
+  </convertor>
+  <pool id="71" x="354" y="1095" color="#000000" text="Tokens" labelPosition="0" number="0"/>
+  <pool id="72" x="79" y="1295" color="#000000" text="CL Rewards Claimed" labelPosition="0.5" number="0"/>
+  <convertor id="73" x="355" y="1334" color="#000000" text="Buy Card" labelPosition="0.75" activation="automatic" pullMode="pull all" actions="5">
+    <walletData><![CDATA[{"inputResources":{},"outputResources":{},"conversionRate":{}}]]></walletData>
+  </convertor>
+  <chart id="80" x="1345" y="55" color="#000000" labelPosition="0" width="394" height="80" scaleX="160" scaleY="5000"/>
+  <chart id="81" x="1345" y="170" color="#000000" labelPosition="0" width="394" height="80" scaleX="160" scaleY="2000"/>
+  <chart id="82" x="1345" y="285" color="#000000" labelPosition="0" width="394" height="80" scaleX="160" scaleY="500"/>
+  <chart id="83" x="1345" y="400" color="#000000" labelPosition="0" width="394" height="80" scaleX="160" scaleY="1000"/>
+  <textLabel id="90" x="1464" y="919" color="#92400e" text="OFFICIAL (Marvel Snap):" labelPosition="0"/>
+  <textLabel id="91" x="1377" y="946" color="#000000" text="Upgrade costs and CL gains use the official table." labelPosition="0"/>
+  <textLabel id="92" x="1398" y="975" color="#000000" text="Wild Booster: 10%; amount = ending turn." labelPosition="0"/>
+  <textLabel id="93" x="1451" y="1007" color="#000000" text="MODEL ASSUMPTIONS:" labelPosition="0"/>
+  <textLabel id="94" x="1457" y="1028" color="#000000" text="Win/Loss: 55% / 45%" labelPosition="0"/>
+  <textLabel id="95" x="1400" y="1049" color="#000000" text="Run: 150 ticks; 149 completed sessions" labelPosition="0"/>
+  <textLabel id="96" x="1428" y="1075" color="#000000" text="5 matches/session = 745 matches" labelPosition="0"/>
+  <textLabel id="97" x="1395" y="1098" color="#000000" text="Start: 500 Credits, 12 Common Cards, 0 Cubes" labelPosition="0"/>
+  <textLabel id="98" x="1411" y="1123" color="#000000" text="Per session: +100 Credits, +18 Boosters" labelPosition="0"/>
+  <textLabel id="99" x="1454" y="1153" color="#000000" text="Cube result: D6 gain or loss" labelPosition="0"/>
+  <textLabel id="100" x="1477" y="1182" color="#000000" text="10 Cubes ≈ 1 Rank" labelPosition="0"/>
+  <textLabel id="101" x="1457" y="1215" color="#000000" text="CL Cache every 120 CL:" labelPosition="0"/>
+  <textLabel id="102" x="1383" y="1240" color="#000000" text="+3,000 Tokens, +1,000 Credits, +100 Boosters" labelPosition="0"/>
+  <textLabel id="103" x="1416" y="1262" color="#000000" text="Unlock 1 Common Card every 50 CL" labelPosition="0"/>
+  <textLabel id="104" x="1420" y="1295" color="#000000" text="3,000 Tokens buys 1 Common Card" labelPosition="0"/>
+  <textLabel id="105" x="1470" y="1324" color="#000000" text="Boosters are pooled" labelPosition="0"/>
+  <textLabel id="106" x="1416" y="1351" color="#000000" text="End Condition: Sessions Played = 150" labelPosition="0"/>
+  <textLabel id="107" x="1490" y="30" color="#111827" text="6. Results Charts" labelPosition="0"/>
+  <textLabel id="108" x="20" y="78" color="#f59e0b" text="1. Sessions and Resources" labelPosition="0"/>
+  <textLabel id="109" x="1600" y="526" color="#dc2626" text="2. Match and Cube Meter" labelPosition="0"/>
+  <textLabel id="110" x="1070" y="31" color="#16a34a" text="3. Card Progression" labelPosition="0"/>
+  <textLabel id="111" x="34" y="937" color="#2563eb" text="4. Collection Rewards" labelPosition="0"/>
+  <textLabel id="112" x="210" y="592" color="#9333ea" text="5. Wild Booster Bonus" labelPosition="0"/>
+  <textLabel id="113" x="1350" y="884" color="#92400e" text="7. Model Assumptions" labelPosition="0"/>
+  <textLabel id="114" x="1438" y="140" color="#000000" text="Economy (Credits / Tokens)" labelPosition="0"/>
+  <textLabel id="115" x="1490" y="255" color="#000000" text="Booster Stock" labelPosition="0"/>
+  <textLabel id="116" x="1454" y="370" color="#000000" text="Collection Progression" labelPosition="0"/>
+  <textLabel id="117" x="1458" y="485" color="#000000" text="Wins / Losses / Cubes" labelPosition="0"/>
+  <resourceConnection id="200" from="10" to="11" startX="44" startY="461" endX="46" endY="275" color="#000000" text="1" labelPosition="0.5"/>
+  <resourceConnection id="201" from="12" to="13" startX="180" startY="474" endX="404" endY="473" color="#000000" text="100" labelPosition="0.5"/>
+  <resourceConnection id="202" from="14" to="15" startX="235" startY="146" endX="398" endY="154" color="#000000" text="18" labelPosition="0.5"/>
+  <stateConnection id="203" from="11" to="16" startX="86" startY="275" endX="186" endY="277" color="#000000" text="&gt;=150" labelPosition="0.5"/>
+  <resourceConnection id="210" from="14" to="20" startX="235" startY="146" endX="1347" endY="549" color="#000000" text="5" labelPosition="0.5"/>
+  <resourceConnection id="211" from="20" to="21" startX="1387" startY="589" endX="1608" endY="598" color="#000000" text="1" labelPosition="0.5"/>
+  <resourceConnection id="212" from="21" to="22" startX="1608" startY="598" endX="1376" endY="617" color="#16a34a" text="55%" labelPosition="0.5"/>
+  <resourceConnection id="213" from="21" to="23" startX="1648" startY="598" endX="1823" endY="588" color="#dc2626" text="45%" labelPosition="0.5"/>
+  <resourceConnection id="214" from="22" to="24" startX="1336" startY="657" endX="1335" endY="823" color="#000000" text="1" labelPosition="0.5"/>
+  <resourceConnection id="215" from="24" to="26" startX="1375" startY="823" endX="1460" endY="778" color="#000000" text="1" labelPosition="0.5"/>
+  <resourceConnection id="216" from="24" to="28" startX="1375" startY="863" endX="1564" endY="860" color="#000000" text="1-6" labelPosition="0.5"/>
+  <resourceConnection id="217" from="23" to="25" startX="1823" startY="588" endX="1825" endY="700" color="#000000" text="1" labelPosition="0.5"/>
+  <resourceConnection id="218" from="25" to="27" startX="1865" startY="740" endX="1961" endY="731" color="#000000" text="1" labelPosition="0.5"/>
+  <resourceConnection id="219" from="25" to="29" startX="1825" startY="740" endX="1696" endY="747" color="#000000" text="1" labelPosition="0.5"/>
+  <resourceConnection id="220" from="29" to="30" startX="1696" startY="787" endX="1813" endY="819" color="#000000" text="1" labelPosition="0.5"/>
+  <resourceConnection id="221" from="28" to="30" startX="1604" startY="860" endX="1813" endY="859" color="#000000" text="1-6" labelPosition="0.5"/>
+  <resourceConnection id="222" from="30" to="31" startX="1853" startY="859" endX="1938" endY="855" color="#000000" text="1" labelPosition="0.5"/>
+  <resourceConnection id="230" from="14" to="40" startX="235" startY="146" endX="401" endY="617" color="#000000" text="5" labelPosition="0.5"/>
+  <resourceConnection id="231" from="40" to="41" startX="401" startY="657" endX="404" endY="705" color="#000000" text="1" labelPosition="0.5"/>
+  <resourceConnection id="232" from="41" to="42" startX="404" startY="705" endX="107" endY="658" color="#9333ea" text="10%" labelPosition="0.5"/>
+  <resourceConnection id="233" from="41" to="43" startX="404" startY="745" endX="403" endY="833" color="#000000" text="90%" labelPosition="0.5"/>
+  <resourceConnection id="234" from="42" to="44" startX="67" startY="658" endX="65" endY="769" color="#000000" text="1" labelPosition="0.5"/>
+  <resourceConnection id="235" from="44" to="15" startX="105" startY="769" endX="398" endY="154" color="#000000" text="6" labelPosition="0.5"/>
+  <resourceConnection id="236" from="44" to="45" startX="105" startY="809" endX="107" endY="873" color="#000000" text="1" labelPosition="0.5"/>
+  <resourceConnection id="240" from="50" to="51" startX="1023" startY="101" endX="867" endY="82" color="#000000" text="1" labelPosition="0.5"/>
+  <resourceConnection id="241" from="13" to="51" startX="444" startY="473" endX="867" endY="82" color="#000000" text="25" labelPosition="0.5"/>
+  <resourceConnection id="242" from="15" to="51" startX="438" startY="114" endX="867" endY="82" color="#000000" text="5" labelPosition="0.5"/>
+  <resourceConnection id="243" from="51" to="52" startX="867" startY="82" endX="868" endY="234" color="#000000" text="1" labelPosition="0.5">
+    <point x="868" y="170"/>
+    <point x="820" y="190"/>
+    <point x="820" y="234"/>
+  </resourceConnection>
+  <resourceConnection id="244" from="51" to="65" startX="867" startY="82" endX="1236" endY="265" color="#000000" text="1" labelPosition="0.5"/>
+  <resourceConnection id="245" from="51" to="66" startX="867" startY="82" endX="395" endY="997" color="#000000" text="1" labelPosition="0.5"/>
+  <resourceConnection id="246" from="51" to="67" startX="867" startY="82" endX="1220" endY="602" color="#000000" text="1" labelPosition="0.5"/>
+  <resourceConnection id="250" from="52" to="53" startX="868" startY="234" endX="869" endY="320" color="#000000" text="1" labelPosition="0.5">
+    <point x="920" y="270"/>
+    <point x="920" y="320"/>
+  </resourceConnection>
+  <resourceConnection id="251" from="13" to="53" startX="444" startY="473" endX="869" endY="320" color="#000000" text="100" labelPosition="0.5"/>
+  <resourceConnection id="252" from="15" to="53" startX="438" startY="154" endX="869" endY="320" color="#000000" text="10" labelPosition="0.5"/>
+  <resourceConnection id="253" from="53" to="54" startX="869" startY="320" endX="869" endY="423" color="#000000" text="1" labelPosition="0.5">
+    <point x="818" y="365"/>
+    <point x="818" y="423"/>
+  </resourceConnection>
+  <resourceConnection id="254" from="53" to="65" startX="869" startY="320" endX="1236" endY="305" color="#000000" text="2" labelPosition="0.5"/>
+  <resourceConnection id="255" from="53" to="66" startX="869" startY="320" endX="395" endY="997" color="#000000" text="2" labelPosition="0.5"/>
+  <resourceConnection id="256" from="53" to="67" startX="869" startY="320" endX="1220" endY="602" color="#000000" text="2" labelPosition="0.5"/>
+  <resourceConnection id="260" from="54" to="55" startX="869" startY="423" endX="851" endY="519" color="#000000" text="1" labelPosition="0.5">
+    <point x="920" y="475"/>
+    <point x="920" y="539"/>
+  </resourceConnection>
+  <resourceConnection id="261" from="13" to="55" startX="444" startY="513" endX="851" endY="519" color="#000000" text="200" labelPosition="0.5"/>
+  <resourceConnection id="262" from="15" to="55" startX="438" startY="154" endX="851" endY="519" color="#000000" text="20" labelPosition="0.5"/>
+  <resourceConnection id="263" from="55" to="56" startX="851" startY="559" endX="855" endY="609" color="#000000" text="1" labelPosition="0.5">
+    <point x="825" y="585"/>
+    <point x="825" y="629"/>
+  </resourceConnection>
+  <resourceConnection id="264" from="55" to="65" startX="891" startY="519" endX="1236" endY="305" color="#000000" text="4" labelPosition="0.5"/>
+  <resourceConnection id="265" from="55" to="66" startX="851" startY="559" endX="395" endY="997" color="#000000" text="4" labelPosition="0.5"/>
+  <resourceConnection id="266" from="55" to="67" startX="891" startY="559" endX="1220" endY="602" color="#000000" text="4" labelPosition="0.5"/>
+  <resourceConnection id="270" from="56" to="57" startX="855" startY="649" endX="853" endY="688" color="#000000" text="1" labelPosition="0.5">
+    <point x="925" y="675"/>
+    <point x="925" y="708"/>
+  </resourceConnection>
+  <resourceConnection id="271" from="13" to="57" startX="444" startY="513" endX="853" endY="688" color="#000000" text="300" labelPosition="0.5"/>
+  <resourceConnection id="272" from="15" to="57" startX="438" startY="154" endX="853" endY="688" color="#000000" text="30" labelPosition="0.5"/>
+  <resourceConnection id="273" from="57" to="58" startX="853" startY="728" endX="855" endY="797" color="#000000" text="1" labelPosition="0.5">
+    <point x="825" y="760"/>
+    <point x="825" y="817"/>
+  </resourceConnection>
+  <resourceConnection id="274" from="57" to="65" startX="893" startY="688" endX="1236" endY="305" color="#000000" text="6" labelPosition="0.5"/>
+  <resourceConnection id="275" from="57" to="66" startX="853" startY="728" endX="395" endY="997" color="#000000" text="6" labelPosition="0.5"/>
+  <resourceConnection id="276" from="57" to="67" startX="893" startY="688" endX="1220" endY="642" color="#000000" text="6" labelPosition="0.5"/>
+  <resourceConnection id="280" from="58" to="59" startX="855" startY="837" endX="862" endY="926" color="#000000" text="1" labelPosition="0.5">
+    <point x="935" y="880"/>
+    <point x="935" y="946"/>
+  </resourceConnection>
+  <resourceConnection id="281" from="13" to="59" startX="444" startY="513" endX="862" endY="926" color="#000000" text="400" labelPosition="0.5"/>
+  <resourceConnection id="282" from="15" to="59" startX="438" startY="154" endX="862" endY="926" color="#000000" text="40" labelPosition="0.5"/>
+  <resourceConnection id="283" from="59" to="60" startX="862" startY="966" endX="860" endY="1053" color="#000000" text="1" labelPosition="0.5">
+    <point x="830" y="1010"/>
+    <point x="830" y="1073"/>
+  </resourceConnection>
+  <resourceConnection id="284" from="59" to="65" startX="902" startY="926" endX="1236" endY="305" color="#000000" text="8" labelPosition="0.5"/>
+  <resourceConnection id="285" from="59" to="66" startX="862" startY="966" endX="395" endY="997" color="#000000" text="8" labelPosition="0.5"/>
+  <resourceConnection id="286" from="59" to="67" startX="902" startY="926" endX="1220" endY="642" color="#000000" text="8" labelPosition="0.5"/>
+  <resourceConnection id="290" from="60" to="61" startX="860" startY="1093" endX="878" endY="1225" color="#000000" text="1" labelPosition="0.5">
+    <point x="950" y="1160"/>
+    <point x="950" y="1245"/>
+  </resourceConnection>
+  <resourceConnection id="291" from="13" to="61" startX="444" startY="513" endX="878" endY="1225" color="#000000" text="500" labelPosition="0.5"/>
+  <resourceConnection id="292" from="15" to="61" startX="438" startY="154" endX="878" endY="1225" color="#000000" text="50" labelPosition="0.5"/>
+  <resourceConnection id="293" from="61" to="62" startX="918" startY="1265" endX="921" endY="1315" color="#000000" text="1" labelPosition="0.5">
+    <point x="850" y="1290"/>
+    <point x="850" y="1335"/>
+  </resourceConnection>
+  <resourceConnection id="294" from="61" to="65" startX="918" startY="1225" endX="1236" endY="305" color="#000000" text="10" labelPosition="0.5"/>
+  <resourceConnection id="295" from="61" to="66" startX="878" startY="1225" endX="395" endY="1037" color="#000000" text="10" labelPosition="0.5"/>
+  <resourceConnection id="296" from="61" to="67" startX="918" startY="1225" endX="1220" endY="642" color="#000000" text="10" labelPosition="0.5"/>
+  <resourceConnection id="297" from="62" to="63" startX="921" startY="1315" endX="993" endY="1311" color="#000000" text="1" labelPosition="0.5"/>
+  <resourceConnection id="298" from="63" to="64" startX="1033" startY="1311" endX="1107" endY="1303" color="#000000" text="1" labelPosition="0.5"/>
+  <resourceConnection id="300" from="66" to="70" startX="355" startY="1037" endX="105" endY="1074" color="#000000" text="120" labelPosition="0.5"/>
+  <resourceConnection id="301" from="70" to="71" startX="105" startY="1114" endX="334" endY="1115" color="#000000" text="3000" labelPosition="0.5"/>
+  <resourceConnection id="302" from="70" to="13" startX="105" startY="1074" endX="404" endY="513" color="#000000" text="1000" labelPosition="0.5"/>
+  <resourceConnection id="303" from="70" to="15" startX="105" startY="1074" endX="398" endY="154" color="#000000" text="100" labelPosition="0.5"/>
+  <resourceConnection id="304" from="70" to="72" startX="105" startY="1114" endX="99" endY="1275" color="#000000" text="1" labelPosition="0.5"/>
+  <resourceConnection id="305" from="71" to="73" startX="334" startY="1115" endX="335" endY="1314" color="#000000" text="3000" labelPosition="0.5"/>
+  <resourceConnection id="306" from="73" to="50" startX="375" startY="1314" endX="1023" endY="101" color="#000000" text="1" labelPosition="0.5"/>
+  <resourceConnection id="307" from="73" to="69" startX="375" startY="1314" endX="1216" endY="1312" color="#000000" text="1" labelPosition="0.5"/>
+  <resourceConnection id="308" from="67" to="68" startX="1220" startY="642" endX="1216" endY="834" color="#000000" text="50" labelPosition="0.5"/>
+  <resourceConnection id="309" from="68" to="50" startX="1216" startY="834" endX="1063" endY="101" color="#000000" text="1" labelPosition="0.5"/>
+  <resourceConnection id="310" from="68" to="69" startX="1216" startY="874" endX="1216" endY="1312" color="#000000" text="1" labelPosition="0.5"/>
+  <stateConnection id="320" from="13" to="80" startX="444" startY="473" endX="1325" endY="75" color="#16a34a" thickness="2" labelPosition="0.5"/>
+  <stateConnection id="321" from="71" to="80" startX="374" startY="1075" endX="1325" endY="75" color="#2563eb" thickness="2" labelPosition="0.5"/>
+  <stateConnection id="322" from="15" to="81" startX="438" startY="154" endX="1325" endY="190" color="#16a34a" thickness="2" labelPosition="0.5"/>
+  <stateConnection id="323" from="65" to="82" startX="1276" startY="305" endX="1325" endY="305" color="#16a34a" thickness="2" labelPosition="0.5"/>
+  <stateConnection id="324" from="69" to="82" startX="1256" startY="1312" endX="1325" endY="305" color="#2563eb" thickness="2" labelPosition="0.5"/>
+  <stateConnection id="325" from="64" to="82" startX="1147" startY="1263" endX="1325" endY="305" color="#9333ea" thickness="2" labelPosition="0.5"/>
+  <stateConnection id="326" from="26" to="83" startX="1500" startY="738" endX="1325" endY="420" color="#16a34a" thickness="2" labelPosition="0.5"/>
+  <stateConnection id="327" from="27" to="83" startX="1961" startY="691" endX="1365" endY="420" color="#dc2626" thickness="2" labelPosition="0.5"/>
+  <stateConnection id="328" from="28" to="83" startX="1604" startY="820" endX="1325" endY="420" color="#2563eb" thickness="2" labelPosition="0.5"/>
+</diagram>
