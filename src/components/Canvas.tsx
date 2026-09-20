@@ -784,8 +784,11 @@ const Canvas: React.FC<CanvasProps> = ({
       // load the imported diagram
       setElements(imported);
       setSelectedId([]);
+      // File → Import leaves the active tool as "Import", which cannot move
+      // nodes. Switch back so the first click-drag on a node works.
+      onToolChange?.('Select');
     },
-    [setElements, setSelectedId, clearMovingTokens]
+    [setElements, setSelectedId, clearMovingTokens, onToolChange]
   );
 
   const resetCanvasForNewDocument = useCallback(() => {
@@ -2664,8 +2667,16 @@ const Canvas: React.FC<CanvasProps> = ({
           const deltaX = newX - draggingElement.x;
           const deltaY = newY - draggingElement.y;
 
+          // selectedId is React state: the same mousedown that starts a drag
+          // on a newly clicked (unselected) node has not re-rendered yet.
+          // Fall back to the node under the cursor so import/click-drag works
+          // in one gesture instead of "click, then drag again".
+          const movingIds = selectedId.includes(draggingId)
+            ? selectedId
+            : [draggingId];
+
           const updatedElements = baseElements.map(el =>
-            selectedId.includes(el.id)
+            movingIds.includes(el.id)
               ? { ...el, x: el.x + deltaX, y: el.y + deltaY }
               : el
           );
@@ -2681,7 +2692,7 @@ const Canvas: React.FC<CanvasProps> = ({
             const updatedElement = { ...element };
             let needsUpdate = false;
 
-            selectedId.forEach(movedId => {
+            movingIds.forEach(movedId => {
               const movedElement = updatedElements.find(
                 el => el.id === movedId
               );
