@@ -36,6 +36,58 @@ import { snapshotValues, buildTraceEntry } from './trace';
 // Pure helpers used only inside tick
 // ---------------------------------------------------------------------------
 
+/** Colour key a pool files resources under. Mirrors the tick-local helper. */
+const colorKey = (color?: string): string => color || '#000000';
+
+/**
+ * Add resources of one colour to a pool, respecting its capacity.
+ *
+ * Pools store contents in `resourcesByColor`, and `getElementValue` reads that
+ * map whenever it has keys. Trading used to move resources by assigning
+ * `currentPoints` alone, which left the colour map untouched, so delivered
+ * resources were invisible to every later pass: a trade consumed its inputs
+ * and produced nothing.
+ *
+ * @returns the amount actually accepted, after the capacity clamp.
+ */
+function creditPool(pool: GraphElement, color: string, amount: number): number {
+  if (amount <= 0) return 0;
+  const max = pool.max ?? Infinity;
+  const accepted = Math.min(amount, max - getElementValue(pool));
+  if (accepted <= 0) return 0;
+  if (!pool.resourcesByColor) pool.resourcesByColor = {};
+  pool.resourcesByColor[color] = (pool.resourcesByColor[color] ?? 0) + accepted;
+  pool.currentPoints = Object.values(pool.resourcesByColor).reduce(
+    (a, b) => a + b,
+    0
+  );
+  return accepted;
+}
+
+/**
+ * Remove up to `amount` of one colour from a pool.
+ *
+ * Falls back to any single colour the pool does hold, matching how resource
+ * connections pull when the requested colour is absent.
+ *
+ * @returns the amount actually taken.
+ */
+function debitPool(pool: GraphElement, color: string, amount: number): number {
+  if (amount <= 0) return 0;
+  if (!pool.resourcesByColor) pool.resourcesByColor = {};
+  const held = pool.resourcesByColor;
+  let key = color;
+  if ((held[key] ?? 0) <= 0) {
+    const stocked = Object.keys(held).filter(k => (held[k] ?? 0) > 0);
+    if (stocked.length === 1) key = stocked[0];
+  }
+  const taken = Math.min(amount, held[key] ?? 0);
+  if (taken <= 0) return 0;
+  held[key] = (held[key] ?? 0) - taken;
+  pool.currentPoints = Object.values(held).reduce((a, b) => a + b, 0);
+  return taken;
+}
+
 function evaluateStateCondition(
   connection: GraphElement,
   elementMap: Map<number, GraphElement>
@@ -180,10 +232,7 @@ function processIncompleteTrader(
       const el = elementMap.get(conn.connectedToStart!);
       if (!el) continue;
       if (el.type === 'Pool') {
-        el.currentPoints = Math.max(
-          0,
-          (el.currentPoints ?? 0) - requiredAmount
-        );
+        debitPool(el, colorKey(conn.color), requiredAmount);
         recordTransfer(transfers, conn, requiredAmount, el);
       } else if (el.type === 'Source') {
         recordTransfer(transfers, conn, requiredAmount, el);
@@ -196,24 +245,22 @@ function processIncompleteTrader(
       const outConn = outputConns[0];
       const outEl = elementMap.get(outConn.connectedToEnd!);
       if (outEl?.type === 'Pool') {
-        const current = outEl.currentPoints ?? 0;
-        const max = outEl.max ?? Infinity;
-        const accepted = Math.min(totalInput, max - current);
+        const accepted = creditPool(outEl, colorKey(outConn.color), totalInput);
         if (accepted > 0 && transfers)
           recordTransfer(transfers, outConn, accepted, trader);
-        outEl.currentPoints = Math.min(current + totalInput, max);
       }
     } else if (inputConns.length === 1 && outputConns.length > 1) {
       const inputAmount = requiredInputs.values().next().value || 0;
       for (const outConn of outputConns) {
         const outEl = elementMap.get(outConn.connectedToEnd!);
         if (outEl?.type === 'Pool') {
-          const current = outEl.currentPoints ?? 0;
-          const max = outEl.max ?? Infinity;
-          const accepted = Math.min(inputAmount, max - current);
+          const accepted = creditPool(
+            outEl,
+            colorKey(outConn.color),
+            inputAmount
+          );
           if (accepted > 0 && transfers)
             recordTransfer(transfers, outConn, accepted, trader);
-          outEl.currentPoints = Math.min(current + inputAmount, max);
         }
       }
     } else {
@@ -222,12 +269,13 @@ function processIncompleteTrader(
         if (!outConn) continue;
         const outEl = elementMap.get(outConn.connectedToEnd!);
         if (outEl?.type === 'Pool') {
-          const current = outEl.currentPoints ?? 0;
-          const max = outEl.max ?? Infinity;
-          const accepted = Math.min(outputAmount, max - current);
+          const accepted = creditPool(
+            outEl,
+            colorKey(outConn.color),
+            outputAmount
+          );
           if (accepted > 0 && transfers)
             recordTransfer(transfers, outConn, accepted, trader);
-          outEl.currentPoints = Math.min(current + outputAmount, max);
         }
       }
     }
@@ -258,26 +306,28 @@ function processIncompleteTrader(
       const outConn = outputConns[0];
       const outEl = elementMap.get(outConn.connectedToEnd!);
       if (outEl?.type === 'Pool') {
-        const current = outEl.currentPoints ?? 0;
-        const max = outEl.max ?? Infinity;
         const totalOutput = totalInputPerTrade * minTrades;
-        const accepted = Math.min(totalOutput, max - current);
+        const accepted = creditPool(
+          outEl,
+          colorKey(outConn.color),
+          totalOutput
+        );
         if (accepted > 0 && transfers)
           recordTransfer(transfers, outConn, accepted, trader);
-        outEl.currentPoints = Math.min(current + totalOutput, max);
       }
     } else if (inputConns.length === 1 && outputConns.length > 1) {
       const inputAmount = requiredInputs.values().next().value || 0;
       for (const outConn of outputConns) {
         const outEl = elementMap.get(outConn.connectedToEnd!);
         if (outEl?.type === 'Pool') {
-          const current = outEl.currentPoints ?? 0;
-          const max = outEl.max ?? Infinity;
           const totalOutput = inputAmount * minTrades;
-          const accepted = Math.min(totalOutput, max - current);
+          const accepted = creditPool(
+            outEl,
+            colorKey(outConn.color),
+            totalOutput
+          );
           if (accepted > 0 && transfers)
             recordTransfer(transfers, outConn, accepted, trader);
-          outEl.currentPoints = Math.min(current + totalOutput, max);
         }
       }
     } else {
@@ -286,13 +336,14 @@ function processIncompleteTrader(
         if (!outConn) continue;
         const outEl = elementMap.get(outConn.connectedToEnd!);
         if (outEl?.type === 'Pool') {
-          const current = outEl.currentPoints ?? 0;
-          const max = outEl.max ?? Infinity;
           const totalOutput = outputAmount * minTrades;
-          const accepted = Math.min(totalOutput, max - current);
+          const accepted = creditPool(
+            outEl,
+            colorKey(outConn.color),
+            totalOutput
+          );
           if (accepted > 0 && transfers)
             recordTransfer(transfers, outConn, accepted, trader);
-          outEl.currentPoints = Math.min(current + totalOutput, max);
         }
       }
     }
@@ -409,10 +460,7 @@ function processCompleteTrader(
       const el = elementMap.get(conn.connectedToStart!);
       if (!el) continue;
       if (el.type === 'Pool') {
-        el.currentPoints = Math.max(
-          0,
-          (el.currentPoints ?? 0) - requiredAmount
-        );
+        debitPool(el, colorKey(conn.color), requiredAmount);
         recordTransfer(transfers, conn, requiredAmount, el);
       } else if (el.type === 'Source') {
         if (transfers) recordTransfer(transfers, conn, requiredAmount, el);
@@ -426,12 +474,13 @@ function processCompleteTrader(
         const outConn = outputConns[0];
         const outEl = elementMap.get(outConn.connectedToEnd!);
         if (outEl?.type === 'Pool') {
-          const current = outEl.currentPoints ?? 0;
-          const max = outEl.max ?? Infinity;
-          const accepted = Math.min(totalInput, max - current);
+          const accepted = creditPool(
+            outEl,
+            colorKey(outConn.color),
+            totalInput
+          );
           if (accepted > 0 && transfers)
             recordTransfer(transfers, outConn, accepted, trader);
-          outEl.currentPoints = Math.min(current + totalInput, max);
         }
       }
     } else {
@@ -443,12 +492,13 @@ function processCompleteTrader(
         if (!outConn) continue;
         const outEl = elementMap.get(outConn.connectedToEnd!);
         if (outEl?.type === 'Pool') {
-          const current = outEl.currentPoints ?? 0;
-          const max = outEl.max ?? Infinity;
-          const accepted = Math.min(input.amount, max - current);
+          const accepted = creditPool(
+            outEl,
+            colorKey(outConn.color),
+            input.amount
+          );
           if (accepted > 0 && transfers)
             recordTransfer(transfers, outConn, accepted, trader);
-          outEl.currentPoints = Math.min(current + input.amount, max);
         }
       }
     }
@@ -479,13 +529,14 @@ function processCompleteTrader(
         const outConn = outputConns[0];
         const outEl = elementMap.get(outConn.connectedToEnd!);
         if (outEl?.type === 'Pool') {
-          const current = outEl.currentPoints ?? 0;
-          const max = outEl.max ?? Infinity;
           const totalOutput = totalInputPerTrade * minTrades;
-          const accepted = Math.min(totalOutput, max - current);
+          const accepted = creditPool(
+            outEl,
+            colorKey(outConn.color),
+            totalOutput
+          );
           if (accepted > 0 && transfers)
             recordTransfer(transfers, outConn, accepted, trader);
-          outEl.currentPoints = Math.min(current + totalOutput, max);
         }
       }
     } else {
@@ -497,13 +548,14 @@ function processCompleteTrader(
         if (!outConn) continue;
         const outEl = elementMap.get(outConn.connectedToEnd!);
         if (outEl?.type === 'Pool') {
-          const current = outEl.currentPoints ?? 0;
-          const max = outEl.max ?? Infinity;
           const totalOutput = input.amount * minTrades;
-          const accepted = Math.min(totalOutput, max - current);
+          const accepted = creditPool(
+            outEl,
+            colorKey(outConn.color),
+            totalOutput
+          );
           if (accepted > 0 && transfers)
             recordTransfer(transfers, outConn, accepted, trader);
-          outEl.currentPoints = Math.min(current + totalOutput, max);
         }
       }
     }

@@ -19,7 +19,12 @@ import {
   parseCond,
 } from '../engine/helpers';
 import { resetElements } from '../engine/reset';
-import { getTriggeredEndConditionName } from '../engine/runner';
+import {
+  getTriggeredEndConditionName,
+  sampleMetrics,
+  buildMetricLabels,
+} from '../engine/runner';
+import type { RunOutcome, MultipleRunResult } from '../engine/runner';
 import { simulateTick } from '../engine/tick';
 import { startSimulationLoop } from '../engine/simulationLoop';
 import { setSeed } from '../engine/rng';
@@ -185,14 +190,33 @@ export interface QuickRunCompletePayload {
   endConditionMessage: string;
 }
 
-export interface RunOutcome {
-  endConditionName: string | null;
-  ticksElapsed: number;
-}
+// Re-exported so Playground/ToolSideBar keep importing run types from Canvas
+// while the single definition stays in the engine. A local copy here drifted
+// out of sync with the runner's once already.
+export type { RunOutcome };
 
-export interface MultipleRunsCompletePayload {
-  totalRuns: number;
-  outcomes: RunOutcome[];
+/**
+ * What a finished Multiple Runs batch hands back.
+ *
+ * This *is* a `MultipleRunResult` — the same shape `runMultiple` produces — so
+ * a batch driven from the canvas can be fed to `buildBatchReport` exactly like
+ * a headless one, and the two surfaces can never report different statistics
+ * for the same run data.
+ */
+export type MultipleRunsCompletePayload = MultipleRunResult;
+
+/** Progress emitted after every completed run of a Multiple Runs batch. */
+export interface MultipleRunsProgressPayload {
+  /** Runs finished so far. */
+  current: number;
+  /** Runs requested for the batch. */
+  total: number;
+  /**
+   * The batch as it stands, built from the runs finished so far. A report over
+   * a partial batch is a valid report over that many runs, so consumers can
+   * summarize it live without waiting for the batch to end.
+   */
+  batch: MultipleRunResult;
 }
 
 /** Max automatic ticks when quick run has no end condition. */
@@ -760,8 +784,11 @@ const Canvas: React.FC<CanvasProps> = ({
       // load the imported diagram
       setElements(imported);
       setSelectedId([]);
+      // File → Import leaves the active tool as "Import", which cannot move
+      // nodes. Switch back so the first click-drag on a node works.
+      onToolChange?.('Select');
     },
-    [setElements, setSelectedId, clearMovingTokens]
+    [setElements, setSelectedId, clearMovingTokens, onToolChange]
   );
 
   const resetCanvasForNewDocument = useCallback(() => {
@@ -1157,9 +1184,11 @@ const Canvas: React.FC<CanvasProps> = ({
       setHasSimulationStarted(true);
       applyGameEnded(false);
 
-      // Seed the PRNG so this simulation is reproducible. A defined seed makes
-      // every probabilistic decision deterministic for the whole run (or batch
-      // of runs); passing undefined falls back to Math.random().
+      // Seed the PRNG so this simulation is reproducible: a defined seed makes
+      // every probabilistic decision deterministic, and passing undefined falls
+      // back to Math.random(). This covers Normal and Quick runs, which are a
+      // single run each. A Multiple Runs batch reseeds per run below, so that
+      // every run in the batch is independently replayable.
       setSeed(seedRef.current);
 
       // Reset fractional dispatch state for new simulation
@@ -1182,6 +1211,22 @@ const Canvas: React.FC<CanvasProps> = ({
         // elementsRef.current is always fresh (synced via useEffect at line 2184)
         let runEls = elementsRef.current.map(el => ({ ...el }));
         const runOutcomes: RunOutcome[] = [];
+        // Series names are fixed for the batch, so resolve them once from the
+        // input model rather than per run.
+        const batchMetricLabels = buildMetricLabels(elementsRef.current);
+
+        /**
+         * Assemble the batch as it currently stands. Shares one shape with the
+         * headless `runMultiple`, so live progress and the final payload can
+         * both be summarized by the same reporting code.
+         */
+        const buildBatch = (): MultipleRunResult => ({
+          totalRuns: currentRunRef.current,
+          outcomes: [...runOutcomes],
+          seed: seedRef.current ?? null,
+          maxTicks: QUICK_RUN_MAX_TICKS,
+          metricLabels: batchMetricLabels,
+        });
 
         const runNext = () => {
           if (multipleRunsAbortRef.current) return;
@@ -1189,13 +1234,20 @@ const Canvas: React.FC<CanvasProps> = ({
             setElementsRef.current(runEls); // commit all accumulated chart data once
             setQuickRunLiveElements(null);
             applyGameEnded(true);
-            onMultipleRunsCompleteRef.current?.({
-              totalRuns: currentRunRef.current,
-              outcomes: runOutcomes,
-            });
+            onMultipleRunsCompleteRef.current?.(buildBatch());
             onSimulationCompleteRef.current?.();
             return;
           }
+
+          // Reseed per run with `base + i`, matching runMultiple. Seeding once
+          // for the whole batch would leave every run's randomness dependent on
+          // the draws of the runs before it, so no single run could be replayed
+          // on its own — which is exactly what a recorded seed is for.
+          const runSeed =
+            seedRef.current === undefined
+              ? null
+              : seedRef.current + currentRunRef.current;
+          setSeed(runSeed ?? undefined);
 
           fractionalDispatchRef.current.clear();
           currentTickRef.current = 0;
@@ -1232,9 +1284,23 @@ const Canvas: React.FC<CanvasProps> = ({
             ticksElapsed++;
           }
 
+          // The loop above exits on a game end, on abort, or on exhausting the
+          // tick cap. Only the first is a finished run; the other two leave
+          // `ticksElapsed` a floor rather than a duration, which is what
+          // `completed` records.
+          const endedNaturally =
+            gameEndedRef.current ||
+            !!(
+              typeof window !== 'undefined' &&
+              (window as unknown as CustomWindow).__GAME_ENDED__
+            );
+
           runOutcomes.push({
             endConditionName: getTriggeredEndConditionName(runEls),
             ticksElapsed,
+            completed: endedNaturally,
+            seed: runSeed,
+            metrics: sampleMetrics(runEls),
           });
 
           currentRunRef.current += 1;
@@ -1242,13 +1308,16 @@ const Canvas: React.FC<CanvasProps> = ({
           // mirroring the original tool's per-run view refresh.
           setQuickRunLiveElements(runEls);
           document.dispatchEvent(
-            new CustomEvent('multiple-runs-progress', {
-              detail: {
-                current: currentRunRef.current,
-                total: numRunsRef.current ?? 100,
-                outcomes: [...runOutcomes],
-              },
-            })
+            new CustomEvent<MultipleRunsProgressPayload>(
+              'multiple-runs-progress',
+              {
+                detail: {
+                  current: currentRunRef.current,
+                  total: numRunsRef.current ?? 100,
+                  batch: buildBatch(),
+                },
+              }
+            )
           );
 
           if (multipleRunsPausedRef.current) {
@@ -2598,8 +2667,16 @@ const Canvas: React.FC<CanvasProps> = ({
           const deltaX = newX - draggingElement.x;
           const deltaY = newY - draggingElement.y;
 
+          // selectedId is React state: the same mousedown that starts a drag
+          // on a newly clicked (unselected) node has not re-rendered yet.
+          // Fall back to the node under the cursor so import/click-drag works
+          // in one gesture instead of "click, then drag again".
+          const movingIds = selectedId.includes(draggingId)
+            ? selectedId
+            : [draggingId];
+
           const updatedElements = baseElements.map(el =>
-            selectedId.includes(el.id)
+            movingIds.includes(el.id)
               ? { ...el, x: el.x + deltaX, y: el.y + deltaY }
               : el
           );
@@ -2615,7 +2692,7 @@ const Canvas: React.FC<CanvasProps> = ({
             const updatedElement = { ...element };
             let needsUpdate = false;
 
-            selectedId.forEach(movedId => {
+            movingIds.forEach(movedId => {
               const movedElement = updatedElements.find(
                 el => el.id === movedId
               );
@@ -4456,6 +4533,12 @@ const Canvas: React.FC<CanvasProps> = ({
         style={{ display: 'none' }}
         onChange={handleXmlFileChosen}
       />
+
+      {isRunning && (
+        <div className="canvas-running-notice" role="status">
+          Simulation running. Stop it to move or edit elements.
+        </div>
+      )}
 
       {xmlImportError && (
         <div

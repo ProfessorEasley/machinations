@@ -1,0 +1,69 @@
+<graph version="v4.05" name="Progression Timing Level 20" author="LoopLab" interval="1" timeMode="synchronous" distributionMode="fixed speed" speed="100" actions="1" dice="D6" skill="" strategy="" multiplayer="" width="1300" height="900" numberOfRuns="50" visibleRuns="10" colorCoding="0">
+
+  <!-- ============================================================ -->
+  <!--  PROGRESSION TIMING SIMULATION             -->
+  <!--                                                               -->
+  <!-- Question: How many ticks until Level 20?                      -->
+  <!--                                                               -->
+  <!-- XP Source: +10 XP per tick (automatic, push)                  -->
+  <!-- XP Pool: accumulates XP                                        -->
+  <!-- Level Up Converter: consumes 100 XP -> produces 1 Level      -->
+  <!-- Level Pool: tracks current level                              -->
+  <!-- Tick Pool: tracks elapsed time                                -->
+  <!-- EndCondition: Level > 19 (auto-stop at Level 20)              -->
+  <!-- Chart: XP, Level, Tick over time                              -->
+  <!-- ============================================================ -->
+
+  <node symbol="TextLabel" x="280" y="20" color="Black" caption="LOOPLAB 2: PROGRESSION TIMING - LEVEL 20"/>
+  <node symbol="TextLabel" x="280" y="45" color="Black" caption="XP +10/tick | Level up = 100 XP | Goal: reach Level 20"/>
+  <node symbol="TextLabel" x="405" y="500" color="Black" caption="Expected time: ~200 ticks (20 levels x 100 XP / 10 XP per tick)"/>
+
+  <!-- XP SYSTEM -->
+  <node symbol="Source" x="55" y="70" color="Green" caption="XP Gain (+10/tick)" thickness="2" captionPos="0.25" activationMode="automatic" pullMode="push any" actions="1" resourceColor="Green"/>
+  <node symbol="Pool" x="310" y="80" color="Blue" caption="Player XP" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1" resourceColor="Blue" startingResources="0" capacity="-1"/>
+
+  <!-- LEVEL SYSTEM -->
+  <node symbol="Converter" x="310" y="280" color="Orange" caption="Level Up" thickness="2" captionPos="0.75" activationMode="automatic" pullMode="pull all" actions="1" resourceColor="Orange"/>
+  <node symbol="Pool" x="575" y="280" color="Orange" caption="Player Level" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1" resourceColor="Orange" startingResources="1" capacity="50"/>
+
+  <!-- TIME TRACKING -->
+  <node symbol="Pool" x="55" y="280" color="Black" caption="Tick" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1" resourceColor="Black" startingResources="0" capacity="-1"/>
+
+  <!-- END CONDITION -->
+  <node symbol="EndCondition" x="725" y="650" color="Black" caption="Stop at Level 20" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1"/>
+
+  <!-- CHART -->
+  <node symbol="Chart" x="880" y="80" color="Black" caption="XP, Level, Tick Over Time" thickness="2" captionPos="0.25" width="390" height="320"/>
+
+  <!-- ============================================================ -->
+  <!-- CONNECTIONS                                                  -->
+  <!-- Node indices:                                                -->
+  <!--   0 TextLabel, 1 TextLabel, 2 TextLabel                       -->
+  <!--   3 Source XP Gain                                           -->
+  <!--   4 Pool Player XP                                            -->
+  <!--   5 Converter Level Up                                        -->
+  <!--   6 Pool Player Level                                         -->
+  <!--   7 Pool Tick                                                 -->
+  <!--   8 EndCondition                                              -->
+  <!--   9 Chart                                                     -->
+  <!-- ============================================================ -->
+
+  <!-- XP GAIN: +10 per tick from Source into Player XP -->
+  <connection type="Resource Connection" start="3" end="4" label="10" position="0.5" color="Green" thickness="2"/>
+
+  <!-- LEVEL UP: consumes 100 XP, produces 1 Level -->
+  <connection type="Resource Connection" start="4" end="5" label="100" position="0.5" color="Orange" thickness="2"/>
+  <connection type="Resource Connection" start="5" end="6" label="1" position="0.5" color="Orange" thickness="2"/>
+
+  <!-- TICK: increments each time XP source fires -->
+  <connection type="Resource Connection" start="3" end="7" label="1" position="0.5" color="Black" thickness="1"/>
+
+  <!-- END: stop when Level > 19 -->
+  <connection type="State Connection" start="6" end="8" label="&gt;19" position="0.5" color="Black" thickness="2"/>
+
+  <!-- CHART: plot XP, Level, Tick -->
+  <connection type="State Connection" start="4" end="9" label="" position="0.5" color="Blue" thickness="0"/>
+  <connection type="State Connection" start="6" end="9" label="" position="0.5" color="Orange" thickness="0"/>
+  <connection type="State Connection" start="7" end="9" label="" position="0.5" color="Black" thickness="0"/>
+
+</graph>

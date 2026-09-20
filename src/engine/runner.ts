@@ -7,9 +7,19 @@ import type {
 import { resetElements } from './reset';
 import { simulateTick } from './tick';
 import { setSeed } from './rng';
+import { mean } from './stats';
+
+/**
+ * Default per-run tick cap.
+ *
+ * Shared by {@link runSimulation} and {@link runMultiple} so a batch can record
+ * the cap its runs actually used. That number is the censoring threshold: a run
+ * reporting `ticksElapsed === maxTicks` was cut off rather than finished.
+ */
+export const DEFAULT_MAX_TICKS = 1000;
 
 export interface RunSimulationOptions {
-  /** Maximum number of automatic ticks to run (default 1000). */
+  /** Maximum number of automatic ticks to run (default {@link DEFAULT_MAX_TICKS}). */
   maxTicks?: number;
   /** If true, each TickResult is stored in the returned tickLog (memory cost). */
   collectLog?: boolean;
@@ -61,6 +71,36 @@ export interface RunOutcome {
   endConditionName: string | null;
   /** Number of ticks this run executed before ending. */
   ticksElapsed: number;
+  /**
+   * True when the run ended because a `game_end` event fired; false when the
+   * tick cap cut it off while it was still going.
+   *
+   * This flag is what separates a measurement from a **censored** observation.
+   * For a censored run `ticksElapsed` equals the cap, which is a lower bound on
+   * how long the run would have taken rather than how long it took. Estimators
+   * that treat the two alike bias every duration statistic downward, so filter
+   * on this rather than inferring it from `endConditionName`.
+   */
+  completed: boolean;
+  /**
+   * Seed this run executed with, or `null` when the batch ran unseeded.
+   *
+   * Recorded so a run worth a second look — an outlier, a surprising outcome —
+   * can be replayed on its own via
+   * `runSimulation(elements, { seed, trace: true })`. Without it a sample is a
+   * dead end: you can see that something odd happened but never watch it
+   * happen.
+   */
+  seed: number | null;
+  /**
+   * Numeric observables sampled from this run's final state, keyed by
+   * {@link metricKey} (`"Pool#3"`, `"Register#7"`, …).
+   *
+   * A batch can only describe the distribution of quantities it actually
+   * recorded, and retaining each run's whole `finalState` is far too expensive.
+   * This is the fixed-width projection of it that survives the run.
+   */
+  metrics: Record<string, number>;
 }
 
 export interface MultipleRunResult {
@@ -68,6 +108,18 @@ export interface MultipleRunResult {
   totalRuns: number;
   /** Per-run outcomes, in run order. */
   outcomes: RunOutcome[];
+  /**
+   * Base seed the batch ran with, or `null` when unseeded. Run `i` used
+   * `seed + i`.
+   */
+  seed: number | null;
+  /** Per-run tick cap the batch ran with — the censoring threshold. */
+  maxTicks: number;
+  /**
+   * Display names for the keys in {@link RunOutcome.metrics}, e.g.
+   * `{ "Pool#3": "Gold" }`. Held once per batch rather than once per run.
+   */
+  metricLabels: Record<string, string>;
 }
 
 /**
@@ -101,7 +153,12 @@ export function runSimulation(
   elements: GraphElement[],
   options: RunSimulationOptions = {}
 ): RunSimulationResult {
-  const { maxTicks = 1000, collectLog = false, seed, trace = false } = options;
+  const {
+    maxTicks = DEFAULT_MAX_TICKS,
+    collectLog = false,
+    seed,
+    trace = false,
+  } = options;
   const maxTraceTicks = options.maxTraceTicks ?? Infinity;
 
   const traceLog: TickTraceEntry[] = [];
@@ -179,35 +236,169 @@ export function runSimulation(
   };
 }
 
+/** Element types carrying a numeric value worth sampling as an observable. */
+const METRIC_TYPES: ReadonlySet<string> = new Set(['Pool', 'Register']);
+
 /**
- * Run the same model `runs` times back-to-back and collect the per-run
- * outcome (which End Condition triggered, and how many ticks it took).
+ * Stable key for one element's metric series, e.g. `"Pool#3"`.
+ *
+ * Keyed by id rather than by name: names are optional, user-editable and free
+ * to collide, while a series has to stay addressable across a whole batch.
+ * Matches the `Pool#3` spelling the CLI already uses for final state.
+ */
+export function metricKey(element: GraphElement): string {
+  return `${element.type}#${element.id}`;
+}
+
+/**
+ * Project a finished run's final state down to its numeric observables.
+ *
+ * Pools contribute their total `currentPoints` and Registers their
+ * `currentValue`, matching how the CLI's single-run summary reports final
+ * state, so the same number means the same thing in both views.
+ *
+ * Shared with the Canvas so a batch driven by the UI records the same series as
+ * a headless one.
+ */
+export function sampleMetrics(
+  elements: GraphElement[]
+): Record<string, number> {
+  const metrics: Record<string, number> = {};
+  for (const el of elements) {
+    if (!METRIC_TYPES.has(el.type)) continue;
+    metrics[metricKey(el)] =
+      el.type === 'Pool' ? (el.currentPoints ?? 0) : (el.currentValue ?? 0);
+  }
+  return metrics;
+}
+
+/**
+ * Display names for every metric series a model can produce, keyed by
+ * {@link metricKey}. Falls back to the key itself for unnamed elements.
+ *
+ * Derived from the input model rather than a run's final state, since the set
+ * of elements is fixed for the batch.
+ */
+export function buildMetricLabels(
+  elements: GraphElement[]
+): Record<string, string> {
+  const labels: Record<string, string> = {};
+  for (const el of elements) {
+    if (!METRIC_TYPES.has(el.type)) continue;
+    const key = metricKey(el);
+    labels[key] = el.text?.trim() ? el.text.trim() : key;
+  }
+  return labels;
+}
+
+/**
+ * Monte Carlo sampler: run the same model `runs` times back-to-back and record
+ * one {@link RunOutcome} per replication.
  *
  * This is the headless equivalent of the Canvas "Multiple Runs" feature and
  * reuses {@link runSimulation} so the tick/reset/end-condition logic stays in
- * one place.
+ * one place. Each run is fully independent — `runSimulation` resets from
+ * `elements` and builds fresh dispatch state — so nothing leaks between
+ * iterations and `elements` is only ever read as a template.
  *
  * Seeding: when a `seed` is supplied each run uses `seed + i`, so the whole
  * batch is reproducible while individual runs still vary. When omitted, every
- * run draws from `Math.random()`.
+ * run draws from `Math.random()` and the batch cannot be replayed. Two batches
+ * sharing a base seed also share their random streams run-for-run, which makes
+ * A/B comparisons between model variants far less noisy.
+ *
+ * This function samples but deliberately does not estimate: it returns raw
+ * observations. Note that `ticksElapsed` is a duration only when `completed` is
+ * true — see {@link RunOutcome.completed} before averaging it.
+ *
+ * Cost: synchronous and blocking, with no progress reporting or cancellation,
+ * and it retains every outcome in memory. Callers needing a responsive UI drive
+ * their own chunked loop instead (as the Canvas does).
  */
 export function runMultiple(
   elements: GraphElement[],
   options: { runs: number; maxTicks?: number; seed?: number }
 ): MultipleRunResult {
-  const { runs, maxTicks, seed } = options;
+  const { runs, seed } = options;
+  // Resolved here rather than left to runSimulation's default so the batch can
+  // report the exact cap its runs were censored at.
+  const maxTicks = options.maxTicks ?? DEFAULT_MAX_TICKS;
   const outcomes: RunOutcome[] = [];
 
   for (let i = 0; i < runs; i++) {
+    const runSeed = seed === undefined ? null : seed + i;
     const result = runSimulation(elements, {
       maxTicks,
-      seed: seed === undefined ? undefined : seed + i,
+      seed: runSeed ?? undefined,
     });
     outcomes.push({
       endConditionName: result.endConditionName,
       ticksElapsed: result.ticksRun,
+      completed: result.gameEnded,
+      seed: runSeed,
+      metrics: sampleMetrics(result.finalState),
     });
   }
 
-  return { totalRuns: runs, outcomes };
+  return {
+    totalRuns: runs,
+    outcomes,
+    seed: seed ?? null,
+    maxTicks,
+    metricLabels: buildMetricLabels(elements),
+  };
+}
+
+/** One row of the multi-run outcome distribution. */
+export interface AggregateRow {
+  /** End Condition name, or `UNFINISHED_RUN_LABEL` for runs that never ended. */
+  name: string;
+  /** How many runs in the batch produced this outcome. */
+  count: number;
+  /** `count` as a percentage of the batch, 0 when the batch is empty. */
+  pct: number;
+}
+
+/**
+ * Label used for runs that hit `maxTicks` without triggering an End Condition.
+ *
+ * Exported because the CLI report and the UI's Multiple Runs panel must bucket
+ * unfinished runs under the identical name — otherwise the two reports
+ * disagree about the same batch.
+ */
+export const UNFINISHED_RUN_LABEL = 'Stopped before end';
+
+/**
+ * Tally a batch of run outcomes into a sorted outcome distribution plus the
+ * average number of steps.
+ *
+ * Rows are sorted by descending count; ties keep first-occurrence order, since
+ * `Array.prototype.sort` is stable. An empty batch yields no rows and an
+ * average of 0 rather than `NaN`.
+ */
+export function aggregateRuns(result: MultipleRunResult): {
+  aggregate: AggregateRow[];
+  averageSteps: number;
+} {
+  const counts = new Map<string, number>();
+  for (const o of result.outcomes) {
+    const key = o.endConditionName ?? UNFINISHED_RUN_LABEL;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const total = result.outcomes.length;
+  const aggregate: AggregateRow[] = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, count]) => ({
+      name,
+      count,
+      pct: total ? (count / total) * 100 : 0,
+    }));
+  // Averaged through the shared Welford helper rather than a local running sum
+  // so this figure and the run-length mean in a batch report are the same
+  // arithmetic. Two summation orders over the same data can differ in the last
+  // bits and print as `8.68` beside `8.67`, which reads as a disagreement
+  // between two statistics that are in fact identical. `mean` returns 0 for an
+  // empty batch, so there is no divide left to guard.
+  const averageSteps = mean(result.outcomes.map(o => o.ticksElapsed));
+  return { aggregate, averageSteps };
 }

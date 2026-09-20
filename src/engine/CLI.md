@@ -11,16 +11,16 @@ npx tsx src/engine/cli.ts path/to/graph.xml [options]
 
 ## Options
 
-| Flag                     | Description                                                                                                                                                      |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--max-ticks N`          | Max automatic ticks per run (default 1000). Stops early on game end.                                                                                             |
-| `--runs N`               | Run count (default 1). `N=1` reports the triggered end condition; `N>1` prints an aggregated outcome report. `--collect-log` / `--trace` are ignored when `N>1`. |
-| `--seed N`               | Deterministic PRNG seed. For `--runs N>1`, run _i_ uses `seed+i`.                                                                                                |
-| `--format json\|summary` | Output format (default: summary).                                                                                                                                |
-| `--collect-log`          | Include per-tick `tickLog` in JSON (single run only).                                                                                                            |
-| `--trace`                | Verbose per-tick diary in output (single run only).                                                                                                              |
-| `--max-trace-ticks N`    | Cap trace length.                                                                                                                                                |
-| `-h, --help`             | Show help.                                                                                                                                                       |
+| Flag                     | Description                                                                                                                                                                                                    |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--max-ticks N`          | Max automatic ticks per run (default 1000). Stops early on game end.                                                                                                                                           |
+| `--runs N`               | Run count (default 1). `N=1` reports the triggered end condition; `N>1` prints a statistical batch report (see [Reading the report](#reading-the-report)). `--collect-log` / `--trace` are ignored when `N>1`. |
+| `--seed N`               | Deterministic PRNG seed. For `--runs N>1`, run _i_ uses `seed+i`.                                                                                                                                              |
+| `--format json\|summary` | Output format (default: summary).                                                                                                                                                                              |
+| `--collect-log`          | Include per-tick `tickLog` in JSON (single run only).                                                                                                                                                          |
+| `--trace`                | Verbose per-tick diary in output (single run only).                                                                                                                                                            |
+| `--max-trace-ticks N`    | Cap trace length.                                                                                                                                                                                              |
+| `-h, --help`             | Show help.                                                                                                                                                                                                     |
 
 **Exit codes:** `0` success · `1` load/parse error · `2` invalid arguments
 
@@ -43,7 +43,7 @@ npx tsx src/engine/cli.ts src/engine/__tests__/fixtures/demo-win-condition.xml -
 # JSON includes "endConditionName": "Victory"
 ```
 
-### Multiple runs (probabilistic batch)
+### Multiple runs (Monte Carlo batch)
 
 ```bash
 # 50/50 gate races "Heads Win" vs "Tails Win" — shows a real outcome distribution
@@ -52,6 +52,69 @@ npx tsx src/engine/cli.ts src/engine/__tests__/fixtures/probabilistic-race.xml -
 ```
 
 Same `--seed` always yields the same batch; change the seed to explore a different distribution.
+
+#### Reading the report
+
+**Average steps** is the mean of every run's length, censored runs included. It is
+the batch's long-standing headline number and is left exactly as it was.
+
+**Run length** is the same statistic computed over completed runs only, with a 95%
+confidence interval on the mean plus the spread (sd, min, p50, p90, p95, max). On a
+batch where nothing was censored the two agree. Where they differ, `Average steps`
+is biased low and this is the honest figure.
+
+The confidence interval is what tells you whether `--runs` was large enough. It
+shrinks as `1/sqrt(n)`, so halving it costs four times the runs. Widen `--runs`
+until it is tight enough for the decision you are making.
+
+**The censoring note** appears when runs hit `--max-ticks` without ending. Such a run
+reports `ticksElapsed == maxTicks`, which is a floor on its duration rather than a
+measurement, so it is excluded from the run-length statistics. A model with no End
+Condition censors _every_ run — `Average steps` then just restates the cap:
+
+```
+Average steps: 1000.00
+Run length: no completed runs to measure.
+
+Note: 120/120 run(s) hit the 1000-tick cap without ending.
+```
+
+**Outcomes** carries a 95% Wilson interval per row. Overlapping intervals mean the
+batch cannot separate those outcomes: at `--runs 20` a 60/40 split is
+indistinguishable from a coin flip, while at `--runs 4000` a 50.2/49.8 split
+resolves. The interval says which case you are in.
+
+**Final values** gives mean/sd/p50/p95 for every Pool and Register, sampled from each
+run's final state — the distribution of end-state resources across the batch.
+
+**Unusual runs** lists completed runs whose length is an outlier by Tukey's rule,
+each with the seed that produced it.
+
+#### Investigating a single run
+
+Every run records the seed it used (`seed + i`), so an interesting sample can be
+replayed on its own. The report prints the command for the first outlier:
+
+```
+Unusual runs (1):
+  run #19 (seed 22) — 59 steps
+  replay with: --seed 22 --trace
+```
+
+```bash
+# reproduces exactly that run, with a per-tick diary
+npx tsx src/engine/cli.ts model.xml --seed 22 --trace
+```
+
+Or pick one out of the JSON yourself:
+
+```bash
+# the slowest completed run in the batch
+npx tsx src/engine/cli.ts model.xml --runs 500 --seed 42 --format json \
+  | jq '.outcomes | map(select(.completed)) | max_by(.ticksElapsed)'
+```
+
+An unseeded batch records `seed: null` on every run and cannot be replayed.
 
 ### Fixtures
 

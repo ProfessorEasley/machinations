@@ -24,6 +24,22 @@ describe('engine/reset', () => {
     expect(source.currentPoints).toBe(10);
   });
 
+  it("clears a deterministic Gate's counter so every run starts at 1", () => {
+    const gate: GraphElement = {
+      id: 9,
+      type: 'Gate',
+      x: 0,
+      y: 0,
+      gateType: 'deterministic',
+      lastGateValue: 4,
+    };
+
+    // Left in place, the previous run's counter made each later run in a
+    // batch start mid-cycle, so a "deterministic" gate was not reproducible.
+    expect(resetElements([gate])[0].lastGateValue).toBeUndefined();
+    expect(gate.lastGateValue).toBe(4);
+  });
+
   it('resets Register and End Condition elements correctly', () => {
     const register: GraphElement = {
       id: 2,
