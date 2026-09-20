@@ -1,0 +1,61 @@
+<graph version="v4.05" name="EconSim - Slow Curves (Exponential vs Timing Baseline)" author="Rajanee Shenkar" interval="1" timeMode="synchronous" distributionMode="fixed speed" speed="100" actions="1" dice="D6" skill="" strategy="" multiplayer="" width="1550" height="930" numberOfRuns="100" visibleRuns="10" colorCoding="0">
+
+  <!-- 4 wide-spaced tier converters per curve (not 19 crammed ones):
+       same total XP cost, far fewer nodes/lines so it's actually readable.
+       Node IDs are implicit/0-based by document order; every connection
+       start/end came from a name->index table, not hand counting. -->
+
+  <node symbol="TextLabel" x="20" y="10" color="Black" caption="ECONSIM: SLOW-CONVERGING XP COST CURVES"/>  <!-- [0] -->
+  <node symbol="TextLabel" x="20" y="30" color="Black" caption="Exponential vs Timing Baseline | +10 XP/tick | Goal: Level 20 | tiered costs, not a formula"/>  <!-- [1] -->
+  <node symbol="TextLabel" x="20" y="70" color="Black" caption="EXPONENTIAL COST: 100 * 1.15^(Level-1) XP, tiered (expect ~882 ticks)"/>  <!-- [2] -->
+  <node symbol="Source" x="20" y="100" color="Green" caption="XP Gain (+10/tick)" thickness="2" captionPos="0.25" activationMode="automatic" pullMode="push any" actions="1" resourceColor="Green"/>  <!-- [3] -->
+  <node symbol="Pool" x="200" y="100" color="Blue" caption="Player XP" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1" resourceColor="Blue" startingResources="0" capacity="-1"/>  <!-- [4] -->
+  <node symbol="Pool" x="200" y="200" color="Orange" caption="Player Level" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1" resourceColor="Orange" startingResources="1" capacity="20"/>  <!-- [5] -->
+  <node symbol="Pool" x="20" y="300" color="Black" caption="Tick" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1" resourceColor="Black" startingResources="0" capacity="-1"/>  <!-- [6] -->
+  <node symbol="EndCondition" x="400" y="300" color="Black" caption="Stop at Level 20" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1"/>  <!-- [7] -->
+  <node symbol="Chart" x="1150" y="70" color="Black" caption="Exponential Cost" thickness="2" captionPos="0.25" width="380" height="260"/>  <!-- [8] -->
+  <node symbol="Converter" x="420" y="200" color="Purple" caption="L1-5: 135 XP" thickness="2" captionPos="0.75" activationMode="automatic" pullMode="pull all" actions="1" resourceColor="Purple"/>  <!-- [9] -->
+  <node symbol="Converter" x="600" y="200" color="Purple" caption="L6-10: 271 XP" thickness="2" captionPos="0.75" activationMode="automatic" pullMode="pull all" actions="1" resourceColor="Purple"/>  <!-- [10] -->
+  <node symbol="Converter" x="780" y="200" color="Purple" caption="L11-15: 546 XP" thickness="2" captionPos="0.75" activationMode="automatic" pullMode="pull all" actions="1" resourceColor="Purple"/>  <!-- [11] -->
+  <node symbol="Converter" x="960" y="200" color="Purple" caption="L16-19: 1016 XP" thickness="2" captionPos="0.75" activationMode="automatic" pullMode="pull all" actions="1" resourceColor="Purple"/>  <!-- [12] -->
+  <node symbol="TextLabel" x="20" y="390" color="Black" caption="TIMING REFERENCE: Base 100 XP flat, isolated control (expect ~190 ticks)"/>  <!-- [13] -->
+  <node symbol="Source" x="20" y="420" color="Green" caption="XP Gain (+10/tick)" thickness="2" captionPos="0.25" activationMode="automatic" pullMode="push any" actions="1" resourceColor="Green"/>  <!-- [14] -->
+  <node symbol="Pool" x="200" y="420" color="Blue" caption="Player XP" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1" resourceColor="Blue" startingResources="0" capacity="-1"/>  <!-- [15] -->
+  <node symbol="Pool" x="200" y="520" color="Orange" caption="Player Level" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1" resourceColor="Orange" startingResources="1" capacity="20"/>  <!-- [16] -->
+  <node symbol="Pool" x="20" y="620" color="Black" caption="Tick" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1" resourceColor="Black" startingResources="0" capacity="-1"/>  <!-- [17] -->
+  <node symbol="EndCondition" x="400" y="620" color="Black" caption="Stop at Level 20" thickness="2" captionPos="0.25" activationMode="passive" pullMode="pull any" actions="1"/>  <!-- [18] -->
+  <node symbol="Chart" x="1150" y="390" color="Black" caption="Timing Baseline" thickness="2" captionPos="0.25" width="380" height="260"/>  <!-- [19] -->
+  <node symbol="Converter" x="420" y="520" color="Purple" caption="Level Up (100 XP)" thickness="2" captionPos="0.75" activationMode="automatic" pullMode="pull all" actions="1" resourceColor="Purple"/>  <!-- [20] -->
+
+  <connection type="Resource Connection" start="3" end="4" label="10" position="0.5" color="Green" thickness="2"/>
+  <connection type="Resource Connection" start="3" end="6" label="1" position="0.5" color="Black" thickness="1"/>
+  <connection type="State Connection" start="5" end="7" label="&gt;19" position="0.5" color="Black" thickness="2"/>
+  <connection type="State Connection" start="4" end="8" label="XP" position="0.85" color="Blue" thickness="0" minValue="0" maxValue="1116"/>
+  <connection type="State Connection" start="5" end="8" label="Level" position="0.9" color="Orange" thickness="0" minValue="0" maxValue="20"/>
+  <connection type="State Connection" start="6" end="8" label="Ticks" position="0.95" color="Black" thickness="0" minValue="0" maxValue="982"/>
+  <connection type="Resource Connection" start="4" end="9" label="135" position="0.5" color="Purple" thickness="1"/>
+  <connection type="Resource Connection" start="9" end="5" label="1" position="0.5" color="Purple" thickness="2"/>
+  <connection type="State Connection" start="5" end="9" label="&gt;0" position="0.5" color="Orange" thickness="1"/>
+  <connection type="State Connection" start="5" end="9" label="&lt;6" position="0.5" color="Orange" thickness="1"/>
+  <connection type="Resource Connection" start="4" end="10" label="271" position="0.5" color="Purple" thickness="1"/>
+  <connection type="Resource Connection" start="10" end="5" label="1" position="0.5" color="Purple" thickness="2"/>
+  <connection type="State Connection" start="5" end="10" label="&gt;5" position="0.5" color="Orange" thickness="1"/>
+  <connection type="State Connection" start="5" end="10" label="&lt;11" position="0.5" color="Orange" thickness="1"/>
+  <connection type="Resource Connection" start="4" end="11" label="546" position="0.5" color="Purple" thickness="1"/>
+  <connection type="Resource Connection" start="11" end="5" label="1" position="0.5" color="Purple" thickness="2"/>
+  <connection type="State Connection" start="5" end="11" label="&gt;10" position="0.5" color="Orange" thickness="1"/>
+  <connection type="State Connection" start="5" end="11" label="&lt;16" position="0.5" color="Orange" thickness="1"/>
+  <connection type="Resource Connection" start="4" end="12" label="1016" position="0.5" color="Purple" thickness="1"/>
+  <connection type="Resource Connection" start="12" end="5" label="1" position="0.5" color="Purple" thickness="2"/>
+  <connection type="State Connection" start="5" end="12" label="&gt;15" position="0.5" color="Orange" thickness="1"/>
+  <connection type="State Connection" start="5" end="12" label="&lt;20" position="0.5" color="Orange" thickness="1"/>
+  <connection type="Resource Connection" start="14" end="15" label="10" position="0.5" color="Green" thickness="2"/>
+  <connection type="Resource Connection" start="14" end="17" label="1" position="0.5" color="Black" thickness="1"/>
+  <connection type="State Connection" start="16" end="18" label="&gt;19" position="0.5" color="Black" thickness="2"/>
+  <connection type="State Connection" start="15" end="19" label="XP" position="0.85" color="Blue" thickness="0" minValue="0" maxValue="150"/>
+  <connection type="State Connection" start="16" end="19" label="Level" position="0.9" color="Orange" thickness="0" minValue="0" maxValue="20"/>
+  <connection type="State Connection" start="17" end="19" label="Ticks" position="0.95" color="Black" thickness="0" minValue="0" maxValue="250"/>
+  <connection type="Resource Connection" start="15" end="20" label="100" position="0.5" color="Purple" thickness="1"/>
+  <connection type="Resource Connection" start="20" end="16" label="1" position="0.5" color="Purple" thickness="2"/>
+
+</graph>
