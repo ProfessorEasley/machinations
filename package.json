@@ -16,7 +16,8 @@
     "test:watch": "vitest --watch",
     "sim": "tsx src/engine/cli.ts",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "sim:marvel-snap": "node --import tsx scripts/marvel-snap-results.ts"
   },
   "dependencies": {
     "crypto-browserify": "^3.12.1",
