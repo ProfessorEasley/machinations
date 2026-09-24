@@ -3,6 +3,7 @@ import { resolve as resolvePath } from 'node:path';
 import { loadGraphFromFile } from './io';
 import { runSimulation, runMultiple } from './runner';
 import { buildBatchReport } from './batchReport';
+import { formatStat, formatMeanWithMargin } from './reportFormat';
 import type { MultipleRunResult } from './runner';
 import { renderTrace } from './trace';
 import type { GraphElement } from './types';
@@ -249,11 +250,6 @@ function summarize(
   return lines.join('\n') + '\n';
 }
 
-/** Trim a number for a fixed-width column: integers bare, else 2dp. */
-function num(n: number): string {
-  return Number.isInteger(n) ? String(n) : n.toFixed(2);
-}
-
 function summarizeMultiple(
   result: MultipleRunResult,
   warnings: string[],
@@ -274,15 +270,15 @@ function summarizeMultiple(
 
   if (report.runLength && report.runLengthCI) {
     const s = report.runLength;
-    const margin = (report.runLengthCI[1] - report.runLengthCI[0]) / 2;
     lines.push(
       `Run length (${report.completedRuns} completed run` +
         `${report.completedRuns !== 1 ? 's' : ''}): ` +
-        `mean ${num(s.mean)} ±${num(margin)} steps (95% CI)`
+        `mean ${formatMeanWithMargin(s, report.runLengthCI)} steps (95% CI)`
     );
     lines.push(
-      `  sd ${num(s.stdDev)}  min ${num(s.min)}  p50 ${num(s.p50)}  ` +
-        `p90 ${num(s.p90)}  p95 ${num(s.p95)}  max ${num(s.max)}`
+      `  sd ${formatStat(s.stdDev)}  min ${formatStat(s.min)}  ` +
+        `p50 ${formatStat(s.p50)}  p90 ${formatStat(s.p90)}  ` +
+        `p95 ${formatStat(s.p95)}  max ${formatStat(s.max)}`
     );
   } else {
     lines.push('Run length: no completed runs to measure.');
@@ -329,10 +325,10 @@ function summarizeMultiple(
     for (const m of report.metrics) {
       const label = `${m.label} (${m.key})`.padEnd(28).slice(0, 28);
       lines.push(
-        `  ${label} ${num(m.summary.mean).padStart(6)}  ` +
-          `${num(m.summary.stdDev).padStart(6)}  ` +
-          `${num(m.summary.p50).padStart(6)}  ` +
-          `${num(m.summary.p95).padStart(6)}`
+        `  ${label} ${formatStat(m.summary.mean).padStart(6)}  ` +
+          `${formatStat(m.summary.stdDev).padStart(6)}  ` +
+          `${formatStat(m.summary.p50).padStart(6)}  ` +
+          `${formatStat(m.summary.p95).padStart(6)}`
       );
     }
   }

@@ -5,6 +5,7 @@ import { aggregateRuns } from '../engine/runner';
 import type { MultipleRunResult, AggregateRow } from '../engine/runner';
 import { buildBatchReport } from '../engine/batchReport';
 import type { BatchReport } from '../engine/batchReport';
+import { formatStat, formatMeanWithMargin } from '../engine/reportFormat';
 import type { MultipleRunsProgressPayload } from './Canvas';
 
 type GraphElementType =
@@ -319,10 +320,6 @@ const renderColorDropdown = (
   );
 };
 
-/** Trim a number for the narrow sidebar: integers bare, everything else to 2dp. */
-const stat = (n: number): string =>
-  Number.isInteger(n) ? String(n) : n.toFixed(2);
-
 /**
  * The expanded statistics detail for a finished Multiple Runs batch.
  *
@@ -338,14 +335,14 @@ const renderRunStats = (report: BatchReport): React.ReactNode => (
       {report.runLength && report.runLengthCI ? (
         <>
           <p className="runs-stats-line">
-            {stat(report.runLength.mean)} ±
-            {stat((report.runLengthCI[1] - report.runLengthCI[0]) / 2)} steps
+            {formatMeanWithMargin(report.runLength, report.runLengthCI)} steps
             <span className="runs-stats-note"> (95% CI)</span>
           </p>
           <p className="runs-stats-sub">
-            sd {stat(report.runLength.stdDev)} · p50{' '}
-            {stat(report.runLength.p50)} · p90 {stat(report.runLength.p90)} ·
-            p95 {stat(report.runLength.p95)}
+            sd {formatStat(report.runLength.stdDev)} · p50{' '}
+            {formatStat(report.runLength.p50)} · p90{' '}
+            {formatStat(report.runLength.p90)} · p95{' '}
+            {formatStat(report.runLength.p95)}
           </p>
           <p className="runs-stats-note">
             over {report.completedRuns} completed run
@@ -390,8 +387,8 @@ const renderRunStats = (report: BatchReport): React.ReactNode => (
             {report.metrics.map(m => (
               <tr key={m.key}>
                 <td>{m.label}</td>
-                <td>{stat(m.summary.mean)}</td>
-                <td>{stat(m.summary.p50)}</td>
+                <td>{formatStat(m.summary.mean)}</td>
+                <td>{formatStat(m.summary.p50)}</td>
               </tr>
             ))}
           </tbody>

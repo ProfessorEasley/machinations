@@ -7,7 +7,9 @@ import {
   meanInterval,
   wilsonInterval,
   outlierIndicesIQR,
+  histogram,
 } from '../stats';
+import type { Histogram, HistogramOptions } from '../stats';
 
 /**
  * Contract tests for the batch estimator's numeric layer.
@@ -362,6 +364,222 @@ describe('engine/stats', () => {
       const xs = [100, 1, 2, 3, 4];
       outlierIndicesIQR(xs);
       expect(xs).toEqual([100, 1, 2, 3, 4]);
+    });
+  });
+
+  describe('histogram', () => {
+    // Eight run lengths, used by most of the worked examples below.
+    const runs = [3, 7, 8, 12, 15, 15, 21, 29];
+
+    const counts = (h: Histogram) => h.bins.map(b => b.count);
+    const edges = (h: Histogram) => h.bins.map(b => [b.lo, b.hi]);
+    const accounted = (h: Histogram) =>
+      counts(h).reduce((sum, c) => sum + c, 0) + h.below + h.above;
+
+    it("defaults to Sturges' bin count over the sample's own range", () => {
+      // ceil(log2 8) + 1 = 4 bins across [3, 29], each 26 / 4 = 6.5 wide.
+      const h = histogram(runs)!;
+      expect(edges(h)).toEqual([
+        [3, 9.5],
+        [9.5, 16],
+        [16, 22.5],
+        [22.5, 29],
+      ]);
+      expect(counts(h)).toEqual([3, 3, 1, 1]);
+      expect(h.below).toBe(0);
+      expect(h.above).toBe(0);
+
+      const thousand = Array.from({ length: 1000 }, (_, i) => i);
+      expect(histogram(thousand)!.bins).toHaveLength(11);
+    });
+
+    it('splits the range into the requested number of bins', () => {
+      // [3, 29] in two bins of 13: everything up to 15 falls in the first.
+      const h = histogram(runs, { binCount: 2 })!;
+      expect(edges(h)).toEqual([
+        [3, 16],
+        [16, 29],
+      ]);
+      expect(counts(h)).toEqual([6, 2]);
+    });
+
+    it('lays out bins of a fixed width', () => {
+      const h = histogram(runs, { binWidth: 10, range: [0, 30] })!;
+      expect(edges(h)).toEqual([
+        [0, 10],
+        [10, 20],
+        [20, 30],
+      ]);
+      expect(counts(h)).toEqual([3, 3, 2]);
+    });
+
+    it('accounts for every value exactly once, whatever the options', () => {
+      const cases: HistogramOptions[] = [
+        {},
+        { binCount: 3 },
+        { binWidth: 10, range: [0, 30] },
+        { binWidth: 10, range: [0, 20] },
+        { binCount: 2, range: [10, 20] },
+        { binWidth: 10, range: [0, 25] },
+      ];
+      for (const options of cases) {
+        const h = histogram(runs, options)!;
+        expect(h.n).toBe(runs.length);
+        expect(accounted(h)).toBe(h.n);
+      }
+    });
+
+    it('makes bins half-open, so a value on an inner edge goes up', () => {
+      const h = histogram([0, 10, 20], { binWidth: 10, range: [0, 30] })!;
+      expect(counts(h)).toEqual([1, 1, 1]);
+    });
+
+    it('closes the last bin, so the maximum is always counted', () => {
+      // Edges [0, 5) and [5, 10]: the 10 belongs to the last bin, not above.
+      const h = histogram([0, 5, 10], { binCount: 2 })!;
+      expect(counts(h)).toEqual([1, 2]);
+      expect(h.above).toBe(0);
+    });
+
+    it('counts out-of-range values instead of dropping them', () => {
+      const upper = histogram(runs, { binWidth: 10, range: [0, 20] })!;
+      expect(counts(upper)).toEqual([3, 3]);
+      expect(upper.below).toBe(0);
+      expect(upper.above).toBe(2); // 21 and 29
+
+      // Edges [10, 15) and [15, 20]: 3, 7, 8 are below; 21, 29 above.
+      const both = histogram(runs, { binCount: 2, range: [10, 20] })!;
+      expect(counts(both)).toEqual([1, 2]);
+      expect(both.below).toBe(3);
+      expect(both.above).toBe(2);
+    });
+
+    it('keeps equal-width bins when binWidth does not divide the range', () => {
+      // A narrower [20, 25] bin would draw as a shorter bar for the same
+      // density, so the last bin keeps the full width: [20, 30]. The range
+      // still decides membership — 26 and 30 sit inside that bin's bounds but
+      // outside [0, 25], so they are counted above, not binned.
+      const xs = [-1, 0, 9, 10, 20, 25, 26, 30];
+      const h = histogram(xs, { binWidth: 10, range: [0, 25] })!;
+      expect(edges(h)).toEqual([
+        [0, 10],
+        [10, 20],
+        [20, 30],
+      ]);
+      for (const bin of h.bins) expect(bin.hi - bin.lo).toBe(10);
+      expect(counts(h)).toEqual([2, 1, 2]); // 0, 9 | 10 | 20, 25
+      expect(h.below).toBe(1); // -1
+      expect(h.above).toBe(2); // 26, 30
+      expect(accounted(h)).toBe(xs.length);
+    });
+
+    it('puts integer data on integer edges given a whole-number width', () => {
+      // The run-length case: no fractional edges like the Sturges default's.
+      const h = histogram(runs, { binWidth: 10, range: [0, 29] })!;
+      expect(edges(h)).toEqual([
+        [0, 10],
+        [10, 20],
+        [20, 30],
+      ]);
+      for (const bin of h.bins) {
+        expect(Number.isInteger(bin.lo)).toBe(true);
+        expect(Number.isInteger(bin.hi)).toBe(true);
+      }
+      expect(counts(h)).toEqual([3, 3, 2]);
+    });
+
+    it('computes edges by multiplication, so they do not drift', () => {
+      // Ten additions of 0.1 give 0.9999999999999999: an accumulated last
+      // edge would stop short of 1 and push the maximum out of every bin.
+      const h = histogram([0, 1], { binWidth: 0.1, range: [0, 1] })!;
+      expect(h.bins).toHaveLength(10);
+      h.bins.forEach((bin, i) => expect(bin.lo).toBe(i * 0.1));
+      expect(h.bins[9].hi).toBe(1);
+      expect(counts(h)[0]).toBe(1);
+      expect(counts(h)[9]).toBe(1);
+      expect(h.above).toBe(0);
+    });
+
+    it('adds no empty bin when a decimal width divides the range', () => {
+      // 2.1 / 0.3 evaluates to 7.000000000000001; a plain ceil would make an
+      // eighth bin, [2.1, 2.4], that nothing in range can ever land in.
+      const h = histogram([0, 2.1], { binWidth: 0.3, range: [0, 2.1] })!;
+      expect(h.bins).toHaveLength(7);
+      expect(h.bins[6].hi).toBe(2.1);
+      expect(counts(h)[6]).toBe(1);
+    });
+
+    it('never places a value in a bin whose bounds exclude it', () => {
+      // A hundredths grid against 0.1-wide bins: many values sit a rounding
+      // error from an edge (3 * 0.1 is 0.30000000000000004, not 0.3). Recount
+      // each bin straight from its reported bounds; the two must agree.
+      const xs = Array.from({ length: 101 }, (_, i) => i / 100);
+      const h = histogram(xs, { binWidth: 0.1, range: [0, 1] })!;
+      h.bins.forEach((bin, i) => {
+        const last = i === h.bins.length - 1;
+        const inBounds = xs.filter(
+          x => x >= bin.lo && (last ? x <= bin.hi : x < bin.hi)
+        );
+        expect(bin.count).toBe(inBounds.length);
+      });
+      expect(accounted(h)).toBe(xs.length);
+    });
+
+    it('gives a zero-spread sample a single bin, whatever the options', () => {
+      const expected = [{ lo: 5, hi: 5, count: 3 }];
+      expect(histogram([5, 5, 5])!.bins).toEqual(expected);
+      expect(histogram([5, 5, 5], { binCount: 4 })!.bins).toEqual(expected);
+      expect(histogram([5, 5, 5], { binWidth: 2 })!.bins).toEqual(expected);
+    });
+
+    it('treats a zero-width range as one bin, the rest outside', () => {
+      const h = histogram([4, 5, 6], { range: [5, 5] })!;
+      expect(h.bins).toEqual([{ lo: 5, hi: 5, count: 1 }]);
+      expect(h.below).toBe(1);
+      expect(h.above).toBe(1);
+    });
+
+    it('returns null for an empty sample', () => {
+      expect(histogram([])).toBeNull();
+      expect(histogram([], { binWidth: 10, range: [0, 30] })).toBeNull();
+    });
+
+    it('rejects invalid options, even on an empty sample', () => {
+      const invalid: HistogramOptions[] = [
+        { binCount: 2, binWidth: 10 },
+        { binCount: 0 },
+        { binCount: 2.5 },
+        { binCount: NaN },
+        { binWidth: 0 },
+        { binWidth: -1 },
+        { binWidth: NaN },
+        { binWidth: Infinity },
+        { range: [10, 0] },
+        { range: [NaN, 1] },
+        { range: [0, Infinity] },
+      ];
+      for (const options of invalid) {
+        expect(() => histogram(runs, options)).toThrow(RangeError);
+        expect(() => histogram([], options)).toThrow(RangeError);
+      }
+    });
+
+    it('rejects non-finite values rather than losing them', () => {
+      // A NaN falls in no bin and would silently break the n invariant.
+      expect(() => histogram([1, NaN, 3])).toThrow(RangeError);
+      expect(() => histogram([1, Infinity])).toThrow(RangeError);
+    });
+
+    it('refuses a configuration that would build too many bins', () => {
+      expect(histogram(runs, { binCount: 10_000 })!.bins).toHaveLength(10_000);
+      expect(() => histogram(runs, { binCount: 10_001 })).toThrow(RangeError);
+      expect(() => histogram([0, 1], { binWidth: 1e-9 })).toThrow(RangeError);
+    });
+
+    it('does not mutate the caller sample', () => {
+      const xs = [29, 3, 15];
+      histogram(xs, { binWidth: 10 });
+      expect(xs).toEqual([29, 3, 15]);
     });
   });
 });
