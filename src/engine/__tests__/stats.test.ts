@@ -3,6 +3,7 @@ import {
   percentile,
   mean,
   summarize,
+  lookupPercentile,
   meanInterval,
   wilsonInterval,
   outlierIndicesIQR,
@@ -146,6 +147,105 @@ describe('engine/stats', () => {
       const small = summarize([4, 7, 13, 16])!;
       const shifted = summarize([1e9 + 4, 1e9 + 7, 1e9 + 13, 1e9 + 16])!;
       expect(shifted.variance).toBeCloseTo(small.variance, 6);
+    });
+  });
+
+  describe('summarize — requested percentiles', () => {
+    // Ten values, deliberately unsorted, so an unsorted read would be caught.
+    const xs = [7, 1, 10, 3, 5, 9, 2, 8, 4, 6];
+    const sorted = [...xs].sort((a, b) => a - b);
+
+    it('computes none by default and leaves every existing field alone', () => {
+      const plain = summarize(xs)!;
+      const extended = summarize(xs, { percentiles: [0.05, 0.9, 0.99] })!;
+
+      expect(plain.percentiles).toEqual([]);
+      // Requesting percentiles adds to the summary; it never moves a number
+      // an existing consumer already reads — not even in the last bit.
+      for (const key of Object.keys(plain) as (keyof typeof plain)[]) {
+        if (key === 'percentiles') continue;
+        expect(extended[key]).toBe(plain[key]);
+      }
+    });
+
+    it('interpolates arbitrary percentiles by the same type-7 rule', () => {
+      // h = (n-1)*p = 0.9, so 1 + 0.9*(2-1). Nearest-rank would give 1.
+      const s = summarize(xs, { percentiles: [0.1] })!;
+      expect(s.percentiles[0].value).toBeCloseTo(1.9, 10);
+
+      const ps = [0.05, 0.1, 0.33, 0.99];
+      const values = summarize(xs, { percentiles: ps })!.percentiles;
+      values.forEach(({ p, value }) => {
+        expect(value).toBe(percentile(sorted, p));
+      });
+    });
+
+    it('agrees bit for bit with the fixed fields it overlaps', () => {
+      // Same function, same sorted copy — so the CLI's p90 and a report's
+      // requested 0.9 can never print as two different roundings.
+      const s = summarize(xs, {
+        percentiles: [0.25, 0.5, 0.75, 0.9, 0.95],
+      })!;
+      expect(lookupPercentile(s, 0.25)).toBe(s.p25);
+      expect(lookupPercentile(s, 0.5)).toBe(s.p50);
+      expect(lookupPercentile(s, 0.75)).toBe(s.p75);
+      expect(lookupPercentile(s, 0.9)).toBe(s.p90);
+      expect(lookupPercentile(s, 0.95)).toBe(s.p95);
+    });
+
+    it('returns the requested list ascending and without duplicates', () => {
+      const s = summarize(xs, { percentiles: [0.9, 0.1, 0.5, 0.9, 0.1] })!;
+      expect(s.percentiles.map(point => point.p)).toEqual([0.1, 0.5, 0.9]);
+    });
+
+    it('accepts the endpoints 0 and 1', () => {
+      const s = summarize(xs, { percentiles: [0, 1] })!;
+      expect(lookupPercentile(s, 0)).toBe(s.min);
+      expect(lookupPercentile(s, 1)).toBe(s.max);
+    });
+
+    it('rejects a percentile written on the 0–100 scale', () => {
+      // percentile() would clamp 90 to the maximum and report it as "p90".
+      expect(() => summarize(xs, { percentiles: [90] })).toThrow(RangeError);
+    });
+
+    it('rejects negative and non-finite percentiles', () => {
+      expect(() => summarize(xs, { percentiles: [-0.1] })).toThrow(RangeError);
+      expect(() => summarize(xs, { percentiles: [NaN] })).toThrow(RangeError);
+      expect(() => summarize(xs, { percentiles: [Infinity] })).toThrow(
+        RangeError
+      );
+    });
+
+    it('rejects a bad list even when the sample is empty', () => {
+      // A configuration mistake should fail on the first call, not wait for
+      // the first batch that happens to have data.
+      expect(() => summarize([], { percentiles: [90] })).toThrow(RangeError);
+      expect(summarize([], { percentiles: [0.9] })).toBeNull();
+    });
+
+    it('does not mutate the caller sample or the requested list', () => {
+      const sample = [3, 1, 2];
+      const ps = [0.9, 0.1];
+      summarize(sample, { percentiles: ps });
+      expect(sample).toEqual([3, 1, 2]);
+      expect(ps).toEqual([0.9, 0.1]);
+    });
+  });
+
+  describe('lookupPercentile', () => {
+    it('returns a requested percentile', () => {
+      const s = summarize([1, 2, 3, 4], { percentiles: [0.25] })!;
+      expect(lookupPercentile(s, 0.25)).toBeCloseTo(1.75, 10);
+    });
+
+    it('returns undefined for a percentile that was not requested', () => {
+      // Even one that exists as a fixed field: this is a lookup, and it does
+      // not quietly fall back to computing or substituting a value.
+      const s = summarize([1, 2, 3, 4], { percentiles: [0.25] })!;
+      expect(lookupPercentile(s, 0.9)).toBeUndefined();
+      expect(lookupPercentile(s, 0.5)).toBeUndefined();
+      expect(lookupPercentile(summarize([1, 2, 3])!, 0.5)).toBeUndefined();
     });
   });
 

@@ -16,6 +16,23 @@
  *     type-7 rule, which is also `numpy.percentile`'s default.
  */
 
+/** One requested percentile of a sample: `p` in [0, 1] and its value. */
+export interface PercentilePoint {
+  p: number;
+  value: number;
+}
+
+export interface SummarizeOptions {
+  /**
+   * Extra percentiles to compute, each in [0, 1] — `0.9` for the 90th, not
+   * `90`. Order and duplicates do not matter. Default: none.
+   *
+   * Which percentiles are worth reporting is the caller's decision, so this
+   * module fixes no set of its own beyond the `p25`…`p95` fields below.
+   */
+  percentiles?: readonly number[];
+}
+
 /** Summary of one numeric sample. All fields are finite when `n >= 1`. */
 export interface NumericSummary {
   /** Number of observations. */
@@ -43,6 +60,15 @@ export interface NumericSummary {
   p95: number;
   /** Interquartile range, `p75 - p25`. */
   iqr: number;
+  /**
+   * The percentiles requested through {@link SummarizeOptions.percentiles}, in
+   * ascending `p` order; empty when none were requested.
+   *
+   * Computed from the same sorted copy as the fixed fields above, so a
+   * requested `0.9` is bit-identical to {@link p90}. Read one back with
+   * {@link lookupPercentile}.
+   */
+  percentiles: PercentilePoint[];
 }
 
 /**
@@ -101,13 +127,41 @@ export function mean(xs: number[]): number {
 }
 
 /**
+ * Validate a requested percentile list and put it in canonical form: ascending,
+ * without duplicates.
+ *
+ * Stricter than {@link percentile}, which clamps. A list is configuration, and
+ * the likely mistake in it is `90` written for the 90th percentile — clamping
+ * would quietly report the maximum under that name, so this throws instead.
+ */
+function normalizePercentiles(ps: readonly number[]): number[] {
+  for (const p of ps) {
+    if (!Number.isFinite(p) || p < 0 || p > 1) {
+      throw new RangeError(
+        `percentile must be a finite number in [0, 1], got ${p}`
+      );
+    }
+  }
+  return [...new Set(ps)].sort((a, b) => a - b);
+}
+
+/**
  * Summarize a numeric sample.
  *
  * Returns `null` for an empty sample rather than a record full of `NaN`, so
  * callers are forced to handle "no data" instead of rendering it. Does not
  * mutate `xs` — it sorts a copy.
+ *
+ * Any `options.percentiles` are read off that same sorted copy, so asking for
+ * more of them costs no extra sort. The list is validated before the sample is
+ * looked at: a bad configuration throws even when a batch happens to be empty,
+ * rather than hiding until the first batch with data.
  */
-export function summarize(xs: number[]): NumericSummary | null {
+export function summarize(
+  xs: number[],
+  options: SummarizeOptions = {}
+): NumericSummary | null {
+  const requested = normalizePercentiles(options.percentiles ?? []);
   if (xs.length === 0) return null;
 
   const sorted = [...xs].sort((a, b) => a - b);
@@ -130,7 +184,23 @@ export function summarize(xs: number[]): NumericSummary | null {
     p90: percentile(sorted, 0.9),
     p95: percentile(sorted, 0.95),
     iqr: p75 - p25,
+    percentiles: requested.map(p => ({ p, value: percentile(sorted, p) })),
   };
+}
+
+/**
+ * Read a percentile that {@link summarize} was asked to compute; `undefined`
+ * when `p` was not requested.
+ *
+ * A lookup, not a calculation — a summary no longer holds the sample, so there
+ * is nothing to compute from. Matches `p` exactly, which is safe because
+ * callers pass the same constant they requested it with.
+ */
+export function lookupPercentile(
+  summary: NumericSummary,
+  p: number
+): number | undefined {
+  return summary.percentiles.find(point => point.p === p)?.value;
 }
 
 /**
