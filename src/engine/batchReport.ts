@@ -27,6 +27,10 @@ import type { NumericSummary } from './stats';
  *   - **The existing tally is reused, not replaced.** `aggregateRuns` stays the
  *     single source of truth for counts and percentages — this module decorates
  *     its rows rather than counting again.
+ *   - **Outcomes are measured and judged separately.** Different End
+ *     Conditions often finish at different speeds, so each outcome gets its
+ *     own run-length summary, and outliers are judged within an outcome — and
+ *     only once it has enough runs to judge — never across a mixed batch.
  *
  * Shared by the CLI report and the UI's Multiple Runs panel so the two can
  * never disagree about the same batch, and available to a future parameter
@@ -47,12 +51,35 @@ export const REPORT_PERCENTILES = [
 ] as const;
 
 /**
- * Smallest sample `outlierIndicesIQR` will judge; below it the function
- * declines and returns no outliers. Mirrored here only to report, per
- * outcome, whether the pooled check actually ran — see
- * {@link OutcomeShare.outliersChecked}.
+ * Fewest completed runs an outcome needs before its run lengths are judged
+ * for outliers.
+ *
+ * Tukey's fences come from the quartiles, and quartiles of a handful of runs
+ * are noisy: resampling single-outcome groups from the fixtures, where no run
+ * is genuinely anomalous, flagged 2.4–8.5% of runs at 5–10 per group against
+ * 1.4–2.6% at 20, close to the large-sample rate. Smaller groups are reported
+ * as not checked rather than as clean. `outlierIndicesIQR`'s own floor of four
+ * is a mathematical minimum; this is the evidential one, so it lives here.
  */
-const IQR_MIN_SAMPLE = 4;
+const MIN_OUTLIER_GROUP_SIZE = 20;
+
+/**
+ * Largest share of an outcome's measured runs that one exact run length may
+ * hold and still be reported as an outlier.
+ *
+ * Run lengths are whole ticks, and a coarse outcome can have its quartiles a
+ * single step apart; Tukey's fences then fall between two common values and
+ * flag every run at the next length out — twelve identical 6-step runs out of
+ * 97, say, in a race whose shortest possible length is 6. A length that many
+ * runs share is part of the outcome's normal shape, not an anomaly, so such
+ * candidates are dropped.
+ *
+ * Must stay at least `1 / MIN_OUTLIER_GROUP_SIZE`: in the smallest outcome
+ * that is judged, one run is exactly that share, and a single extreme run has
+ * to remain reportable. Set to that floor, which is the most conservative
+ * value — it suppresses the fewest candidates.
+ */
+const MAX_OUTLIER_VALUE_SHARE = 0.05;
 
 /**
  * One outcome's share of the batch, with the uncertainty on that share, plus
@@ -82,12 +109,12 @@ export interface OutcomeShare extends AggregateRow {
    */
   runLengthCI: [low: number, high: number] | null;
   /**
-   * Whether this outcome's completed runs went through outlier detection.
+   * Whether this outcome's run lengths were judged for outliers: true exactly
+   * when it has at least 20 {@link completedRuns}.
    *
-   * Detection currently runs once over the pooled completed runs, so this is
-   * true when the outcome has completed runs and the pooled sample was large
-   * enough for Tukey's rule to judge. False means "not checked", which is not
-   * the same as "checked and found nothing".
+   * False means "not checked" — too few runs to judge fairly, or none — which
+   * is not the same as "checked and found nothing". A checked outcome whose
+   * runs all took the same time is checked, with no outliers.
    */
   outliersChecked: boolean;
 }
@@ -112,6 +139,12 @@ export interface OutlierRun {
    * Replay via `runSimulation(elements, { seed, trace: true })`.
    */
   seed: number | null;
+  /**
+   * The outcome this run was judged against — the same name as its
+   * {@link OutcomeShare.name}. A run is unusual *for that outcome*, not for
+   * the batch as a whole.
+   */
+  outcome: string;
 }
 
 export interface BatchReport {
@@ -144,7 +177,14 @@ export interface BatchReport {
   runLength: NumericSummary | null;
   /** 95% CI for the mean run length; `null` alongside {@link runLength}. */
   runLengthCI: [low: number, high: number] | null;
-  /** Completed runs whose duration is an outlier by Tukey's rule. */
+  /**
+   * Completed runs whose duration is an outlier by Tukey's rule, judged
+   * within their own outcome and listed in batch order.
+   *
+   * Only outcomes with at least 20 completed runs are judged — see
+   * {@link OutcomeShare.outliersChecked} — so an empty list does not by itself
+   * mean every run looked ordinary.
+   */
   runLengthOutliers: OutlierRun[];
   /**
    * Final-state distributions, one per Pool/Register, sorted by key.
@@ -175,52 +215,59 @@ export function buildBatchReport(result: MultipleRunResult): BatchReport {
   const total = result.outcomes.length;
 
   const completedDurations: number[] = [];
-  // Parallel to completedDurations: maps each sample back to its batch index,
-  // so an outlier can be traced to the run — and the seed — that produced it.
-  const completedRunIndex: number[] = [];
-
-  result.outcomes.forEach((outcome, index) => {
-    if (!outcome.completed) return;
-    completedDurations.push(outcome.ticksElapsed);
-    completedRunIndex.push(index);
-  });
-
-  // Outlier detection below runs once over every completed run, so an
-  // outcome's runs were examined exactly when that pooled sample was judged.
-  const pooledOutlierCheckRan = completedDurations.length >= IQR_MIN_SAMPLE;
+  for (const outcome of result.outcomes) {
+    if (outcome.completed) completedDurations.push(outcome.ticksElapsed);
+  }
 
   const groups = groupRunsByOutcome(result);
-  const outcomes: OutcomeShare[] = aggregate.map(row => {
-    const [low, high] = wilsonInterval(row.count, total);
+  const perOutcome = aggregate.map(row => {
     // Every row has a group: both come from the same outcomeKey tally.
-    const durations = groups
+    // `measured` holds batch indices parallel to `durations`, so a position
+    // flagged within this outcome leads back to its run — and its seed.
+    const measured = groups
       .get(row.name)!
-      .filter(index => isMeasuredDuration(result.outcomes[index]))
-      .map(index => result.outcomes[index].ticksElapsed);
-    const runLength = summarizeForReport(durations);
-    return {
-      ...row,
-      ciLow: low * 100,
-      ciHigh: high * 100,
-      completedRuns: durations.length,
-      runLength,
-      runLengthCI: runLength ? meanInterval(runLength) : null,
-      outliersChecked: durations.length > 0 && pooledOutlierCheckRan,
-    };
+      .filter(index => isMeasuredDuration(result.outcomes[index]));
+    const durations = measured.map(
+      index => result.outcomes[index].ticksElapsed
+    );
+    const checked = durations.length >= MIN_OUTLIER_GROUP_SIZE;
+    return { row, measured, durations, checked };
   });
+
+  const outcomes: OutcomeShare[] = perOutcome.map(
+    ({ row, durations, checked }) => {
+      const [low, high] = wilsonInterval(row.count, total);
+      const runLength = summarizeForReport(durations);
+      return {
+        ...row,
+        ciLow: low * 100,
+        ciHigh: high * 100,
+        completedRuns: durations.length,
+        runLength,
+        runLengthCI: runLength ? meanInterval(runLength) : null,
+        outliersChecked: checked,
+      };
+    }
+  );
 
   const runLength = summarizeForReport(completedDurations);
 
-  const runLengthOutliers: OutlierRun[] = outlierIndicesIQR(
-    completedDurations
-  ).map(i => {
-    const run = completedRunIndex[i];
-    return {
-      run,
-      ticksElapsed: completedDurations[i],
-      seed: result.outcomes[run].seed,
-    };
-  });
+  // Each outcome is judged against its own runs only: pooled, a minority
+  // outcome that is merely slower than the rest gets flagged wholesale.
+  const runLengthOutliers: OutlierRun[] = perOutcome
+    .flatMap(({ row, measured, durations, checked }) =>
+      checked
+        ? outlierPositions(durations).map(i => ({
+            run: measured[i],
+            ticksElapsed: durations[i],
+            seed: result.outcomes[measured[i]].seed,
+            outcome: row.name,
+          }))
+        : []
+    )
+    // Outcomes are visited most frequent first; list flags in batch order so
+    // the result does not depend on how the outcomes happen to rank.
+    .sort((a, b) => a.run - b.run);
 
   return {
     totalRuns: result.totalRuns,
@@ -273,6 +320,26 @@ export function groupRunsByOutcome(
  */
 function isMeasuredDuration(outcome: RunOutcome): boolean {
   return outcome.completed && outcome.endConditionName !== null;
+}
+
+/**
+ * Positions of the outliers within one outcome's run lengths.
+ *
+ * Tukey's rule proposes the candidates; any candidate whose exact run length
+ * is common within this outcome — more than {@link MAX_OUTLIER_VALUE_SHARE}
+ * of its runs — is then dropped. Frequency is counted within the outcome, as
+ * the fences were, never across the batch.
+ */
+function outlierPositions(durations: number[]): number[] {
+  const candidates = outlierIndicesIQR(durations);
+  if (candidates.length === 0) return candidates;
+
+  const frequency = new Map<number, number>();
+  for (const d of durations) frequency.set(d, (frequency.get(d) ?? 0) + 1);
+  return candidates.filter(
+    i =>
+      frequency.get(durations[i])! / durations.length <= MAX_OUTLIER_VALUE_SHARE
+  );
 }
 
 /** Every report summary goes through here, with {@link REPORT_PERCENTILES}. */

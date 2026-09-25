@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Bimodal outcomes: two End Conditions whose runs take clearly different
+  lengths, so a batch is a mixture of two populations rather than one.
+
+  This is the case per-outcome statistics exist for. Pool the two and Tukey's
+  fences come from the quartiles of the majority alone: about 80% of runs are
+  Fast, so both pooled quartiles fall among Fast runs and every Slow run lands
+  beyond the upper fence. Pooled detection then reports the whole Slow outcome
+  as "unusual", though each Slow run is ordinary for a Slow run. Judged within
+  its own outcome, it is not.
+
+  How it works. At start, Coin drops one token into Tray; the dice gate sends
+  it to Fast Mode (80%) or Slow Mode (20%). Each mode pool activates its own
+  chain through a ">= 1" state connection, so exactly one chain runs per run.
+  A chain's coin feeds a dice gate with two competing 50% branches, Hits and
+  Misses; two branches are what make the routing random, as in
+  skewed-run-length.xml. Fast Finish fires at 5 hits, Slow Finish at 30.
+
+  Why this spread. Needing k hits at even odds gives a negative binomial run
+  length, which is wide rather than bunched: over 200-run batches (seeds
+  0 to 199) Fast runs take about 12 steps (sd 3, IQR 4, 7 to 23, 17 distinct
+  lengths) and Slow runs about 61 (sd 8, IQR 13). That width is deliberate: no
+  single run length is common enough at a Tukey fence to trip the report's
+  coarse-data safeguard (0 candidates dropped across those seeds), so this
+  fixture shows per-outcome detection itself. Compare probabilistic-race.xml,
+  whose runs only ever take 6 to 10 steps.
+
+  Why 80/20 and 200 runs. The minority outcome is where pooling fails, and it
+  still needs 20 completed runs to be judged at all: at 200 runs it gets 32 to
+  42 across those seeds. Every run finishes far inside the default 1000-tick
+  cap, so nothing is censored.
+-->
+<diagram>
+  <source id="1" x="80" y="240" color="#3366CC" activation="onstart" text="Coin"/>
+  <pool id="2" x="220" y="240" color="#3366CC" number="0" max="1" text="Tray"/>
+  <gate id="3" x="360" y="240" color="#3366CC" activation="automatic" pullMode="pull all" gateType="dice"/>
+  <pool id="4" x="500" y="120" color="#22AA55" number="0" max="1" text="Fast Mode"/>
+  <pool id="5" x="500" y="360" color="#CC4444" number="0" max="1" text="Slow Mode"/>
+  <resourceConnection id="10" from="1" to="2"
+    startX="80" startY="240" endX="220" endY="240"
+    text="1" color="#3366CC" labelPosition="0.5"/>
+  <resourceConnection id="11" from="2" to="3"
+    startX="220" startY="240" endX="360" endY="240"
+    text="all" color="#3366CC" labelPosition="0.5"/>
+  <resourceConnection id="12" from="3" to="4"
+    startX="360" startY="240" endX="500" endY="120"
+    text="80%" color="#22AA55" labelPosition="0.5"/>
+  <resourceConnection id="13" from="3" to="5"
+    startX="360" startY="240" endX="500" endY="360"
+    text="20%" color="#CC4444" labelPosition="0.5"/>
+
+  <source id="20" x="640" y="120" color="#22AA55" activation="automatic" text="Fast Coin"/>
+  <pool id="21" x="780" y="120" color="#22AA55" number="0" max="1000" text="Fast Feeder"/>
+  <gate id="22" x="920" y="120" color="#22AA55" activation="automatic" pullMode="pull all" gateType="dice"/>
+  <pool id="23" x="1060" y="60" color="#22AA55" number="0" max="1000" text="Fast Hits"/>
+  <pool id="24" x="1060" y="180" color="#22AA55" number="0" max="1000" text="Fast Misses"/>
+  <endCondition id="25" x="1200" y="60" color="#000000" text="Fast Finish"/>
+  <stateConnection id="30" from="4" to="20"
+    startX="500" startY="120" endX="640" endY="120"
+    text="&gt;= 1" color="#000000" labelPosition="0.5"/>
+  <resourceConnection id="31" from="20" to="21"
+    startX="640" startY="120" endX="780" endY="120"
+    text="1" color="#22AA55" labelPosition="0.5"/>
+  <resourceConnection id="32" from="21" to="22"
+    startX="780" startY="120" endX="920" endY="120"
+    text="all" color="#22AA55" labelPosition="0.5"/>
+  <resourceConnection id="33" from="22" to="23"
+    startX="920" startY="120" endX="1060" endY="60"
+    text="50%" color="#22AA55" labelPosition="0.5"/>
+  <resourceConnection id="34" from="22" to="24"
+    startX="920" startY="120" endX="1060" endY="180"
+    text="50%" color="#22AA55" labelPosition="0.5"/>
+  <stateConnection id="35" from="23" to="25"
+    startX="1060" startY="60" endX="1200" endY="60"
+    text="&gt;= 5" color="#000000" labelPosition="0.5"/>
+
+  <source id="40" x="640" y="360" color="#CC4444" activation="automatic" text="Slow Coin"/>
+  <pool id="41" x="780" y="360" color="#CC4444" number="0" max="1000" text="Slow Feeder"/>
+  <gate id="42" x="920" y="360" color="#CC4444" activation="automatic" pullMode="pull all" gateType="dice"/>
+  <pool id="43" x="1060" y="300" color="#CC4444" number="0" max="1000" text="Slow Hits"/>
+  <pool id="44" x="1060" y="420" color="#CC4444" number="0" max="1000" text="Slow Misses"/>
+  <endCondition id="45" x="1200" y="300" color="#000000" text="Slow Finish"/>
+  <stateConnection id="50" from="5" to="40"
+    startX="500" startY="360" endX="640" endY="360"
+    text="&gt;= 1" color="#000000" labelPosition="0.5"/>
+  <resourceConnection id="51" from="40" to="41"
+    startX="640" startY="360" endX="780" endY="360"
+    text="1" color="#CC4444" labelPosition="0.5"/>
+  <resourceConnection id="52" from="41" to="42"
+    startX="780" startY="360" endX="920" endY="360"
+    text="all" color="#CC4444" labelPosition="0.5"/>
+  <resourceConnection id="53" from="42" to="43"
+    startX="920" startY="360" endX="1060" endY="300"
+    text="50%" color="#CC4444" labelPosition="0.5"/>
+  <resourceConnection id="54" from="42" to="44"
+    startX="920" startY="360" endX="1060" endY="420"
+    text="50%" color="#CC4444" labelPosition="0.5"/>
+  <stateConnection id="55" from="43" to="45"
+    startX="1060" startY="300" endX="1200" endY="300"
+    text="&gt;= 30" color="#000000" labelPosition="0.5"/>
+</diagram>
