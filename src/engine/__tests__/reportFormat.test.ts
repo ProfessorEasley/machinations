@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { formatStat, formatMeanWithMargin } from '../reportFormat';
+import {
+  formatStat,
+  formatMeanWithMargin,
+  formatPercentile,
+  percentileLabel,
+  HEADLINE_UPPER_PERCENTILE,
+} from '../reportFormat';
+import { REPORT_PERCENTILES } from '../batchReport';
 import { summarize, meanInterval } from '../stats';
 
 /**
@@ -97,6 +104,51 @@ describe('engine/reportFormat', () => {
       // report's estimates; it does not make its own.
       const s = summarize([10, 12, 14, 16, 18])!;
       expect(formatMeanWithMargin(s, [0, 10])).toBe('14 ±5');
+    });
+  });
+
+  describe('percentileLabel', () => {
+    it('names every report percentile in lowercase', () => {
+      expect(REPORT_PERCENTILES.map(percentileLabel)).toEqual([
+        'p5',
+        'p10',
+        'p25',
+        'p50',
+        'p75',
+        'p90',
+        'p95',
+        'p99',
+      ]);
+    });
+
+    it('keeps a fractional percentile and hides float noise', () => {
+      expect(percentileLabel(0.999)).toBe('p99.9');
+      // 0.07 * 100 is 7.000000000000001 in binary floating point.
+      expect(percentileLabel(0.07)).toBe('p7');
+    });
+  });
+
+  describe('HEADLINE_UPPER_PERCENTILE', () => {
+    it('is one the report computes', () => {
+      // Otherwise a compact view would ask for a value no summary carries.
+      expect(REPORT_PERCENTILES).toContain(HEADLINE_UPPER_PERCENTILE);
+    });
+  });
+
+  describe('formatPercentile', () => {
+    it('labels a percentile the summary carries and formats its value', () => {
+      // 1..10: p90 is 9.1 by the type-7 rule; p50 is 5.5.
+      const s = summarize([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], {
+        percentiles: [0.5, 0.9],
+      })!;
+      expect(formatPercentile(s, 0.9)).toBe('p90 9.10');
+      expect(formatPercentile(s, 0.5)).toBe('p50 5.50');
+    });
+
+    it('refuses a percentile the summary was not built with', () => {
+      // A missing value is a bug to surface, not a gap to paper over.
+      const s = summarize([1, 2, 3], { percentiles: [0.5] })!;
+      expect(() => formatPercentile(s, 0.9)).toThrow(/0\.9/);
     });
   });
 });

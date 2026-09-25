@@ -3,7 +3,12 @@ import { resolve as resolvePath } from 'node:path';
 import { loadGraphFromFile } from './io';
 import { runSimulation, runMultiple } from './runner';
 import { buildBatchReport } from './batchReport';
-import { formatStat, formatMeanWithMargin } from './reportFormat';
+import type { OutcomeShare } from './batchReport';
+import {
+  formatStat,
+  formatMeanWithMargin,
+  formatPercentile,
+} from './reportFormat';
 import type { MultipleRunResult } from './runner';
 import { renderTrace } from './trace';
 import type { GraphElement } from './types';
@@ -250,6 +255,38 @@ function summarize(
   return lines.join('\n') + '\n';
 }
 
+/**
+ * Percentiles on each outcome's detail line — the same three the pooled
+ * run-length line shows, so the two read alike.
+ */
+const OUTCOME_PERCENTILES = [0.5, 0.9, 0.95] as const;
+
+/**
+ * The indented run-length detail printed under one outcome's row.
+ *
+ * Two lines so every requested figure fits the report's ~70-column layout:
+ * count and mean with its interval, then the spread. An outcome with nothing
+ * measured — its runs all hit the tick cap — gets one line saying so rather
+ * than numbers. Everything is read off the report; nothing is computed here.
+ */
+function outcomeRunLengthLines(row: OutcomeShare): string[] {
+  if (!row.runLength || !row.runLengthCI) {
+    return ['    run length: not measured (hit the tick cap)'];
+  }
+  const s = row.runLength;
+  const lines = [
+    `    run length: n ${row.completedRuns}  ` +
+      `mean ${formatMeanWithMargin(s, row.runLengthCI)} steps (95% CI)`,
+    `      sd ${formatStat(s.stdDev)}  var ${formatStat(s.variance)}  ` +
+      OUTCOME_PERCENTILES.map(p => formatPercentile(s, p)).join('  '),
+  ];
+  // Not checked is not the same as checked and clean, so say which.
+  if (!row.outliersChecked) {
+    lines.push('      outlier check skipped: too few measured runs');
+  }
+  return lines;
+}
+
 function summarizeMultiple(
   result: MultipleRunResult,
   warnings: string[],
@@ -316,6 +353,7 @@ function summarizeMultiple(
     const pct = `${row.pct.toFixed(1)}`.padStart(7);
     const ci = `${row.ciLow.toFixed(1)}–${row.ciHigh.toFixed(1)}`.padStart(13);
     lines.push(`  ${name} ${count}  ${pct}  ${ci}`);
+    lines.push(...outcomeRunLengthLines(row));
   }
 
   if (report.metrics.length) {
@@ -337,8 +375,9 @@ function summarizeMultiple(
     lines.push('');
     lines.push(`Unusual runs (${report.runLengthOutliers.length}):`);
     for (const o of report.runLengthOutliers.slice(0, 5)) {
-      const via = o.seed === null ? '' : ` (seed ${o.seed})`;
-      lines.push(`  run #${o.run}${via} — ${o.ticksElapsed} steps`);
+      // Named, because a run is unusual for its own outcome, not the batch.
+      const via = o.seed === null ? o.outcome : `${o.outcome}, seed ${o.seed}`;
+      lines.push(`  run #${o.run} (${via}) — ${o.ticksElapsed} steps`);
     }
     if (report.runLengthOutliers.length > 5) {
       lines.push(`  +${report.runLengthOutliers.length - 5} more`);
@@ -415,7 +454,8 @@ export function runCli(argv: string[]): CliOutcome {
         metrics: report.metrics,
         metricLabels: batch.metricLabels,
         warnings: loaded.warnings,
-        // Outcome shares; rows now additionally carry ciLow/ciHigh.
+        // One row per outcome: its share with Wilson bounds, plus its own
+        // run-length summary and whether its outliers were checked.
         aggregate: report.outcomes,
         // Per-run records, unchanged in meaning.
         outcomes: batch.outcomes,
