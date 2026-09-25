@@ -22,7 +22,7 @@ type GraphElementType =
   | 'Delay'
   | 'Register'
   | 'End Condition'
-  | 'Artifical Intelligence';
+  | 'Artificial Player';
 
 interface GraphElement {
   id: number;
@@ -246,7 +246,7 @@ const graphTools = [
   'Delay',
   'Register',
   'End Condition',
-  'Artifical Intelligence',
+  'Artificial Player',
 ];
 
 const fileTools = [
@@ -2059,11 +2059,11 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
       );
     }
 
-    // Show Artificial Intelligence-specific properties when Artificial Intelligence is selected
-    if (selectedElement && selectedElement.type === 'Artifical Intelligence') {
+    // Show Artificial Player-specific properties when Artificial Player is selected
+    if (selectedElement && selectedElement.type === 'Artificial Player') {
       return (
         <div className="element-properties-panel">
-          <div className="machinations-label">Artificial Intelligence</div>
+          <div className="machinations-label">Artificial Player</div>
           <label>
             Color
             {renderColorDropdown(selectedElement.color || '#000000', color =>
@@ -3720,11 +3720,11 @@ const ToolSideBar: React.FC<ToolSideBarProps> = ({
       );
     }
 
-    // Show Artificial Intelligence tool properties
-    if (selectedTool === 'Artifical Intelligence') {
+    // Show Artificial Player tool properties
+    if (selectedTool === 'Artificial Player') {
       return (
         <div className="element-properties-panel">
-          <div className="machinations-label">Artificial Intelligence</div>
+          <div className="machinations-label">Artificial Player</div>
           <label>
             Color
             {renderColorDropdown(

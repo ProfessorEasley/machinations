@@ -305,7 +305,7 @@ function renderNodeSvg(el: XmlSerializeElement): string {
       }
       break;
     }
-    case 'Artifical Intelligence':
+    case 'Artificial Player':
       shape = `<rect x="${x0 + 5 * scale}" y="${y0 + 5 * scale}" width="${30 * scale}" height="${30 * scale}" fill="#ffffff" stroke="${escapeSvgText(stroke)}" stroke-width="${sw}"/>`;
       shape += `<text x="${el.x}" y="${el.y + 2 * scale}" text-anchor="middle" font-size="${12 * scale}" font-weight="bold" fill="${escapeSvgText(stroke)}">AP</text>`;
       shape += `<text x="${x0 + 33 * scale}" y="${y0 + 9 * scale}" text-anchor="middle" font-size="${10 * scale}" font-weight="bold" fill="${escapeSvgText(stroke)}">*</text>`;

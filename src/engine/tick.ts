@@ -1061,7 +1061,7 @@ export function simulateTick(
   applyDynamicResourceLabelsMutable(nextElements);
 
   // ==========================================================================
-  // PASS 0.8: Artificial Intelligence
+  // PASS 0.8: Artificial Player
   // ==========================================================================
   const consumePassiveTrigger = (el: GraphElement) => {
     if ((el.triggerCount ?? 0) > 0) {
@@ -1072,7 +1072,7 @@ export function simulateTick(
   };
 
   for (const ai of nextElements) {
-    if (ai.type !== 'Artifical Intelligence') continue;
+    if (ai.type !== 'Artificial Player') continue;
     const isForced = isForcedActivation(ai);
     let active = isForced;
     if (!active) {

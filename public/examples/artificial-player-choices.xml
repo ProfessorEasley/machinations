@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<diagram>
+  <!-- First matching rule wins: sword at 8, otherwise bread while Money is above 3. -->
+  <pool id="1" x="160" y="180" color="#228B22" number="12" text="Money"/>
+  <drain id="2" x="460" y="80" color="#4169E1" activation="interactive" text="BuySword"/>
+  <drain id="3" x="460" y="280" color="#DAA520" activation="interactive" text="BuyBread"/>
+  <artificialPlayer id="4" x="160" y="360" color="#000000" activation="automatic" actions="1" caption="Shopper">
+    <script><![CDATA[if (Money >= 8) fire(BuySword)
+if (Money > 3) fire(BuyBread)]]></script>
+  </artificialPlayer>
+  <resourceConnection id="5" from="1" to="2" startX="160" startY="180" endX="460" endY="80" text="8" color="#4169E1" labelPosition="0.5"/>
+  <resourceConnection id="6" from="1" to="3" startX="160" startY="180" endX="460" endY="280" text="4" color="#DAA520" labelPosition="0.5"/>
+</diagram>

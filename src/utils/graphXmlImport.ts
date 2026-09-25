@@ -180,7 +180,7 @@ function normalizeGraphElementType(raw?: string): GraphElementType | undefined {
     s === 'artificialintelligence' ||
     s === 'artificalintelligence'
   )
-    return 'Artifical Intelligence';
+    return 'Artificial Player';
 
   return undefined;
 }
@@ -512,7 +512,7 @@ function buildNode(
     }
   }
 
-  if (type === 'Artifical Intelligence') {
+  if (type === 'Artificial Player') {
     el.script = readScriptText(rawNode) ?? '';
   }
 

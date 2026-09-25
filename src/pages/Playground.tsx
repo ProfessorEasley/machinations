@@ -27,7 +27,7 @@ type GraphElementType =
   | 'Delay'
   | 'Register'
   | 'End Condition'
-  | 'Artifical Intelligence';
+  | 'Artificial Player';
 interface GraphElement {
   id: number;
   type: GraphElementType;

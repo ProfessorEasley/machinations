@@ -2265,7 +2265,7 @@ const Canvas: React.FC<CanvasProps> = ({
       if (onToolChange) {
         onToolChange('Select');
       }
-    } else if (type === 'Artifical Intelligence') {
+    } else if (type === 'Artificial Player') {
       const newAi: GraphElement = {
         id,
         type,
@@ -3502,7 +3502,7 @@ const Canvas: React.FC<CanvasProps> = ({
           </g>
         );
       }
-      case 'Artifical Intelligence': {
+      case 'Artificial Player': {
         const size = getElementSize(el.thickness);
         const center = size / 2;
         const scale = size / 40;

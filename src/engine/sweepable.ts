@@ -263,7 +263,7 @@ export const SWEEPABLE_PARAMETERS: Readonly<
     },
   ],
 
-  'Artifical Intelligence': [
+  'Artificial Player': [
     {
       field: 'script',
       kind: 'script',

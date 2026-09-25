@@ -84,9 +84,8 @@ function tagForNodeType(type: GraphElementType): string {
       return 'register';
     case 'End Condition':
       return 'endCondition';
-    case 'Artifical Intelligence':
-      // Match NODE_TAGS in Canvas `parseGraphFromXml` (intentional spelling)
-      return 'artificalIntelligence';
+    case 'Artificial Player':
+      return 'artificialPlayer';
     default:
       return 'element';
   }
@@ -157,7 +156,7 @@ function serializeNode(el: XmlSerializeElement): string {
     optionalAttr('thickness', el.thickness),
   ];
 
-  if (el.type === 'Artifical Intelligence') {
+  if (el.type === 'Artificial Player') {
     const cap = (el.text ?? '').trim();
     if (cap) attrs.push(optionalAttr('caption', cap));
   } else if (el.type !== 'Chart' && el.text != null && String(el.text).trim()) {
@@ -220,7 +219,7 @@ function serializeNode(el: XmlSerializeElement): string {
     attrs.push(optionalAttr('scaleY', el.chartScaleY));
   }
 
-  if (el.type === 'Artifical Intelligence' && el.script) {
+  if (el.type === 'Artificial Player' && el.script) {
     const script = String(el.script);
     const inner = `\n    <script><![CDATA[${escapeCdata(script)}]]></script>\n  `;
     return `  <${tag}${attrs.join('')}>${inner}</${tag}>`;

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<diagram>
+  <!-- Money starts at 10. Buy spends 4 when the player fires it. -->
+  <pool id="1" x="280" y="160" color="#228B22" number="10" text="Money"/>
+  <drain id="2" x="520" y="160" color="#228B22" activation="interactive" text="Buy"/>
+  <artificialPlayer id="3" x="280" y="320" color="#000000" activation="automatic" actions="1" caption="Shopper">
+    <script><![CDATA[if (Money > 3) fire(Buy)]]></script>
+  </artificialPlayer>
+  <resourceConnection id="4" from="1" to="2" startX="280" startY="160" endX="520" endY="160" text="4" color="#228B22" labelPosition="0.5"/>
+</diagram>

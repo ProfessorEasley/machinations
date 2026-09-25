@@ -13,7 +13,7 @@ export type GraphElementType =
   | 'Delay'
   | 'Register'
   | 'End Condition'
-  | 'Artifical Intelligence';
+  | 'Artificial Player';
 
 export interface GraphElement {
   id: number;

@@ -233,7 +233,7 @@ const registerFormula = (formula: string) => () => [
 const aiFiresSource = () => [
   E({
     id: 1,
-    type: 'Artifical Intelligence',
+    type: 'Artificial Player',
     activation: 'automatic',
     actions: 1,
     script: 'fire(src)',
@@ -394,14 +394,14 @@ const EVIDENCE: Record<string, Scenario> = {
     ticks: 3,
   },
 
-  'Artifical Intelligence.script': {
+  'Artificial Player.script': {
     model: aiFiresSource,
     id: 1,
     a: 'fire(src)',
     b: '',
     ticks: 10,
   },
-  'Artifical Intelligence.activation': {
+  'Artificial Player.activation': {
     model: aiFiresSource,
     id: 1,
     a: 'automatic',
@@ -442,7 +442,7 @@ const ALL_TYPES: GraphElementType[] = [
   'Delay',
   'Register',
   'End Condition',
-  'Artifical Intelligence',
+  'Artificial Player',
 ];
 
 const allowlisted = ALL_TYPES.flatMap(type =>
