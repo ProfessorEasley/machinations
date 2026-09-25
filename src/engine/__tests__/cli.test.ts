@@ -4,6 +4,7 @@ import { loadGraphFromFile, loadGraphFromXml } from '../io';
 import { runSimulation, runMultiple } from '../runner';
 import { runCli } from '../cli';
 import { buildBatchReport } from '../batchReport';
+import { batchReportToCsv } from '../batchReportCsv';
 import { formatStat, formatMeanWithMargin } from '../reportFormat';
 import { lookupPercentile } from '../stats';
 
@@ -639,6 +640,55 @@ describe('engine/io + cli — batch statistics report', () => {
         expect(added.length).toBeGreaterThan(0);
         for (const line of added) expect(line.length).toBeLessThanOrEqual(70);
       }
+    });
+  });
+
+  describe('CSV output', () => {
+    const bimodalPath = resolve(__dirname, 'fixtures', 'bimodal-outcomes.xml');
+    const args = [bimodalPath, '--runs', '200', '--seed', '42'];
+
+    it('prints the serialized batch report and nothing else', () => {
+      const outcome = runCli([...args, '--format', 'csv']);
+      const report = buildBatchReport(
+        runMultiple(loadGraphFromFile(bimodalPath).elements, {
+          runs: 200,
+          seed: 42,
+        })
+      );
+
+      expect(outcome.exitCode).toBe(0);
+      expect(outcome.stderr).toBe('');
+      // Exactly the serializer's output: redirectable straight to a file.
+      expect(outcome.stdout).toBe(batchReportToCsv(report));
+      expect(outcome.stdout.startsWith('section,name,key,')).toBe(true);
+      expect(outcome.stdout).not.toMatch(/Multiple runs:|Outcomes:/);
+    });
+
+    it('is deterministic for the same seed', () => {
+      const a = runCli([...args, '--format', 'csv']).stdout;
+      const b = runCli([...args, '--format', 'csv']).stdout;
+      expect(a).toBe(b);
+    });
+
+    it('leaves the default summary as it was', () => {
+      const out = summaryOf(args);
+      expect(out).toMatch(/^Multiple runs: 200 seed=42\n/);
+      expect(out).not.toMatch(/section,name/);
+    });
+
+    it('refuses a single run, which has no batch report', () => {
+      const outcome = runCli([bimodalPath, '--seed', '42', '--format', 'csv']);
+      expect(outcome.exitCode).toBe(2);
+      expect(outcome.stdout).toBe('');
+      expect(outcome.stderr).toMatch(/--format csv needs --runs N with N > 1/);
+    });
+
+    it('rejects an unsupported format and names the supported ones', () => {
+      const outcome = runCli([...args, '--format', 'xml']);
+      expect(outcome.exitCode).toBe(2);
+      expect(outcome.stderr).toMatch(
+        /--format expects "json", "summary" or "csv", got "xml"/
+      );
     });
   });
 

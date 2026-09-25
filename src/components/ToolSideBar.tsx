@@ -1,11 +1,18 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './ToolSideBar.css';
 import type { ChartState } from '../utils/ChartUtils';
+import { downloadCSV } from '../utils/ChartUtils';
 import { aggregateRuns } from '../engine/runner';
 import type { MultipleRunResult, AggregateRow } from '../engine/runner';
 import { buildBatchReport } from '../engine/batchReport';
-import type { BatchReport } from '../engine/batchReport';
-import { formatStat, formatMeanWithMargin } from '../engine/reportFormat';
+import type { BatchReport, OutcomeShare } from '../engine/batchReport';
+import { batchReportToCsv } from '../engine/batchReportCsv';
+import {
+  formatStat,
+  formatMeanWithMargin,
+  formatPercentile,
+  HEADLINE_UPPER_PERCENTILE,
+} from '../engine/reportFormat';
 import type { MultipleRunsProgressPayload } from './Canvas';
 
 type GraphElementType =
@@ -321,12 +328,51 @@ const renderColorDropdown = (
 };
 
 /**
+ * Outcomes that have a run-length summary of their own. When more than one
+ * does, the pooled run length mixes outcomes that may finish at very
+ * different speeds, and the panel says so.
+ */
+const measuredOutcomeCount = (report: BatchReport): number =>
+  report.outcomes.filter(o => o.runLength !== null).length;
+
+/** File name for an exported report: runs and seed, so exports stay apart. */
+const reportFileName = (report: BatchReport): string =>
+  `batch-report-${report.totalRuns}-runs` +
+  (report.seed === null ? '' : `-seed-${report.seed}`) +
+  '.csv';
+
+/**
+ * One outcome's run length, under its share: measured runs and mean with its
+ * interval, then variance and the headline upper percentile. Everything is
+ * read off the report and passed through the shared formatters.
+ */
+const renderOutcomeRunLength = (row: OutcomeShare): React.ReactNode =>
+  row.runLength && row.runLengthCI ? (
+    <>
+      <p className="runs-stats-note runs-stats-indent">
+        n {row.completedRuns} ·{' '}
+        {formatMeanWithMargin(row.runLength, row.runLengthCI)} steps
+      </p>
+      <p className="runs-stats-note runs-stats-indent">
+        var {formatStat(row.runLength.variance)} ·{' '}
+        {formatPercentile(row.runLength, HEADLINE_UPPER_PERCENTILE)}
+        {/* Not checked is not the same as checked and clean. */}
+        {!row.outliersChecked && ' · outlier check skipped: too few runs'}
+      </p>
+    </>
+  ) : (
+    <p className="runs-stats-note runs-stats-indent">
+      not measured (hit the tick cap)
+    </p>
+  );
+
+/**
  * The expanded statistics detail for a finished Multiple Runs batch.
  *
  * Every block is omitted when it has nothing to say, so a simple batch stays
- * short. Laid out for a 300px sidebar: the full mean/sd/p50/p95 tables and the
- * per-outcome interval columns live in the CLI report, and what survives here
- * is the subset that stays readable at this width.
+ * short. Laid out for a 300px sidebar: the full per-outcome tables live in the
+ * CLI report and the CSV export, and what survives here is the subset that
+ * stays readable at this width.
  */
 const renderRunStats = (report: BatchReport): React.ReactNode => (
   <>
@@ -348,6 +394,12 @@ const renderRunStats = (report: BatchReport): React.ReactNode => (
             over {report.completedRuns} completed run
             {report.completedRuns !== 1 ? 's' : ''}
           </p>
+          {measuredOutcomeCount(report) > 1 && (
+            <p className="runs-stats-note">
+              Pooled across {measuredOutcomeCount(report)} outcomes — see each
+              outcome below.
+            </p>
+          )}
         </>
       ) : (
         <p className="runs-stats-line">No completed runs to measure.</p>
@@ -355,16 +407,19 @@ const renderRunStats = (report: BatchReport): React.ReactNode => (
     </div>
 
     <div className="runs-stats-block">
-      <span className="runs-stats-heading">Outcome share</span>
+      <span className="runs-stats-heading">Outcomes</span>
       {/* Kept out of the table above: a fourth column does not fit at 300px. */}
       {report.outcomes.map(row => (
-        <p className="runs-stats-sub" key={row.name}>
-          {row.name} — {row.pct.toFixed(1)}%
-          <span className="runs-stats-note">
-            {' '}
-            ({row.ciLow.toFixed(1)}–{row.ciHigh.toFixed(1)})
-          </span>
-        </p>
+        <React.Fragment key={row.name}>
+          <p className="runs-stats-sub">
+            {row.name} — {row.pct.toFixed(1)}%
+            <span className="runs-stats-note">
+              {' '}
+              ({row.ciLow.toFixed(1)}–{row.ciHigh.toFixed(1)})
+            </span>
+          </p>
+          {renderOutcomeRunLength(row)}
+        </React.Fragment>
       ))}
       <p className="runs-stats-note">
         Overlapping ranges mean the batch cannot separate those outcomes — widen
@@ -403,7 +458,7 @@ const renderRunStats = (report: BatchReport): React.ReactNode => (
         </span>
         {report.runLengthOutliers.slice(0, 5).map(o => (
           <p className="runs-stats-sub" key={o.run}>
-            run #{o.run} — {o.ticksElapsed} steps
+            run #{o.run} ({o.outcome}) — {o.ticksElapsed} steps
             {o.seed !== null && (
               <span className="runs-stats-note"> (seed {o.seed})</span>
             )}
@@ -419,6 +474,16 @@ const renderRunStats = (report: BatchReport): React.ReactNode => (
         </p>
       </div>
     )}
+
+    <button
+      type="button"
+      className="runs-stats-export"
+      onClick={() =>
+        downloadCSV(batchReportToCsv(report), reportFileName(report))
+      }
+    >
+      ⤓ Export CSV
+    </button>
   </>
 );
 

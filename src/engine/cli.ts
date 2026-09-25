@@ -4,6 +4,7 @@ import { loadGraphFromFile } from './io';
 import { runSimulation, runMultiple } from './runner';
 import { buildBatchReport } from './batchReport';
 import type { OutcomeShare } from './batchReport';
+import { batchReportToCsv } from './batchReportCsv';
 import {
   formatStat,
   formatMeanWithMargin,
@@ -17,7 +18,7 @@ import type { GraphElement } from './types';
  * Headless command-line entry point for the simulation engine.
  *
  * Usage:
- *   machinations-sim <graph.xml> [--max-ticks N] [--collect-log] [--format json|summary]
+ *   machinations-sim <graph.xml> [--max-ticks N] [--collect-log] [--format json|summary|csv]
  *
  * Designed to be both invocable from the shell (via tsx / a compiled bin)
  * AND testable in-process via {@link runCli}.
@@ -36,7 +37,7 @@ interface ParsedArgs {
   collectLog: boolean;
   trace: boolean;
   maxTraceTicks?: number;
-  format: 'json' | 'summary';
+  format: 'json' | 'summary' | 'csv';
   seed?: number;
   showHelp: boolean;
   unknownFlag?: string;
@@ -68,6 +69,7 @@ Options:
   --max-trace-ticks N  Cap the trace at N ticks (safety bound for long runs).
   --format json        Print full RunSimulationResult as JSON to stdout.
   --format summary     Print a human-readable summary (default).
+  --format csv         Print the batch report as CSV (needs --runs N>1).
   -h, --help           Show this help text.
 
 Exit codes:
@@ -100,7 +102,8 @@ function npmConfigArgv(): string[] {
   if (runs !== undefined && Number.isFinite(Number(runs)))
     extra.push('--runs', runs);
   const format = read('format');
-  if (format === 'json' || format === 'summary') extra.push('--format', format);
+  if (format === 'json' || format === 'summary' || format === 'csv')
+    extra.push('--format', format);
   const collectLog = read('collect-log');
   if (collectLog === 'true' || collectLog === '') extra.push('--collect-log');
   const trace = read('trace');
@@ -179,8 +182,8 @@ function parseArgs(rawArgv: string[]): ParsedArgs {
     }
     if (a === '--format') {
       const v = argv[++i];
-      if (v !== 'json' && v !== 'summary') {
-        out.unknownFlag = `--format expects "json" or "summary", got "${v}"`;
+      if (v !== 'json' && v !== 'summary' && v !== 'csv') {
+        out.unknownFlag = `--format expects "json", "summary" or "csv", got "${v}"`;
         return out;
       }
       out.format = v;
@@ -415,6 +418,15 @@ export function runCli(argv: string[]): CliOutcome {
     };
   }
 
+  // CSV is the batch report's format; a single run has no report to write.
+  if (args.format === 'csv' && args.runs < 2) {
+    return {
+      exitCode: 2,
+      stdout: '',
+      stderr: `--format csv needs --runs N with N > 1.\n\n${HELP_TEXT}`,
+    };
+  }
+
   let loaded;
   try {
     loaded = loadGraphFromFile(resolvePath(args.filePath));
@@ -435,6 +447,16 @@ export function runCli(argv: string[]): CliOutcome {
       maxTicks: args.maxTicks,
       seed: args.seed,
     });
+
+    if (args.format === 'csv') {
+      // stdout carries the CSV and nothing else, so it can be redirected
+      // straight to a file; load warnings go to stderr instead.
+      return {
+        exitCode: 0,
+        stdout: batchReportToCsv(buildBatchReport(batch)),
+        stderr: loaded.warnings.map(w => `Warning: ${w}\n`).join(''),
+      };
+    }
 
     if (args.format === 'json') {
       const report = buildBatchReport(batch);
