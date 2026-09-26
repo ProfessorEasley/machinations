@@ -8,6 +8,8 @@ import { resetElements } from './reset';
 import { simulateTick } from './tick';
 import { setSeed } from './rng';
 import { mean } from './stats';
+import { createStarvationRecorder } from './diagnostics';
+import type { StarvationOptions, StarvationResult } from './diagnostics';
 
 /**
  * Default per-run tick cap.
@@ -45,6 +47,13 @@ export interface RunSimulationOptions {
    * ticks (the simulation itself keeps running). Ignored unless `trace` is true.
    */
   maxTraceTicks?: number;
+  /**
+   * Optional hook invoked with the element state after every tick, including
+   * the onstart tick. Cheap way to observe values as the run progresses
+   * without the memory cost of `trace`/`collectLog`. Must not mutate
+   * `elements`.
+   */
+  onTick?: (elements: GraphElement[], tick: number) => void;
 }
 
 export interface RunSimulationResult {
@@ -101,6 +110,17 @@ export interface RunOutcome {
    * This is the fixed-width projection of it that survives the run.
    */
   metrics: Record<string, number>;
+  /**
+   * Failure-mode verdicts for this run, or `undefined` when the batch didn't
+   * request diagnostics. One optional field per detector, so a reader can
+   * tell "not checked" apart from "checked, didn't happen."
+   */
+  diagnostics?: RunDiagnostics;
+}
+
+/** Failure-mode verdicts collected for one run. */
+export interface RunDiagnostics {
+  starvation?: StarvationResult;
 }
 
 export interface MultipleRunResult {
@@ -158,6 +178,7 @@ export function runSimulation(
     collectLog = false,
     seed,
     trace = false,
+    onTick,
   } = options;
   const maxTraceTicks = options.maxTraceTicks ?? Infinity;
 
@@ -194,6 +215,7 @@ export function runSimulation(
 
   if (collectLog) tickLog.push(onStartResult);
   recordTrace(onStartResult);
+  onTick?.(currentElements, currentTick);
 
   if (onStartResult.events.some(e => e.type === 'game_end')) {
     gameEnded = true;
@@ -219,6 +241,7 @@ export function runSimulation(
     currentElements = result.nextElements;
     if (collectLog) tickLog.push(result);
     recordTrace(result);
+    onTick?.(currentElements, currentTick);
 
     if (result.events.some(e => e.type === 'game_end')) {
       gameEnded = true;
@@ -317,26 +340,55 @@ export function buildMetricLabels(
  */
 export function runMultiple(
   elements: GraphElement[],
-  options: { runs: number; maxTicks?: number; seed?: number }
+  options: {
+    runs: number;
+    maxTicks?: number;
+    seed?: number;
+    /**
+     * Enable failure-mode detectors for every run in the batch. `true` runs a
+     * detector with defaults, an options object tunes it. Off by default.
+     */
+    diagnostics?: { starvation?: boolean | StarvationOptions };
+  }
 ): MultipleRunResult {
-  const { runs, seed } = options;
+  const { runs, seed, diagnostics } = options;
   // Resolved here rather than left to runSimulation's default so the batch can
   // report the exact cap its runs were censored at.
   const maxTicks = options.maxTicks ?? DEFAULT_MAX_TICKS;
   const outcomes: RunOutcome[] = [];
 
+  const starvationConfig = diagnostics?.starvation;
+  const wantsStarvation =
+    starvationConfig !== undefined && starvationConfig !== false;
+  const starvationOptions: StarvationOptions =
+    starvationConfig && starvationConfig !== true ? starvationConfig : {};
+
   for (let i = 0; i < runs; i++) {
     const runSeed = seed === undefined ? null : seed + i;
+
+    const starvationRecorder = wantsStarvation
+      ? createStarvationRecorder(elements, starvationOptions)
+      : undefined;
+
     const result = runSimulation(elements, {
       maxTicks,
       seed: runSeed ?? undefined,
+      onTick: starvationRecorder
+        ? els => starvationRecorder.observe(els)
+        : undefined,
     });
+
+    const runDiagnostics: RunDiagnostics | undefined = starvationRecorder
+      ? { starvation: starvationRecorder.finish() }
+      : undefined;
+
     outcomes.push({
       endConditionName: result.endConditionName,
       ticksElapsed: result.ticksRun,
       completed: result.gameEnded,
       seed: runSeed,
       metrics: sampleMetrics(result.finalState),
+      diagnostics: runDiagnostics,
     });
   }
 
