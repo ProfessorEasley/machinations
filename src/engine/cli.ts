@@ -3,6 +3,13 @@ import { resolve as resolvePath } from 'node:path';
 import { loadGraphFromFile } from './io';
 import { runSimulation, runMultiple } from './runner';
 import { buildBatchReport } from './batchReport';
+import type { OutcomeShare } from './batchReport';
+import { batchReportToCsv } from './batchReportCsv';
+import {
+  formatStat,
+  formatMeanWithMargin,
+  formatPercentile,
+} from './reportFormat';
 import type { MultipleRunResult } from './runner';
 import { renderTrace } from './trace';
 import type { GraphElement } from './types';
@@ -11,7 +18,7 @@ import type { GraphElement } from './types';
  * Headless command-line entry point for the simulation engine.
  *
  * Usage:
- *   machinations-sim <graph.xml> [--max-ticks N] [--collect-log] [--format json|summary]
+ *   machinations-sim <graph.xml> [--max-ticks N] [--collect-log] [--format json|summary|csv]
  *
  * Designed to be both invocable from the shell (via tsx / a compiled bin)
  * AND testable in-process via {@link runCli}.
@@ -30,7 +37,7 @@ interface ParsedArgs {
   collectLog: boolean;
   trace: boolean;
   maxTraceTicks?: number;
-  format: 'json' | 'summary';
+  format: 'json' | 'summary' | 'csv';
   seed?: number;
   showHelp: boolean;
   unknownFlag?: string;
@@ -62,6 +69,7 @@ Options:
   --max-trace-ticks N  Cap the trace at N ticks (safety bound for long runs).
   --format json        Print full RunSimulationResult as JSON to stdout.
   --format summary     Print a human-readable summary (default).
+  --format csv         Print the batch report as CSV (needs --runs N>1).
   -h, --help           Show this help text.
 
 Exit codes:
@@ -94,7 +102,8 @@ function npmConfigArgv(): string[] {
   if (runs !== undefined && Number.isFinite(Number(runs)))
     extra.push('--runs', runs);
   const format = read('format');
-  if (format === 'json' || format === 'summary') extra.push('--format', format);
+  if (format === 'json' || format === 'summary' || format === 'csv')
+    extra.push('--format', format);
   const collectLog = read('collect-log');
   if (collectLog === 'true' || collectLog === '') extra.push('--collect-log');
   const trace = read('trace');
@@ -173,8 +182,8 @@ function parseArgs(rawArgv: string[]): ParsedArgs {
     }
     if (a === '--format') {
       const v = argv[++i];
-      if (v !== 'json' && v !== 'summary') {
-        out.unknownFlag = `--format expects "json" or "summary", got "${v}"`;
+      if (v !== 'json' && v !== 'summary' && v !== 'csv') {
+        out.unknownFlag = `--format expects "json", "summary" or "csv", got "${v}"`;
         return out;
       }
       out.format = v;
@@ -249,9 +258,36 @@ function summarize(
   return lines.join('\n') + '\n';
 }
 
-/** Trim a number for a fixed-width column: integers bare, else 2dp. */
-function num(n: number): string {
-  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+/**
+ * Percentiles on each outcome's detail line — the same three the pooled
+ * run-length line shows, so the two read alike.
+ */
+const OUTCOME_PERCENTILES = [0.5, 0.9, 0.95] as const;
+
+/**
+ * The indented run-length detail printed under one outcome's row.
+ *
+ * Two lines so every requested figure fits the report's ~70-column layout:
+ * count and mean with its interval, then the spread. An outcome with nothing
+ * measured — its runs all hit the tick cap — gets one line saying so rather
+ * than numbers. Everything is read off the report; nothing is computed here.
+ */
+function outcomeRunLengthLines(row: OutcomeShare): string[] {
+  if (!row.runLength || !row.runLengthCI) {
+    return ['    run length: not measured (hit the tick cap)'];
+  }
+  const s = row.runLength;
+  const lines = [
+    `    run length: n ${row.completedRuns}  ` +
+      `mean ${formatMeanWithMargin(s, row.runLengthCI)} steps (95% CI)`,
+    `      sd ${formatStat(s.stdDev)}  var ${formatStat(s.variance)}  ` +
+      OUTCOME_PERCENTILES.map(p => formatPercentile(s, p)).join('  '),
+  ];
+  // Not checked is not the same as checked and clean, so say which.
+  if (!row.outliersChecked) {
+    lines.push('      outlier check skipped: too few measured runs');
+  }
+  return lines;
 }
 
 function summarizeMultiple(
@@ -274,15 +310,15 @@ function summarizeMultiple(
 
   if (report.runLength && report.runLengthCI) {
     const s = report.runLength;
-    const margin = (report.runLengthCI[1] - report.runLengthCI[0]) / 2;
     lines.push(
       `Run length (${report.completedRuns} completed run` +
         `${report.completedRuns !== 1 ? 's' : ''}): ` +
-        `mean ${num(s.mean)} ±${num(margin)} steps (95% CI)`
+        `mean ${formatMeanWithMargin(s, report.runLengthCI)} steps (95% CI)`
     );
     lines.push(
-      `  sd ${num(s.stdDev)}  min ${num(s.min)}  p50 ${num(s.p50)}  ` +
-        `p90 ${num(s.p90)}  p95 ${num(s.p95)}  max ${num(s.max)}`
+      `  sd ${formatStat(s.stdDev)}  min ${formatStat(s.min)}  ` +
+        `p50 ${formatStat(s.p50)}  p90 ${formatStat(s.p90)}  ` +
+        `p95 ${formatStat(s.p95)}  max ${formatStat(s.max)}`
     );
   } else {
     lines.push('Run length: no completed runs to measure.');
@@ -320,6 +356,7 @@ function summarizeMultiple(
     const pct = `${row.pct.toFixed(1)}`.padStart(7);
     const ci = `${row.ciLow.toFixed(1)}–${row.ciHigh.toFixed(1)}`.padStart(13);
     lines.push(`  ${name} ${count}  ${pct}  ${ci}`);
+    lines.push(...outcomeRunLengthLines(row));
   }
 
   if (report.metrics.length) {
@@ -329,10 +366,10 @@ function summarizeMultiple(
     for (const m of report.metrics) {
       const label = `${m.label} (${m.key})`.padEnd(28).slice(0, 28);
       lines.push(
-        `  ${label} ${num(m.summary.mean).padStart(6)}  ` +
-          `${num(m.summary.stdDev).padStart(6)}  ` +
-          `${num(m.summary.p50).padStart(6)}  ` +
-          `${num(m.summary.p95).padStart(6)}`
+        `  ${label} ${formatStat(m.summary.mean).padStart(6)}  ` +
+          `${formatStat(m.summary.stdDev).padStart(6)}  ` +
+          `${formatStat(m.summary.p50).padStart(6)}  ` +
+          `${formatStat(m.summary.p95).padStart(6)}`
       );
     }
   }
@@ -341,8 +378,9 @@ function summarizeMultiple(
     lines.push('');
     lines.push(`Unusual runs (${report.runLengthOutliers.length}):`);
     for (const o of report.runLengthOutliers.slice(0, 5)) {
-      const via = o.seed === null ? '' : ` (seed ${o.seed})`;
-      lines.push(`  run #${o.run}${via} — ${o.ticksElapsed} steps`);
+      // Named, because a run is unusual for its own outcome, not the batch.
+      const via = o.seed === null ? o.outcome : `${o.outcome}, seed ${o.seed}`;
+      lines.push(`  run #${o.run} (${via}) — ${o.ticksElapsed} steps`);
     }
     if (report.runLengthOutliers.length > 5) {
       lines.push(`  +${report.runLengthOutliers.length - 5} more`);
@@ -380,6 +418,15 @@ export function runCli(argv: string[]): CliOutcome {
     };
   }
 
+  // CSV is the batch report's format; a single run has no report to write.
+  if (args.format === 'csv' && args.runs < 2) {
+    return {
+      exitCode: 2,
+      stdout: '',
+      stderr: `--format csv needs --runs N with N > 1.\n\n${HELP_TEXT}`,
+    };
+  }
+
   let loaded;
   try {
     loaded = loadGraphFromFile(resolvePath(args.filePath));
@@ -401,6 +448,16 @@ export function runCli(argv: string[]): CliOutcome {
       seed: args.seed,
     });
 
+    if (args.format === 'csv') {
+      // stdout carries the CSV and nothing else, so it can be redirected
+      // straight to a file; load warnings go to stderr instead.
+      return {
+        exitCode: 0,
+        stdout: batchReportToCsv(buildBatchReport(batch)),
+        stderr: loaded.warnings.map(w => `Warning: ${w}\n`).join(''),
+      };
+    }
+
     if (args.format === 'json') {
       const report = buildBatchReport(batch);
       // Mapped key by key rather than spread: `BatchReport.outcomes` holds the
@@ -419,7 +476,8 @@ export function runCli(argv: string[]): CliOutcome {
         metrics: report.metrics,
         metricLabels: batch.metricLabels,
         warnings: loaded.warnings,
-        // Outcome shares; rows now additionally carry ciLow/ciHigh.
+        // One row per outcome: its share with Wilson bounds, plus its own
+        // run-length summary and whether its outliers were checked.
         aggregate: report.outcomes,
         // Per-run records, unchanged in meaning.
         outcomes: batch.outcomes,

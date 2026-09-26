@@ -12,7 +12,11 @@ src/engine/
 ├── reset.ts                  ← resetElements() between runs
 ├── tick.ts                   ← simulateTick() — one simulation step
 ├── simulationLoop.ts         ← startSimulationLoop() — timed tick wrapper
-├── runner.ts                 ← runSimulation(), runMultiple()
+├── runner.ts                 ← runSimulation(), runMultiple(), aggregateRuns()
+├── stats.ts                  ← generic statistics: summarize, percentiles, CIs, IQR, histogram
+├── batchReport.ts            ← buildBatchReport(): pooled + per-outcome stats, outliers
+├── reportFormat.ts           ← shared number/percentile formatting for CLI + UI
+├── batchReportCsv.ts         ← batchReportToCsv(): the report as CSV
 ├── rng.ts                    ← seeded PRNG (mulberry32)
 ├── io.ts                     ← loadGraphFromFile / loadGraphFromXml
 ├── cli.ts                    ← headless CLI entry point
@@ -36,10 +40,28 @@ both reseed per run with `seed + i`, both record the same `RunOutcome` fields, a
 finished canvas batch is a `MultipleRunResult` — so either can be handed to
 `buildBatchReport` and produce the same statistics.
 
+## Batch reports
+
+A batch (`MultipleRunResult`) becomes a `BatchReport` in `buildBatchReport`, the one
+place that computes statistics. The layers, from generic to presentation:
+
+| Layer               | Owns                                                                                    |
+| ------------------- | --------------------------------------------------------------------------------------- |
+| `stats.ts`          | Generic numerics: `summarize` (n−1 variance, type-7 percentiles), CIs, Tukey, histogram |
+| `batchReport.ts`    | Domain rules: censoring, outcome grouping, `REPORT_PERCENTILES`, outlier checks         |
+| `reportFormat.ts`   | Display formatting shared by CLI and UI                                                 |
+| `batchReportCsv.ts` | CSV serialization                                                                       |
+| CLI, Run panel      | Presentation only — they read the report and never compute                              |
+
+The report carries pooled run length plus a run-length summary per outcome. Outliers
+are judged per outcome, only for outcomes with at least 20 measured runs, and Tukey
+candidates whose exact run length holds more than 5% of the outcome are dropped. See
+[`CLI.md`](./CLI.md#reading-the-report) for what the figures mean and the CSV schema.
+
 ## CLI
 
 ```bash
-npx tsx src/engine/cli.ts <graph.xml> [--max-ticks N] [--runs N] [--seed N] [--format json|summary]
+npx tsx src/engine/cli.ts <graph.xml> [--max-ticks N] [--runs N] [--seed N] [--format json|summary|csv]
 ```
 
 See [`CLI.md`](./CLI.md) for full options. Prefer `npx tsx` over `npm run sim --` on Windows when passing flags.
@@ -63,6 +85,7 @@ Official-scale examples ship in `public/examples/`. Test fixtures are in `src/en
 | Headless CLI + io            | Done                                         |
 | Legacy XML import            | Done                                         |
 | Engine test suite            | Done                                         |
+| Batch report + CSV export    | Done — CLI (`--format csv`) and Run panel    |
 | `index.ts` barrel export     | Optional — imports use module paths directly |
 
 ## Remaining optional work

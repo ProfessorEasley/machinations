@@ -1,8 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { resolve } from 'node:path';
 import { loadGraphFromFile, loadGraphFromXml } from '../io';
-import { runSimulation } from '../runner';
+import { runSimulation, runMultiple } from '../runner';
 import { runCli } from '../cli';
+import { buildBatchReport } from '../batchReport';
+import { batchReportToCsv } from '../batchReportCsv';
+import { formatStat, formatMeanWithMargin } from '../reportFormat';
+import { lookupPercentile } from '../stats';
 
 const FIXTURE_PATH = resolve(__dirname, 'fixtures', 'source-pool.xml');
 
@@ -511,7 +515,7 @@ describe('engine/io + cli — batch statistics report', () => {
       const out = summaryOf([skewedPath, '--runs', '60', '--seed', '42']);
 
       expect(out).toMatch(/Unusual runs \(\d+\):/);
-      expect(out).toMatch(/run #\d+ \(seed \d+\) — \d+ steps/);
+      expect(out).toMatch(/run #\d+ \([^,()]+, seed \d+\) — \d+ steps/);
       expect(out).toMatch(/replay with: --seed \d+ --trace/);
     });
 
@@ -523,6 +527,168 @@ describe('engine/io + cli — batch statistics report', () => {
     it('stays byte-identical for the same seed', () => {
       const args = [skewedPath, '--runs', '30', '--seed', '11'];
       expect(summaryOf([...args])).toBe(summaryOf([...args]));
+    });
+  });
+
+  describe('per-outcome run length', () => {
+    // Two outcomes that finish at very different speeds: ~83% Fast Finish
+    // (~12 steps) and ~17% Slow Finish (~61). See the fixture's header.
+    const bimodalPath = resolve(__dirname, 'fixtures', 'bimodal-outcomes.xml');
+    const linesOf = (args: string[]) =>
+      summaryOf([bimodalPath, ...args]).split('\n');
+    /** The lines that follow an outcome's table row, up to the next row. */
+    const detailOf = (lines: string[], outcome: string) => {
+      const start = lines.findIndex(l => l.startsWith(`  ${outcome} `));
+      expect(start).toBeGreaterThan(-1);
+      const rest = lines.slice(start + 1);
+      const end = rest.findIndex(l => !l.startsWith('    '));
+      return end === -1 ? rest : rest.slice(0, end);
+    };
+
+    it('prints two run-length lines under each outcome', () => {
+      const lines = linesOf(['--runs', '200', '--seed', '42']);
+
+      expect(detailOf(lines, 'Fast Finish')).toEqual([
+        '    run length: n 166  mean 12.35 ±0.49 steps (95% CI)',
+        '      sd 3.22  var 10.37  p50 12  p90 16  p95 18',
+      ]);
+      expect(detailOf(lines, 'Slow Finish')).toEqual([
+        '    run length: n 34  mean 61.50 ±2.67 steps (95% CI)',
+        '      sd 7.94  var 63.05  p50 59  p90 71.70  p95 74.70',
+      ]);
+    });
+
+    it('reads every figure off the batch report', () => {
+      // The CLI formats; it must not compute. Rebuild the same report and
+      // check each printed figure is that report's value.
+      const report = buildBatchReport(
+        runMultiple(loadGraphFromFile(bimodalPath).elements, {
+          runs: 200,
+          seed: 42,
+        })
+      );
+      const lines = linesOf(['--runs', '200', '--seed', '42']);
+
+      for (const row of report.outcomes) {
+        const s = row.runLength!;
+        const pct = (p: number) => formatStat(lookupPercentile(s, p)!);
+        expect(detailOf(lines, row.name)).toEqual([
+          `    run length: n ${row.completedRuns}  ` +
+            `mean ${formatMeanWithMargin(s, row.runLengthCI!)} steps (95% CI)`,
+          `      sd ${formatStat(s.stdDev)}  var ${formatStat(s.variance)}  ` +
+            `p50 ${pct(0.5)}  p90 ${pct(0.9)}  p95 ${pct(0.95)}`,
+        ]);
+      }
+    });
+
+    it('adds no note for an outcome checked and found clean', () => {
+      // Slow Finish has 34 runs: checked, and none of them flagged.
+      const out = summaryOf([bimodalPath, '--runs', '200', '--seed', '42']);
+      expect(out).not.toMatch(/outlier check skipped/);
+      expect(out).not.toMatch(/run #\d+ \(Slow Finish/);
+    });
+
+    it('says when an outcome had too few runs to check', () => {
+      // 60 runs leave Slow Finish with 8 measured runs, under the minimum.
+      const lines = linesOf(['--runs', '60', '--seed', '42']);
+
+      expect(detailOf(lines, 'Slow Finish')).toContain(
+        '      outlier check skipped: too few measured runs'
+      );
+      expect(detailOf(lines, 'Fast Finish')).toHaveLength(2);
+    });
+
+    it('says when an outcome was not measured at all', () => {
+      // A 30-tick cap stops every Slow run before it can finish.
+      const lines = linesOf([
+        '--runs',
+        '60',
+        '--seed',
+        '42',
+        '--max-ticks',
+        '30',
+      ]);
+
+      expect(detailOf(lines, 'Stopped before end')).toEqual([
+        '    run length: not measured (hit the tick cap)',
+      ]);
+    });
+
+    it('names the outcome of each unusual run', () => {
+      const lines = linesOf(['--runs', '200', '--seed', '42']);
+      const runs = lines.filter(l => l.startsWith('  run #'));
+
+      expect(runs).toEqual([
+        '  run #60 (Fast Finish, seed 102) — 21 steps',
+        '  run #73 (Fast Finish, seed 115) — 22 steps',
+        '  run #85 (Fast Finish, seed 127) — 22 steps',
+        '  run #141 (Fast Finish, seed 183) — 23 steps',
+      ]);
+      expect(lines).toContain('  replay with: --seed 102 --trace');
+    });
+
+    it('keeps every new line within 70 columns', () => {
+      const batches = [
+        ['--runs', '200', '--seed', '42'],
+        ['--runs', '60', '--seed', '42'],
+        ['--runs', '60', '--seed', '42', '--max-ticks', '30'],
+      ];
+      for (const args of batches) {
+        const added = linesOf(args).filter(
+          l => /^ {4}run length:|^ {6}\S/.test(l) || l.startsWith('  run #')
+        );
+        expect(added.length).toBeGreaterThan(0);
+        for (const line of added) expect(line.length).toBeLessThanOrEqual(70);
+      }
+    });
+  });
+
+  describe('CSV output', () => {
+    const bimodalPath = resolve(__dirname, 'fixtures', 'bimodal-outcomes.xml');
+    const args = [bimodalPath, '--runs', '200', '--seed', '42'];
+
+    it('prints the serialized batch report and nothing else', () => {
+      const outcome = runCli([...args, '--format', 'csv']);
+      const report = buildBatchReport(
+        runMultiple(loadGraphFromFile(bimodalPath).elements, {
+          runs: 200,
+          seed: 42,
+        })
+      );
+
+      expect(outcome.exitCode).toBe(0);
+      expect(outcome.stderr).toBe('');
+      // Exactly the serializer's output: redirectable straight to a file.
+      expect(outcome.stdout).toBe(batchReportToCsv(report));
+      expect(outcome.stdout.startsWith('section,name,key,')).toBe(true);
+      expect(outcome.stdout).not.toMatch(/Multiple runs:|Outcomes:/);
+    });
+
+    it('is deterministic for the same seed', () => {
+      const a = runCli([...args, '--format', 'csv']).stdout;
+      const b = runCli([...args, '--format', 'csv']).stdout;
+      expect(a).toBe(b);
+    });
+
+    it('leaves the default summary as it was', () => {
+      const out = summaryOf(args);
+      expect(out).toMatch(/^Multiple runs: 200 seed=42\n/);
+      expect(out).not.toMatch(/section,name/);
+    });
+
+    it('refuses a single run, which has no batch report', () => {
+      const outcome = runCli([bimodalPath, '--seed', '42', '--format', 'csv']);
+      expect(outcome.exitCode).toBe(2);
+      expect(outcome.stdout).toBe('');
+      expect(outcome.stderr).toMatch(/--format csv needs --runs N with N > 1/);
+    });
+
+    it('rejects an unsupported format and names the supported ones', () => {
+      const outcome = runCli([...args, '--format', 'xml']);
+      expect(outcome.exitCode).toBe(2);
+      expect(outcome.stderr).toMatch(
+        /--format expects "json", "summary" or "csv", got "xml"/
+      );
     });
   });
 

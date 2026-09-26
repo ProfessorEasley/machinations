@@ -369,6 +369,18 @@ export interface AggregateRow {
 export const UNFINISHED_RUN_LABEL = 'Stopped before end';
 
 /**
+ * The outcome a run is tallied under: its End Condition's name, or
+ * {@link UNFINISHED_RUN_LABEL} when none fired.
+ *
+ * The single definition of that rule. The tally below and the report's
+ * per-outcome grouping both key runs through it, so a run can never be counted
+ * under one outcome and measured under another.
+ */
+export function outcomeKey(outcome: RunOutcome): string {
+  return outcome.endConditionName ?? UNFINISHED_RUN_LABEL;
+}
+
+/**
  * Tally a batch of run outcomes into a sorted outcome distribution plus the
  * average number of steps.
  *
@@ -382,7 +394,7 @@ export function aggregateRuns(result: MultipleRunResult): {
 } {
   const counts = new Map<string, number>();
   for (const o of result.outcomes) {
-    const key = o.endConditionName ?? UNFINISHED_RUN_LABEL;
+    const key = outcomeKey(o);
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   const total = result.outcomes.length;
